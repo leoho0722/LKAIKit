@@ -18,6 +18,11 @@ let package = Package(
         .target(name: "LKAICore", resources: [.process("Resources")]),
         .testTarget(name: "LKAICoreTests", dependencies: ["LKAICore"]),
         .target(name: "LKAITestSupport", dependencies: ["LKAICore"]),
+        .target(name: "LKAIAnthropic", dependencies: ["LKAICore"]),
+        .testTarget(
+            name: "LKAIAnthropicTests",
+            dependencies: ["LKAIAnthropic", "LKAICore", "LKAITestSupport"]
+        ),
         .target(name: "LKAIKit", dependencies: ["LKAICore"]),
         .testTarget(name: "LKAIKitTests", dependencies: ["LKAIKit"]),
         .executableTarget(
