@@ -22,13 +22,13 @@ struct LKAIHTTPLinesTests {
     func init_來源丟出取消類的錯誤_已送出的行照常交出後正常結束(thrownError: any Error & Sendable) async {
         // Given
         let expectedLines = ["a"]
-        let (source, sourceContinuation) = LKAIHTTPClientTestSupport.LineSource.makeStream()
+        let (source, sourceContinuation) = LKAIHTTPLinesTestSupport.LineSource.makeStream()
         sourceContinuation.yield("a")
         sourceContinuation.finish(throwing: thrownError)
         let lines = LKAIHTTPLines(source)
 
         // When
-        let outcome = await LKAIHTTPClientTestSupport.collectLines(from: lines)
+        let outcome = await LKAIHTTPLinesTestSupport.collectLines(from: lines)
 
         // Then
         #expect(outcome.lines == expectedLines)
@@ -42,13 +42,13 @@ struct LKAIHTTPLinesTests {
     func init_來源丟出不是對話錯誤的錯誤_降級為無效回應錯誤() async throws {
         // Given
         let expectedLines = ["a"]
-        let (source, sourceContinuation) = LKAIHTTPClientTestSupport.LineSource.makeStream()
+        let (source, sourceContinuation) = LKAIHTTPLinesTestSupport.LineSource.makeStream()
         sourceContinuation.yield("a")
         sourceContinuation.finish(throwing: UnrelatedError())
         let lines = LKAIHTTPLines(source)
 
         // When
-        let outcome = await LKAIHTTPClientTestSupport.collectLines(from: lines)
+        let outcome = await LKAIHTTPLinesTestSupport.collectLines(from: lines)
 
         // Then
         let error = try #require(outcome.error)
@@ -67,13 +67,13 @@ struct LKAIHTTPLinesTests {
         // Given
         let expectedLines = ["a"]
         let expectedError = LKAIError.rateLimited(retryAfter: nil)
-        let (source, sourceContinuation) = LKAIHTTPClientTestSupport.LineSource.makeStream()
+        let (source, sourceContinuation) = LKAIHTTPLinesTestSupport.LineSource.makeStream()
         sourceContinuation.yield("a")
         sourceContinuation.finish(throwing: expectedError)
         let lines = LKAIHTTPLines(source)
 
         // When
-        let outcome = await LKAIHTTPClientTestSupport.collectLines(from: lines)
+        let outcome = await LKAIHTTPLinesTestSupport.collectLines(from: lines)
 
         // Then
         let error = try #require(outcome.error)
@@ -95,7 +95,7 @@ struct LKAIHTTPLinesTests {
     func init_先取消迭代的task再由來源丟出錯誤_正常結束且沒有錯誤(thrownError: any Error & Sendable) async {
         // Given
         let expectedLines = ["a"]
-        let (source, sourceContinuation) = LKAIHTTPClientTestSupport.LineSource.makeStream()
+        let (source, sourceContinuation) = LKAIHTTPLinesTestSupport.LineSource.makeStream()
         sourceContinuation.onTermination = { termination in
             if case .cancelled = termination {
                 sourceContinuation.finish(throwing: thrownError)
@@ -105,7 +105,7 @@ struct LKAIHTTPLinesTests {
         let (receivedSignals, receivedSignal) = AsyncStream<Void>.makeStream()
         let lines = LKAIHTTPLines(source)
         let iterationTask = Task {
-            await LKAIHTTPClientTestSupport.collectLines(from: lines) { _ in
+            await LKAIHTTPLinesTestSupport.collectLines(from: lines) { _ in
                 receivedSignal.yield()
             }
         }
