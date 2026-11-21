@@ -153,3 +153,69 @@ code:
   - Tests/LKAIKitCLITests/LKAICommandTests.swift
   - Tests/LKAIKitTests/ExportsTests.swift
 -->
+
+---
+### Requirement: Test support stays out of the library build
+
+The `LKAITestSupport` target SHALL NOT belong to any product, SHALL depend only on `LKAICore`, and SHALL NOT be a dependency of `LKAIKit` or of any target reachable from `LKAIKit`, so that test doubles never ship inside an app that depends on the `LKAIKit` library product.
+
+#### Scenario: Inspect the manifest for the test support target
+
+- **GIVEN** the package manifest
+- **WHEN** the products and target dependencies are inspected with `swift package dump-package`
+- **THEN** no product lists `LKAITestSupport` as one of its targets
+- **AND** the dependency list of `LKAITestSupport` contains only `LKAICore`
+- **AND** `LKAITestSupport` is not reachable from `LKAIKit` through target dependencies
+
+<!-- @trace
+source: add-chat-abstraction-anthropic
+updated: 2026-11-22
+code:
+  - Package.swift
+  - Sources/LKAIAnthropic/LKAnthropicClient.swift
+  - Sources/LKAIAnthropic/LKAnthropicErrorBody.swift
+  - Sources/LKAIAnthropic/LKAnthropicMessagesRequestBody.swift
+  - Sources/LKAIAnthropic/LKAnthropicRefusalFallback.swift
+  - Sources/LKAIAnthropic/LKAnthropicStreamEvent.swift
+  - Sources/LKAIAnthropic/LKAnthropicStreamState.swift
+  - Sources/LKAICore/Chat/LKAIChatClientProtocol.swift
+  - Sources/LKAICore/Chat/LKAIChatCompletion.swift
+  - Sources/LKAICore/Chat/LKAIChatRequest.swift
+  - Sources/LKAICore/Chat/LKAIChatResponse.swift
+  - Sources/LKAICore/Chat/LKAIChatStream.swift
+  - Sources/LKAICore/Chat/LKAIChatStreamEvent.swift
+  - Sources/LKAICore/Chat/LKAIError.swift
+  - Sources/LKAICore/Chat/LKAIFinishReason.swift
+  - Sources/LKAICore/Chat/LKAIMessage.swift
+  - Sources/LKAICore/Chat/LKAIMessageRole.swift
+  - Sources/LKAICore/Chat/LKAIUsage.swift
+  - Sources/LKAICore/Networking/LKAIHTTPClient.swift
+  - Sources/LKAICore/Networking/LKAIHTTPLineSplitter.swift
+  - Sources/LKAICore/Networking/LKAIHTTPLines.swift
+  - Sources/LKAICore/Networking/LKAIHTTPResponse.swift
+  - Sources/LKAICore/Networking/LKAIServerSentEvent.swift
+  - Sources/LKAICore/Networking/LKAIServerSentEventParser.swift
+  - Sources/LKAICore/Resources/Localizable.xcstrings
+  - Sources/LKAIKit/Exports.swift
+  - Sources/LKAITestSupport/LKAIMockHTTPClient.swift
+  - Tests/LKAIAnthropicTests/LKAnthropicClientCancellationTests.swift
+  - Tests/LKAIAnthropicTests/LKAnthropicClientErrorTests.swift
+  - Tests/LKAIAnthropicTests/LKAnthropicClientLiveTests.swift
+  - Tests/LKAIAnthropicTests/LKAnthropicClientStreamTests.swift
+  - Tests/LKAIAnthropicTests/LKAnthropicClientTestSupport.swift
+  - Tests/LKAIAnthropicTests/LKAnthropicClientTests.swift
+  - Tests/LKAICoreTests
+  - Tests/LKAICoreTests/LKAIChatClientProtocolTests.swift
+  - Tests/LKAICoreTests/LKAIChatRequestTests.swift
+  - Tests/LKAICoreTests/LKAIChatStreamTests.swift
+  - Tests/LKAICoreTests/LKAIErrorTests.swift
+  - Tests/LKAICoreTests/LKAIHTTPClientTests.swift
+  - Tests/LKAICoreTests/LKAIHTTPLineSplitterTests.swift
+  - Tests/LKAICoreTests/LKAIServerSentEventParserTests.swift
+  - Tests/LKAICoreTests/Networking/LKAIHTTPClientTestSupport.swift
+  - Tests/LKAICoreTests/Networking/LKAIHTTPClientTests.swift
+  - Tests/LKAICoreTests/Networking/LKAIHTTPLinesTestSupport.swift
+  - Tests/LKAICoreTests/Networking/LKAIHTTPLinesTests.swift
+  - Tests/LKAICoreTests/Networking/LKAIHTTPResponseTests.swift
+  - Tests/LKAIKitTests/ExportsTests.swift
+-->
