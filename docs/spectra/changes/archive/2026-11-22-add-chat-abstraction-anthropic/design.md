@@ -84,6 +84,11 @@
     - 同一個 package 的其他模組不受影響。
   - 依 SE-0487 原文：在非 resilient 模組加上 `@nonexhaustive` 是 API 破壞性變更，拿掉則不會破壞。
   - `Int(_:)` 解析字串時接受正負號：`Int("+5")` 為 5，`Int("-1")` 為 -1，`Int(" 30")` 為 nil。
+- **實作審查時補充的實測**（2026-11-22，scratchpad，Swift 6.4.2）：
+  - `AsyncThrowingStream` 在消費端的 task 已被取消之後，仍會把緩衝區裡已有的元素依序交出。所以結束事件已經進緩衝區、等待的 task 才被取消時，只靠「串流沒有結束事件」判斷不到取消。
+  - 測試自己持有 `URLSession` 時，可以輪詢 `session.allTasks` 觀察資料傳輸是否真的結束：有取消接線時，取消迭代的 task 或只釋放逐行內容，`allTasks` 都會清空；拿掉接線時，資料傳輸仍在進行。連跑 3 次結果相同。
+  - 拿掉 `LKAIHTTPClient` 的取消接線後，原本的 `LKAICoreTests` 仍全部通過，表示審查前這條接線沒有測試把關。
+  - `JSONSerialization` 解出的 `true` 與 `1` 在 `NSDictionary` 比對時視為相等（opus 審查者以 JXA 實測），所以以 `NSDictionary` 比對 JSON 擋不住把布林送成數字。
 - **SwiftPM 的建置範圍**：以 Swift 6.4.2 實測（審查後補充）：`swift test --filter X` 仍會建置所有 test target 與它們的依賴；任何一個 target 改到一半編譯失敗，所有 `swift test` 都建置失敗。
 - **套件資源的語言與位置**：以 macOS 27.2 實測（審查後補充，iOS 未實測）：
   - 套件 `Bundle.module` 的字串跟隨 App 本身支援的語言：只支援英文的 App 在偏好語言為正體中文時仍顯示英文；同時支援英文與正體中文的 App 顯示正體中文。
@@ -160,6 +165,7 @@
 
 - **存取層級必須是 `public`**：實測 `package` 層級的預設實作無法讓另一個模組的 `public` 型別滿足 `public` protocol 的要求（見 Context），App 自己寫的測試替身也看不到它。
 - **取消**：迭代中收到錯誤時，若等待呼叫的 task 已被取消，一律丟出 `.cancelled`，不丟出生產端在取消空檔送出的其他錯誤；串流沒有結束事件就結束時，task 已被取消則丟出 `.cancelled`，否則丟出 `.invalidResponse`。
+  - 收到結束事件、回傳結果前也再檢查一次：task 已被取消就丟出 `.cancelled`，不回傳結果。實測緩衝區裡的事件在取消後仍會交出（見 Context），少了這一步，結束事件已進緩衝區時會在取消後回傳完整結果，違反 `chat-client` spec 的 Cancellation（使用者決定嚴格照 spec）。
 
 理由：Claude API 參考資料建議，輸出可能較長或 `max_tokens` 較大時一律用串流，以免 HTTP 請求逾時；官方 SDK 的完整結果也是由串流彙整（例如 `get_final_message()`）。Claude Opus 5.5 思考一律開啟，第一段文字出來前可能要等一段時間，真正的非串流請求更容易逾時。彙整邏輯只寫在 `LKAICore` 一處，各供應商不必重複。
 
@@ -258,12 +264,12 @@
 
 這個決策回答上一個 change 的開放問題二的前半。
 
-- **`LKAIHTTPClientProtocol`**（`package`）只有一個方法：送出 `URLRequest`，回傳 `LKAIHTTPResponse`。
+- **`LKAIHTTPClientProtocol`**（`package`）只有一個方法 `fetch(_:)`：送出 `URLRequest`，回傳 `LKAIHTTPResponse`。
 - **`LKAIHTTPClient`**：以 App 注入的 `URLSession` 實作。逾時與連線設定由 App 透過 `URLSession` 決定。
   - task 被取消時，`URLSession` 丟出 `URLError(.cancelled)`（實測，見 Context）。收到 `URLError(.cancelled)` 時，若 task 已被取消就轉成 `.cancelled`；task 沒有被取消（例如 App 讓 `URLSession` 失效）時轉成 `.transport(underlying:)`。其他 `URLError` 一律轉成 `.transport(underlying:)`。
   - 逐行內容由 `URLSession.AsyncBytes` 餵給切行器，再以 `LKAIHTTPLines` 的 `package init` 包起來；`LKAIHTTPLines` 被釋放或迭代的 task 被取消時，取消 `URLSession` 的資料傳輸。
 - **`LKAIHTTPResponse`**：帶狀態碼、標頭（key 一律轉小寫）與 `lines: LKAIHTTPLines`。
-  - 讀取錯誤內容的方法 `readErrorBody()` 建在 `lines` 之上，以 `\n` 串接各行、最多保留 64 KiB（UTF-8 位元組數），達到上限就停止迭代並釋放逐行內容，以免異常的大型回應耗盡記憶體。
+  - 讀取錯誤內容的方法 `readErrorBody()` 建在 `lines` 之上，以 `\n` 串接各行、最多保留 64 KiB（UTF-8 位元組數），達到上限就停止迭代；截斷時不切開多位元組字元。這個上限只限制回傳的字串大小，擋不住異常大型回應佔用的記憶體，見 Risks。
   - 64 KiB 是估計值，足以容納三家已知的錯誤格式；以測試確認超過上限時截斷而不失敗。
 - **`LKAIHTTPLines`**（`package`）：`AsyncSequence`，`Element` 為 `String`、`Failure` 為 `LKAIError`。
   - `package init(_ source: AsyncThrowingStream<String, any Error>)`，讓 `URLSession` 版本與測試替身用同一種方式建立。
@@ -295,8 +301,9 @@
 - **`LKAIMockHTTPClient`**：
   - 記錄收到的請求，回傳測試預先設定的狀態碼、標頭與逐行內容；逐行內容以 `LKAIHTTPLines` 的 `package init` 建立。
   - 測試可以控制何時送出下一行與何時結束。
-  - 測試可以讓 `send` 直接丟出指定的 `LKAIError`，也可以在逐行內容途中丟出指定的錯誤。
+  - 測試可以讓 `fetch` 直接丟出指定的 `LKAIError`，也可以在逐行內容途中丟出指定的錯誤。
   - 記錄底層請求是否被取消，也就是逐行內容是否因迭代的 task 被取消或被釋放而終止。
+  - 為了偵測得到「被釋放」，替身只在 `fetch` 時把逐行內容的來源交出一次，之後不再持有；回應成為來源唯一的持有者，回應被釋放時 `onTermination` 才會被呼叫（實作審查時發現：替身原本一直持有來源，只偵測得到迭代的 task 被取消）。
 - **同步方式**：以 Synchronization 模組的 `Mutex` 保護可變狀態，型別是不帶 `@unchecked` 的 `Sendable` `final class`。
 
 理由：Anthropic 與之後每家供應商的測試都需要同一個替身，測試 target 之間無法互相依賴，所以只能放進一般 target。ios-dev-kit `tests/MockService.swift` 樣板以「測試為單執行緒存取」為由使用 `@unchecked Sendable`，但串流測試會讓 client 的背景 task 與測試同時存取替身，這個前提不成立，所以改用 `Mutex`。
@@ -336,7 +343,7 @@
 
 `LKAnthropicClient` 依序處理 SSE 事件：
 
-- **`message_start`**：讀取 `message.model`；有 `usage` 時讀取用量，沒有時不視為錯誤（官方範例就有這種情況，見 Context）。
+- **`message_start`**：讀取 `message.model`；有 `usage` 時讀取用量，沒有時不視為錯誤（官方範例就有這種情況，見 Context）。`message.model` 沒有出現時也不視為錯誤，`respondingModel` 為 nil，符合 `chat-client` spec「Responding model」的「沒有回報時不帶識別碼」（第二輪實作審查時補上）。
 - **`content_block_start`**：類型為 `fallback` 時，記下 `to.model` 作為 `respondingModel`，不送出事件；其他類型不處理。
 - **`content_block_delta`**：只有 `text_delta` 送出文字片段；`thinking_delta`、`signature_delta` 等其他類型略過。
 - **`message_delta`**：可能有一個以上。
@@ -444,7 +451,8 @@ Anthropic 對組織或工作區自己設定的花費上限回 400 `invalid_reque
 | `LKAIChatClientProtocol.swift` | `data/Service.swift` 的 Protocol 區（`Service` 換成 `Client`）；實作分散在各供應商 target，所以刪掉 Implementation 區 |
 | `LKAIHTTPClient.swift` | `data/Service.swift`，protocol 與 `URLSession` 實作同檔 |
 | `LKAnthropicClient.swift` | `data/Service.swift` 的 Implementation 區與 protocol 遵循 extension |
-| `LKAIMockHTTPClient.swift` | `tests/MockService.swift`，以 `Mutex` 取代 `@unchecked Sendable`（見上方決策） |
+| `LKAIMockHTTPClient.swift` | `tests/MockService.swift`，以 `Mutex` 取代 `@unchecked Sendable`（見上方決策）；成員不用樣板的 `<方法>CallCount`／`<方法>ReceivedArguments`／`<方法>Result`，改為 `requests`、`failFetch(with:)` 與逐行推送的方法，因為替身要模擬的是逐行送達的串流，不是單次回傳的結果 |
+| 測試支援檔（`LKAnthropicClientTestSupport.swift`、`LKAIHTTPLinesTestSupport.swift`） | 依 `file-templates.md`「測試共用的 helper 依使用範圍放置」：同一個 test target 內多個測試型別共用的固定資料與 helper，放在 `<受測型別>TestSupport.swift`，以沒有 case 的 enum 與 static 成員宣告 |
 | `LKAIMessage.swift`、`LKAIChatRequest.swift`、`LKAIUsage.swift`、`LKAIChatResponse.swift`、`LKAIServerSentEvent.swift` | `domain/Model.swift`，依該檔規則拿掉用不到的 `Identifiable`、`Codable` |
 | `LKAIHTTPResponse.swift` | `domain/Model.swift`，另外拿掉 `Equatable`，因為它帶著逐行內容 |
 | `LKAIMessageRole.swift`、`LKAIFinishReason.swift` | `domain/Enum.swift`，不設 raw type，拿掉 `Codable` 與 `title`；傳輸格式由各供應商轉換 |
@@ -470,7 +478,7 @@ Anthropic 對組織或工作區自己設定的花費上限回 400 `invalid_reque
   - 假回應一律帶 `Content-Type: text/event-stream`，否則 `URLSession` 會先緩衝內容（實測，見 Context）。
   - 取消的測試讓假回應不結束，取消迭代的 task 後確認得到 `.cancelled`（而不是 `.transport`）。`URLError(.cancelled)` 只在 `URLSession` 真的取消資料傳輸時出現，`stopLoading()` 也同時被呼叫（實測），所以不需要跨物件回報 `stopLoading()`。
 - **`LKAITestSupport` 不設測試 target**：它由 `LKAIAnthropicTests` 實際使用來驗證。
-- **實際 API 的測試**：放在 `LKAnthropicClientTests`，只在環境變數 `LKAI_ANTHROPIC_API_KEY` 有設定時執行（Swift Testing 的 `.enabled(if:)`），沒設定時略過。
+- **實際 API 的測試**：放在 `LKAnthropicClientLiveTests`，只在環境變數 `LKAI_ANTHROPIC_API_KEY` 有設定時執行（Swift Testing 的 `.enabled(if:)`），沒設定時略過。
   - 一般的 `swift test` 不連網、不花錢。
   - 由 owner 帶上金鑰手動執行一次，作為與真實 API 相容的驗證。
   - 提示詞要求只回一個詞，`maxOutputTokens` 設 4096：Claude Opus 5.5 思考一律開啟，思考的 token 也計入上限，上限太小時可能還沒輸出文字就以 `.maxOutputTokens` 結束。
@@ -584,7 +592,7 @@ public enum LKAIError: Error, Equatable, Sendable {
 `///` 說明另外寫明以下事項：
 
 - `LKAIChatClientProtocol.stream(_:)` 與 `LKAIChatStream`：請求在呼叫時就送出；釋放串流才會取消請求，只離開迴圈不會。
-- `LKAIFinishReason.contextWindowExceeded`：本 change 只有 Anthropic 會回報；其他供應商是否有對應狀態由各自的 change 查證，沒有時同樣情況可能以 `.maxOutputTokens` 或 `.invalidRequest` 出現。
+- `LKAIFinishReason.contextWindowExceeded`：目前只有 Anthropic 會回報；其他供應商是否有對應狀態由各自的 change 查證，沒有時同樣情況可能以 `.maxOutputTokens` 或 `.invalidRequest` 出現。
 - `LKAIError.serviceUnavailable(statusCode:)`：串流中途的錯誤沒有 HTTP 狀態碼，狀態碼由供應商依錯誤類型指定。
 - `LKAIError.refused(detail:)`：各家的原因說明格式不同（類別代碼、說明文字或列舉名），只適合記錄 log，不適合依內容判斷。
 
@@ -592,7 +600,7 @@ public enum LKAIError: Error, Equatable, Sendable {
 
 - **`LKAIChatRequest` 的驗證方法**：違反請求規則時丟出 `.invalidRequest(message:)`，訊息指出哪一條規則。
 - **`LKAIError` 的預設分類**：依 HTTP 狀態碼與 `retry-after` 標頭產生錯誤。`retry-after` 只有在完全由 ASCII 數字組成時才當成秒數；帶正負號、空白或 HTTP 日期等其他格式，視為沒有提供重試延遲。不直接用 `Int(_:)` 判斷，因為它接受正負號（實測，見 Context）。
-- **`LKAIHTTPClientProtocol`**：`func send(_ request: URLRequest) async throws(LKAIError) -> LKAIHTTPResponse`。
+- **`LKAIHTTPClientProtocol`**：`func fetch(_ request: URLRequest) async throws(LKAIError) -> LKAIHTTPResponse`。方法名依 ios-dev-kit `file-templates.md`「Client 的 protocol 方法只暴露技術操作（`request`、`read`、`write`、`delete`、`fetch(_:)`）」取 `fetch`（使用者決定）；不用同樣列在其中的 `request`，因為參數本身就是 `request`。
 - **`LKAIHTTPResponse`**：`statusCode: Int`、`headers: [String: String]`（key 一律轉小寫）、`lines: LKAIHTTPLines`，以及 `func readErrorBody() async throws(LKAIError) -> String`：以 `\n` 串接各行，最多 64 KiB（UTF-8 位元組數），超過時截斷而不失敗，並停止讀取。
 - **`LKAIHTTPLines`**：`AsyncSequence`，`Element` 為 `String`、`Failure` 為 `LKAIError`；`package init(_ source: AsyncThrowingStream<String, any Error>)`。錯誤轉換規則與 `LKAIChatStream` 相同。
 - **`LKAIHTTPLineSplitter`**：逐位元組輸入，交出完成的行；串流結束時交出最後一段未換行的內容。以 CRLF、LF、單獨的 CR 換行，保留空行，U+2028、U+2029、U+0085 不算換行。
@@ -623,8 +631,8 @@ public enum LKAIError: Error, Equatable, Sendable {
 
 - 記錄收到的 `URLRequest`。
 - 回傳預先設定的狀態碼、標頭與逐行內容，測試可逐行推送並決定何時結束。
-- 可設定 `send` 直接丟出的 `LKAIError`，以及在逐行內容途中丟出的錯誤。
-- 公開是否偵測到底層請求被取消：逐行內容的來源因迭代的 task 被取消或被釋放而終止。
+- 可設定 `fetch` 直接丟出的 `LKAIError`，以及在逐行內容途中丟出的錯誤。
+- 公開是否偵測到底層請求被取消：逐行內容的來源因迭代的 task 被取消或被釋放而終止。逐行內容的來源只在 `fetch` 時交出一次，替身之後不再持有。
 
 存取層級：它遵循的是 `package` protocol，只供同 package 的測試使用，所以型別與成員都標 `package`。
 
@@ -636,8 +644,10 @@ public enum LKAIError: Error, Equatable, Sendable {
 - `Sources/LKAIAnthropic/`：`LKAnthropicClient.swift`、`LKAnthropicRefusalFallback.swift`，以及 Anthropic 的內部傳輸型別各自的檔案
 - `Sources/LKAITestSupport/`：`LKAIMockHTTPClient.swift`
 - 測試：
-  - `Tests/LKAICoreTests/`：`LKAIChatRequestTests.swift`、`LKAIErrorTests.swift`、`LKAIChatStreamTests.swift`、`LKAIChatClientProtocolTests.swift`、`LKAIServerSentEventParserTests.swift`、`LKAIHTTPLineSplitterTests.swift`、`LKAIHTTPClientTests.swift`
-  - `Tests/LKAIAnthropicTests/LKAnthropicClientTests.swift`
+  - `Tests/LKAICoreTests/`：依 ios-dev-kit `project-structure.md`「測試檔的位置與主 target 對應、一個測試檔測一個型別」鏡像 `Sources/LKAICore/` 的資料夾（使用者決定，實作審查後調整）：
+    - `Chat/`：`LKAIChatRequestTests.swift`、`LKAIErrorTests.swift`、`LKAIChatStreamTests.swift`、`LKAIChatClientProtocolTests.swift`
+    - `Networking/`：`LKAIServerSentEventParserTests.swift`、`LKAIHTTPLineSplitterTests.swift`、`LKAIHTTPClientTests.swift`、`LKAIHTTPResponseTests.swift`、`LKAIHTTPLinesTests.swift`，以及處理 `LKAIHTTPLines` 的測試支援檔 `LKAIHTTPLinesTestSupport.swift`（一個受測型別一份 TestSupport）。假的 `URLProtocol` 只有 `LKAIHTTPClientTests` 使用，是它的巢狀型別；`LKAIHTTPResponseTests` 直接建立 `LKAIHTTPResponse`，不經過 client
+  - `Tests/LKAIAnthropicTests/`：依測到的行為分成 `LKAnthropicClientTests.swift`（請求、備援設定、金鑰保密）、`LKAnthropicClientStreamTests.swift`（串流事件對應）、`LKAnthropicClientErrorTests.swift`（錯誤對應）、`LKAnthropicClientCancellationTests.swift`（取消）與 `LKAnthropicClientLiveTests.swift`（實際 API）。實作時單一檔案過長才拆開，型別名依命名規則跟隨受測型別。共用的固定資料與 helper 放在 `LKAnthropicClientTestSupport.swift`。
   - 既有的 `Tests/LKAIKitTests/ExportsTests.swift` 新增一個測試
 
 **manifest 與總成：**
@@ -650,6 +660,15 @@ public enum LKAIError: Error, Equatable, Sendable {
 - `LKAIKit` 改為依賴 `["LKAICore", "LKAIAnthropic"]`；`Sources/LKAIKit/Exports.swift` 新增 `@_exported import LKAIAnthropic`。
 - products 不變：只有 `LKAIKit` library 與 `lkai` executable。
 - 不新增外部套件。
+
+**API 演進規則（寫進 `docs/spectra/config.yaml` 的 context，使用者決定）：**
+
+實作審查時發現這些規則只寫在本 change 的 design，封存後之後的 change 讀不到，所以寫進 config.yaml，比照命名規則：
+
+- 公開 enum 預期會新增 case 時標 `@nonexhaustive`。
+- 公開 struct 之後新增欄位時，`public init` 的新參數一律給預設值。
+- 供應商的 change 不得為了自己的格式修改 LKAICore 的共用公開型別；需要修改時另開 change 修改 `chat-client` spec。
+- 指標（第二輪實作審查時補上）：新增供應商的 change 開始前，先讀本 change（add-chat-abstraction-anthropic）封存後的 design：逐列核對 Context 的三家對照表，並處理 Open Questions 留給下一家供應商的項目。這些項目只寫在 design，沒有這條指標，中間先插入別的 change 時就接不上。
 
 **命名規則：**
 
@@ -690,10 +709,11 @@ public enum LKAIError: Error, Equatable, Sendable {
 - [App 若把 API 金鑰放在 `Info.plist`，金鑰可以從 App 套件中取出（BuyLedger 目前就是這樣）] → 屬於 App 的部署決定，LKAIKit 只保證不把金鑰寫進描述與錯誤；自訂端點以支援轉送伺服器已列為 Non-Goal，有需求時另開 change。
 - [逐位元組讀取 `URLSession.AsyncBytes` 再自行切行，效能較差] → 對話回應只有數 KB 到數十 KB（估計值，未量測），可以接受；實際使用若發現延遲，再以量測決定是否改成整塊讀取。
 - [錯誤回應的讀取上限 64 KiB 是估計值] → 以測試確認超過上限時會截斷而不失敗；若遇到合法但更大的錯誤內容再調整。
+- [異常大型回應仍可能佔用大量記憶體（實作 3.2 時發現）：`LKAIHTTPLineSplitter` 會把沒有換行的整行先累積完才交出；`LKAIHTTPClient` 的背景 task 以不設上限的緩衝區一直讀取，直到逐行內容被釋放；`readErrorBody()` 的 64 KiB 只限制回傳的字串] → 本 change 的端點固定為官方 API，自訂端點已列為 Non-Goal，正常回應不會出現這種情況，所以只記錄、不處理（使用者決定）。支援自訂端點或轉送伺服器的 change 要加上單行長度上限，並把背景讀取改成依消費端拉取。
 - [實際 API 的測試會花錢且需要金鑰] → 預設略過，只在設定 `LKAI_ANTHROPIC_API_KEY` 時執行，由 owner 決定何時跑。
 - [package 內驗不到存取層級：`LKAIAnthropicTests` 與 `LKAITestSupport` 看得到 `package` 成員，公開 API 標錯層級時 package 內仍全部通過] → 沿用上一個 change 的做法以 review 把關；`ExportsTests` 透過 `import LKAIKit` 使用 `LKAnthropicClient`，可擋下最主要的公開 API 少標 `public` 的錯誤。
 - [新增 `LKAIError` 的 case 時，可能忘了補兩種語言的字串] → `errorDescription` 的窮舉 `switch` 會在編譯時要求補上 key；任務 1.1 的測試手動列出每個 case，測試清單與字串檔要在新增 case 時一起補，由 review 檢查。
-- [`server-side-fallback-2026-07-01` 是 beta 功能，格式可能變動] → 標頭與 `fallbacks` 的格式集中在 `LKAnthropicClient`，只在 App 開啟時才送出；變動時，`anthropic-provider` spec、對應表與測試一起更新。
+- [`server-side-fallback-2026-07-01` 是 beta 功能，格式可能變動] → 標頭值集中在 `LKAnthropicRefusalFallback`、`fallbacks` 的編碼集中在 `LKAnthropicMessagesRequestBody`，只在 App 開啟時才送出；變動時，`anthropic-provider` spec、對應表與測試一起更新。
 - [`LKAIChatStream` 只支援單一消費者，第二次迭代的行為與 `AsyncThrowingStream` 相同] → 寫在型別的 `///` 說明。
 
 ## Open Questions
@@ -703,4 +723,9 @@ public enum LKAIError: Error, Equatable, Sendable {
 - 輸入本身就超過 context window、在生成前被拒絕的 HTTP 400 錯誤，三家是否有專屬的錯誤代碼，值不值得在 `LKAIError` 設專屬 case（與 `.contextWindowExceeded` 對應），由之後的 change 查證後決定。
 - Gemini 要用 `generateContent` 還是較新的 Interactions API，以及 `candidatesTokenCount` 是否不含 `thoughtsTokenCount`（影響輸出總數要不要相加），由 Gemini 的 change 查證。
 - 本 change 完成後是否調整 `LKAIKitInfo.version` 並打第一個 release tag，屬於版本與 release 流程，另行決定。
-- 第二家供應商的 change 開始時，建議先把 `stream(_:)` 的共同骨架抽進 `LKAICore`，再實作該供應商。骨架包含建立 task、狀態碼檢查、SSE 迴圈、提前結束與取消接線，抽出後修一個取消或提前結束的問題不必改三家。它是 `package` 層級，延後不影響公開 API。
+- 第二家供應商的 change 開始時，建議先把 `stream(_:)` 的共同骨架抽進 `LKAICore`，再實作該供應商。骨架包含建立 task、狀態碼檢查、SSE 迴圈、提前結束與取消接線，抽出後修一個取消或提前結束的問題不必改三家。它是 `package` 層級，延後不影響公開 API。抽骨架時一併處理實作審查留下的四項：
+  - `LKAIError.streamFailure(for:)` 改成也接收「task 是否已取消」，讓完整的轉換規則集中在一處，第三個呼叫端不會漏寫取消判斷。
+  - Anthropic 的事件對應目前分在 `LKAnthropicStreamEvent` 的解碼、`LKAnthropicClient` 的 `error`／`message_stop` 處理與 `LKAnthropicStreamState.apply` 三處；抽骨架時把 `error` 與 `message_stop` 收進狀態型別。
+  - 兩個解碼入口各自設定 `.convertFromSnakeCase`，第三個入口忘了設時用量會無聲變成 nil；改成明寫 `CodingKeys` 的 raw value，或把 decoder 的建立收成一處。
+  - 與供應商無關的測試 helper（收集串流結果、兩種呼叫方式、等待條件成立）搬進 `LKAITestSupport`，讓每家供應商的測試共用。搬移時讓 helper 一併斷言替身只收到一次請求（`requests.count == 1`）：替身第二次 `fetch` 丟出 `.invalidResponse`，只比對錯誤種類的測試會把「供應商誤送兩次請求」當成通過。
+- 是否加一個只 `import LKAIKit`、以路徑依賴本 package 的使用端檢查 package，驗證 `public` 存取層級與 `@nonexhaustive`（package 內的測試驗不到）：使用者決定延後，到 BuyLedger 整合或下一家供應商的 change 再決定。

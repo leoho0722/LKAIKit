@@ -13,6 +13,11 @@ context: |
     - 不在 public 層級擴充非本 package 的型別（例如 Data、String、URLRequest）；package 層級的這類擴充只允許寫在 LKAICore。
     - 不宣告 public 或 package 層級的頂層函式。
     - 非本 package 的型別遵循本 package 的 `public` protocol，只能寫在 LKAICore。
+  API 演進規則：
+    - 公開 enum 預期會新增 case 時標 `@nonexhaustive`，App 的 switch 必須寫 `@unknown default`；在非 resilient 模組日後再加是 API 破壞性變更，拿掉則不會。
+    - 公開 struct 之後新增欄位時，`public init` 的新參數一律給預設值，讓 App 建立這些值的程式碼（例如測試替身）不必修改。
+    - 供應商的 change 不得為了自己的格式修改 LKAICore 的共用公開型別；需要修改時另開 change 修改 `chat-client` spec。
+    - 新增供應商的 change 開始前，先讀 add-chat-abstraction-anthropic 封存後的 design：逐列核對 Context 的三家對照表，並處理 Open Questions 留給下一家供應商的項目。
   使用方式：
     - library：主要供 iOS App 專案整合使用，例如 BuyLedger。
     - executableTarget：主要供 CI/CD 使用，不用於 App 專案。
