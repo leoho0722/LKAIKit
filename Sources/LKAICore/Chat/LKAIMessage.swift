@@ -6,6 +6,8 @@
 //
 
 /// 一則對話訊息，內容只有文字
+///
+/// - Note: 之後新增欄位時，`init` 的新參數一律給預設值，讓既有的呼叫端不必修改
 public struct LKAIMessage: Equatable, Sendable {
 
     // MARK: - Properties

@@ -20,7 +20,7 @@ public enum LKAIFinishReason: CaseIterable, Sendable {
     /// 輸入加輸出塞滿了模型一次能處理的上限（context window），回答被截斷
     ///
     /// - Note: 調高輸出上限沒用，要縮短對話內容，或換一個上限更大的模型
-    /// - Note: 本 change 只有 Anthropic 會回報這個狀態
+    /// - Note: 目前只有 Anthropic 會回報這個狀態
     /// - Note: 其他供應商由各自的 change 查證；沒有對應狀態時，可能以 `.maxOutputTokens` 或 `.invalidRequest` 出現
     case contextWindowExceeded
 }

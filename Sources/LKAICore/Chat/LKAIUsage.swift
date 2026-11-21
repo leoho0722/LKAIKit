@@ -8,6 +8,7 @@
 /// 一次對話消耗的 token 用量，各供應商統一成同一種算法，只供觀察與粗估，不保證能精確計費
 ///
 /// - Note: `inputTokens` 一律包含讀自快取的部分，`outputTokens` 一律包含思考或推理的部分
+/// - Note: 之後新增欄位時，`init` 的新參數一律給預設值，讓既有的呼叫端不必修改
 public struct LKAIUsage: Equatable, Sendable {
 
     // MARK: - Properties

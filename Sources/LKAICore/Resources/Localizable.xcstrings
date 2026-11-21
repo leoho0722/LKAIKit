@@ -3,6 +3,7 @@
   "strings" : {
     "error.lkai.cancelled" : {
       "comment" : "請求在完成前被取消時顯示",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -20,6 +21,7 @@
     },
     "error.lkai.invalidAPIKey" : {
       "comment" : "供應商拒絕這把 API 金鑰、認為它無效或已失效時顯示",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -37,6 +39,7 @@
     },
     "error.lkai.invalidRequest" : {
       "comment" : "供應商認為請求內容有問題、無法處理時顯示；不含供應商給的技術訊息",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -54,6 +57,7 @@
     },
     "error.lkai.invalidResponse" : {
       "comment" : "供應商回傳的內容不符預期、無法解讀時顯示",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -71,6 +75,7 @@
     },
     "error.lkai.permissionDenied" : {
       "comment" : "API 金鑰有效，但沒有權限使用這項服務時顯示",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -88,6 +93,7 @@
     },
     "error.lkai.quotaExceeded" : {
       "comment" : "帳號的用量上限或餘額已用完時顯示",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -105,6 +111,7 @@
     },
     "error.lkai.rateLimited" : {
       "comment" : "短時間內送出太多請求、被供應商限流時顯示",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -122,6 +129,7 @@
     },
     "error.lkai.refused" : {
       "comment" : "AI 拒絕回應這個請求時顯示；不含拒答的原因",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -139,6 +147,7 @@
     },
     "error.lkai.serviceUnavailable" : {
       "comment" : "供應商的服務過載或維護中、暫時無法使用時顯示",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -156,6 +165,7 @@
     },
     "error.lkai.transport" : {
       "comment" : "沒有網路或連線中斷、連不上供應商時顯示；不含系統回報的錯誤文字",
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {

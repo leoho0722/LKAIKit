@@ -110,7 +110,7 @@ extension LKAIError {
     /// 這個錯誤的說明在 String Catalog 裡的 key，格式為 `error.lkai.<case 名稱>`
     ///
     /// - Note: 只在 `LKAICore` 與它的測試使用，讓說明與測試用同一個 key 查詢
-    package var localizationKey: String {
+    var localizationKey: String {
         switch self {
         case .invalidAPIKey:
             "error.lkai.invalidAPIKey"
@@ -155,7 +155,7 @@ extension LKAIError {
     /// - Returns: 要交給 App 的錯誤；來源丟出 `CancellationError` 或 `.cancelled` 時為 nil，表示串流應正常結束
     /// - Note: 其他 `LKAIError` 原樣交出，不是 `LKAIError` 的錯誤轉成 `.invalidResponse`
     /// - Note: 迭代的 task 已被取消時一律正常結束，這個判斷取決於呼叫端所在的 task，所以由呼叫端先做
-    package static func streamFailure(for error: any Error) -> LKAIError? {
+    static func streamFailure(for error: any Error) -> LKAIError? {
         if error is CancellationError {
             return nil
         }

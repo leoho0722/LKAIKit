@@ -6,6 +6,8 @@
 //
 
 /// 非串流對話的結果：完整的回答文字，加上結束時的資訊
+///
+/// - Note: 之後新增欄位時，`init` 的新參數一律給預設值，讓既有的呼叫端不必修改
 public struct LKAIChatResponse: Equatable, Sendable {
 
     // MARK: - Properties

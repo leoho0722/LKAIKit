@@ -6,6 +6,8 @@
 //
 
 /// 一次對話結束時的資訊：為什麼結束、用了多少 token、實際回答的是哪個模型
+///
+/// - Note: 之後新增欄位時，`init` 的新參數一律給預設值，讓既有的呼叫端不必修改
 public struct LKAIChatCompletion: Equatable, Sendable {
 
     // MARK: - Properties

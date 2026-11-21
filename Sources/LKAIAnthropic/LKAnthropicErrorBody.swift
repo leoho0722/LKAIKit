@@ -28,8 +28,8 @@ struct LKAnthropicErrorBody: Decodable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let data = Data(text.utf8)
-        // 解碼失敗就改用預設分類，所以這裡的 try? 失敗可忽略
-        guard let body = try? decoder.decode(LKAnthropicErrorBody.self, from: data) else {
+        let decoded = try? decoder.decode(LKAnthropicErrorBody.self, from: data) // 失敗可忽略，因為會改用預設分類
+        guard let body = decoded else {
             return nil
         }
         self = body
