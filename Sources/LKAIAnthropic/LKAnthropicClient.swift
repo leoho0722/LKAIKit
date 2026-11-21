@@ -134,8 +134,8 @@ private extension LKAnthropicClient {
     /// - Parameters:
     ///   - request: 要送出的對話請求
     ///   - continuation: 串流的入口，對應好的事件從這裡交出
-    /// - Throws: 請求或備援設定不合法丟 `invalidRequest`；不是 2xx 的狀態碼依預設分類；事件讀取失敗丟對應的錯誤
-    /// - Note: 狀態碼不是 2xx 時先讀完錯誤內容，再依狀態碼分類
+    /// - Throws: 請求或備援設定不合法丟 `invalidRequest`；不是 2xx 的狀態碼依錯誤內容分類；事件讀取失敗丟對應的錯誤
+    /// - Note: 狀態碼不是 2xx 時先讀完錯誤內容，再依錯誤內容的 `error.type` 分類，解析不了時改用預設分類
     func run(
         _ request: LKAIChatRequest,
         continuation: AsyncThrowingStream<LKAIChatStreamEvent, any Error>.Continuation
@@ -145,11 +145,8 @@ private extension LKAnthropicClient {
         let urlRequest = try makeURLRequest(for: request)
         let response = try await httpClient.fetch(urlRequest)
         if !(200...299).contains(response.statusCode) {
-            _ = try await response.readErrorBody()
-            throw LKAIError(
-                httpStatusCode: response.statusCode,
-                retryAfter: response.headers["retry-after"]
-            )
+            let error = try await httpError(for: response)
+            throw error
         }
         try await relayEvents(from: response.lines, to: continuation)
     }
@@ -192,12 +189,27 @@ private extension LKAnthropicClient {
         }
     }
 
+    /// 讀完非 2xx 回應的錯誤內容，依 Anthropic 的 `error.type` 分類；內容解析不了或類型不認得時，改用預設分類
+    ///
+    /// - Parameter response: 狀態碼不是 2xx 的回應
+    /// - Returns: 要丟出的錯誤
+    /// - Throws: 讀取錯誤內容失敗時丟出，例如連線中斷
+    func httpError(for response: LKAIHTTPResponse) async throws(LKAIError) -> LKAIError {
+        let text = try await response.readErrorBody()
+        let retryAfter = response.headers["retry-after"]
+        let mapped = LKAnthropicErrorBody(text: text)?.error.lkaiError(
+            statusCode: response.statusCode,
+            retryAfter: retryAfter
+        )
+        return mapped ?? LKAIError(httpStatusCode: response.statusCode, retryAfter: retryAfter)
+    }
+
     /// 逐行讀取回應，組成 SSE 事件、解碼並對應成串流事件，交給串流；收到 `message_stop` 就交出結束事件並停止讀取
     ///
     /// - Parameters:
     ///   - lines: 回應內容逐行交出的序列
     ///   - continuation: 串流的入口，文字片段與結束事件從這裡交出
-    /// - Throws: 事件解碼失敗或結束原因不是正常完成時丟出對應的錯誤；讀完仍沒有 `message_stop` 丟 `invalidResponse`
+    /// - Throws: 事件解碼失敗、`error` 事件，或結束原因不正常時丟對應的錯誤；讀完沒有 `message_stop` 丟 `invalidResponse`
     /// - Note: 結束事件之後不再讀取，呼叫端離開後回應被釋放，底層傳輸跟著取消
     func relayEvents(
         from lines: LKAIHTTPLines,
@@ -210,6 +222,11 @@ private extension LKAnthropicClient {
                 continue
             }
             let event = try decodeEvent(from: serverSentEvent)
+            if case .error(let body) = event {
+                // 已交出的文字片段保留，然後丟出對應的錯誤；類型不認得時依規格以 500 處理
+                throw body.error.lkaiError(statusCode: nil, retryAfter: nil)
+                    ?? .serviceUnavailable(statusCode: 500)
+            }
             if case .messageStop = event {
                 let completion = try state.makeCompletion()
                 continuation.yield(.finished(completion))

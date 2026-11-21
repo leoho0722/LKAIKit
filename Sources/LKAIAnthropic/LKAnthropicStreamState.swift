@@ -57,7 +57,7 @@ extension LKAnthropicStreamState {
     ///
     /// - Parameter event: 剛收到的串流事件
     /// - Returns: 這個事件帶來的一段文字；沒有文字時為 nil
-    /// - Note: `message_stop` 不在這裡處理，由呼叫端在收到時改呼叫 `makeCompletion()`
+    /// - Note: `message_stop` 與 `error` 不在這裡處理，由呼叫端在收到時分別改呼叫 `makeCompletion()` 或丟出錯誤
     mutating func apply(_ event: LKAnthropicStreamEvent) -> String? {
         switch event {
         case .messageStart(let model, let usage):
@@ -80,7 +80,8 @@ extension LKAnthropicStreamState {
             merge(usage)
             return nil
 
-        case .messageStop, .ignored:
+        // message_stop 與 error 由 relayEvents 先處理，不會到這裡；列在這裡只是讓 switch 窮舉
+        case .messageStop, .error, .ignored:
             return nil
         }
     }

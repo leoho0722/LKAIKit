@@ -42,6 +42,11 @@ enum LKAnthropicStreamEvent {
     /// `message_stop`：訊息結束，這時才依結束原因交出結束事件或丟出錯誤
     case messageStop
 
+    /// `error`：串流中途的錯誤，整個事件就是錯誤內容；由 `LKAnthropicClient` 對應成錯誤丟出，不交給串流狀態
+    ///
+    /// - Parameter body: 錯誤內容，即事件的 JSON
+    case error(LKAnthropicErrorBody)
+
     /// 其他事件：`ping`、`content_block_stop`、其他類型的區塊與增量，以及不認得的類型，一律略過
     case ignored
 
@@ -265,6 +270,9 @@ extension LKAnthropicStreamEvent: Decodable {
 
         case "message_stop":
             self = .messageStop
+
+        case "error":
+            self = try .error(LKAnthropicErrorBody(from: decoder))
 
         default:
             self = .ignored

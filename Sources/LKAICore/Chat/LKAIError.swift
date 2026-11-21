@@ -167,6 +167,22 @@ extension LKAIError {
         }
         return chatError
     }
+
+    /// 把 `retry-after` 標頭的原始值轉成等待時間
+    ///
+    /// - Parameter rawValue: `retry-after` 標頭的原始值，沒有標頭時為 nil
+    /// - Returns: 標頭是純 ASCII 數字時為等待的秒數；其餘情況為 nil，包含空字串與超出 `Int` 範圍的數字
+    package static func retryDelay(from rawValue: String?) -> Duration? {
+        guard let rawValue else {
+            return nil
+        }
+        // 不能直接用 `Int(_:)` 判斷，它會接受 "+5" 與 "-1"；也不能用 `Character.isNumber`，它會接受全形數字
+        let isASCIIDigits = rawValue.unicodeScalars.allSatisfy { ("0"..."9").contains($0) }
+        guard isASCIIDigits, let seconds = Int(rawValue) else {
+            return nil
+        }
+        return .seconds(seconds)
+    }
 }
 
 // MARK: - LocalizedError
@@ -178,26 +194,5 @@ extension LKAIError: LocalizedError {
     /// - Note: 語言跟隨 App 支援的語言；App 的語言不是 `en`、`zh-Hant` 時用英文
     public var errorDescription: String? {
         String(localized: String.LocalizationValue(localizationKey), bundle: .module)
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAIError {
-
-    /// 把 `retry-after` 標頭的原始值轉成等待時間
-    ///
-    /// - Parameter rawValue: `retry-after` 標頭的原始值，沒有標頭時為 nil
-    /// - Returns: 標頭是純 ASCII 數字時為等待的秒數；其餘情況為 nil，包含空字串與超出 `Int` 範圍的數字
-    static func retryDelay(from rawValue: String?) -> Duration? {
-        guard let rawValue else {
-            return nil
-        }
-        // 不能直接用 `Int(_:)` 判斷，它會接受 "+5" 與 "-1"；也不能用 `Character.isNumber`，它會接受全形數字
-        let isASCIIDigits = rawValue.unicodeScalars.allSatisfy { ("0"..."9").contains($0) }
-        guard isASCIIDigits, let seconds = Int(rawValue) else {
-            return nil
-        }
-        return .seconds(seconds)
     }
 }
