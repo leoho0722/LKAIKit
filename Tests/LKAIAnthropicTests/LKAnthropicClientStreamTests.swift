@@ -13,6 +13,21 @@ import Testing
 /// `LKAnthropicClient` 串流事件對應的單元測試，以固定的 SSE 內容驗證文字、結束原因、用量與實際回應的模型
 struct LKAnthropicClientStreamTests {
 
+    // MARK: - Properties
+
+    /// 供應商沒有回報模型的串流事件：`message_start` 的訊息沒有 `model` 欄位，之後是一段文字與正常結束
+    private let noModelEvents: [LKAnthropicClientTestSupport.SSEEvent] = [
+        .init(
+            name: "message_start",
+            data: #"{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}"#
+        ),
+        .textBlockStart(),
+        .textDelta("Hi"),
+        .blockStop(),
+        .messageDelta(stopReason: "end_turn", usage: #"{"output_tokens":5}"#),
+        .messageStop(),
+    ]
+
     // spectra-scenario: chat-client / Stream a response that completes normally
     /// 驗證供應商依序產生 "Hel"、"lo" 後正常結束時，串流依序交出兩段文字與完成事件，之後正常結束
     @Test(.timeLimit(.minutes(1)))
@@ -629,22 +644,11 @@ struct LKAnthropicClientStreamTests {
         #expect(response.completion.respondingModel == "claude-opus-4-8")
     }
 
-    // spectra-scenario: chat-client / Provider reports no model
     /// 驗證 `message_start` 的訊息沒有 `model` 欄位時，串流照常交出文字與完成事件，完成事件的回應模型為 nil
     @Test(.timeLimit(.minutes(1)))
     func stream_messageStart沒有model_照常完成且回應模型為nil() async {
         // Given
-        let client = LKAnthropicClientTestSupport.makeClient(events: [
-            .init(
-                name: "message_start",
-                data: #"{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}"#
-            ),
-            .textBlockStart(),
-            .textDelta("Hi"),
-            .blockStop(),
-            .messageDelta(stopReason: "end_turn", usage: #"{"output_tokens":5}"#),
-            .messageStop(),
-        ])
+        let client = LKAnthropicClientTestSupport.makeClient(events: noModelEvents)
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Hi"),
             .finished(
@@ -667,6 +671,22 @@ struct LKAnthropicClientStreamTests {
         // Then
         #expect(outcome.events == expectedEvents)
         #expect(outcome.error == nil)
+    }
+
+    // spectra-scenario: chat-client / Provider reports no model
+    /// 驗證 `message_start` 的訊息沒有 `model` 欄位時，非串流呼叫的結果照常帶回文字與結束原因，不帶回應的模型
+    @Test(.timeLimit(.minutes(1)))
+    func invoke_messageStart沒有model_結果不帶回應模型() async throws {
+        // Given
+        let client = LKAnthropicClientTestSupport.makeClient(events: noModelEvents)
+
+        // When
+        let response = try await client.invoke(LKAnthropicClientTestSupport.validRequest)
+
+        // Then
+        #expect(response.text == "Hi")
+        #expect(response.completion.finishReason == .completed)
+        #expect(response.completion.respondingModel == nil)
     }
 
     // spectra-scenario: chat-client / Stream ends before a finish is reported

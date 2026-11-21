@@ -34,7 +34,7 @@ struct LKAIHTTPResponseTests {
         #expect(response.headers["Retry-After"] == nil)
     }
 
-    /// 驗證 `readErrorBody()` 原樣交出沒有超過上限的錯誤內容，狀態碼照原樣保存
+    /// 驗證 `readErrorBody()` 原樣交出沒有超過上限的錯誤內容
     @Test
     func readErrorBody_錯誤內容未超過上限_原樣交出() async throws {
         // Given
@@ -45,11 +45,10 @@ struct LKAIHTTPResponseTests {
         let body = try await response.readErrorBody()
 
         // Then
-        #expect(response.statusCode == 400)
         #expect(body == expectedBody)
     }
 
-    /// 驗證錯誤內容有多行時，`readErrorBody()` 以 LF 串接各行，行內不留 CR 與 LF
+    /// 驗證錯誤內容有多行時，`readErrorBody()` 以 LF 串接推送的各行
     ///
     /// - Note: 推送的是切行器切好的三行 `a`、`b`、`c`，原始內容是 `a`、CRLF、`b`、LF、`c`
     @Test

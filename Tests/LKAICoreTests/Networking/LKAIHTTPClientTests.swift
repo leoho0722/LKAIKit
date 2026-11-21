@@ -370,7 +370,7 @@ extension LKAIHTTPClientTests {
             )
         }
 
-        /// 以請求的網址、狀態碼與設定的標頭建立 HTTP 回應；沒有指定 `Content-Type` 時加上 `text/event-stream`
+        /// 以請求的網址、狀態碼與設定的標頭建立 HTTP 回應；沒有指定 `Content-Type`（不分大小寫）時加上 `text/event-stream`
         ///
         /// - Parameter statusCode: 假回應的 HTTP 狀態碼
         /// - Returns: 建好的 HTTP 回應；請求沒有網址或無法建立時為 nil
@@ -379,7 +379,8 @@ extension LKAIHTTPClientTests {
                 return nil
             }
             var headers = extraHeaders
-            if headers["Content-Type"] == nil {
+            let hasContentType = headers.keys.contains { $0.lowercased() == "content-type" }
+            if !hasContentType {
                 headers["Content-Type"] = "text/event-stream"
             }
             return HTTPURLResponse(
@@ -401,7 +402,7 @@ private extension LKAIHTTPClientTests {
     /// - Parameters:
     ///   - url: 請求的網址
     ///   - statusCode: 假回應的 HTTP 狀態碼
-    ///   - headers: 假回應的標頭；沒有指定 `Content-Type` 時，預設加上 `text/event-stream`
+    ///   - headers: 假回應的標頭；沒有指定 `Content-Type`（不分大小寫）時，預設加上 `text/event-stream`
     ///   - body: 假回應的內容
     ///   - keepsOpen: 是否在送完內容後不結束回應
     /// - Returns: 帶著假回應設定的請求
