@@ -29,6 +29,7 @@ struct LKAIErrorTests {
         .invalidResponse(reason: "bad data"),
     ]
 
+    // spectra-scenario: chat-client / Report whether an error is retryable
     // spectra-scenario: chat-client / Report whether an error is retryable / retryability by error kind
     /// 驗證每一種錯誤的 `isRetryable` 都與範例表一致：限流、服務不可用、傳輸失敗可重試，其餘不可
     ///
@@ -59,6 +60,7 @@ struct LKAIErrorTests {
         #expect(isRetryable == expectedIsRetryable)
     }
 
+    // spectra-scenario: chat-client / Classify HTTP error statuses
     // spectra-scenario: chat-client / Classify HTTP error statuses / status codes
     /// 驗證依狀態碼與 `retry-after` 標頭分類出範例表的錯誤；標頭只有純 ASCII 數字才算等待秒數
     ///
@@ -137,6 +139,7 @@ struct LKAIErrorTests {
         #expect(error == testCase.expectedError)
     }
 
+    // spectra-scenario: chat-client / Classify HTTP error statuses
     // spectra-scenario: chat-client / Classify HTTP error statuses / status codes
     /// 驗證不屬於 4xx 與 5xx 的狀態碼（1xx、3xx 與 600 以上）都分類為無效回應
     ///
@@ -158,6 +161,7 @@ struct LKAIErrorTests {
         #expect(isInvalidResponse)
     }
 
+    // spectra-scenario: chat-client / Look up the description of each error kind
     // spectra-scenario: chat-client / Look up the description of each error kind / supported languages
     /// 驗證在 `en` 與 `zh-Hant` 的語言資料夾，每種錯誤都查得到非空、且不是 key 本身的說明
     ///

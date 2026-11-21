@@ -12,6 +12,7 @@ import Testing
 /// `LKAIChatStream` 的單元測試，以自己寫的來源序列驗證串流如何交出事件與錯誤
 struct LKAIChatStreamTests {
 
+    // spectra-scenario: chat-client / Build a stream from scripted events
     // spectra-scenario: chat-client / Build a stream from scripted events / source behaviors
     /// 驗證來源依序送出文字增量與完成事件後結束，串流照同樣的順序交出兩個事件，然後正常結束
     @Test
@@ -37,6 +38,7 @@ struct LKAIChatStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: chat-client / Build a stream from scripted events
     // spectra-scenario: chat-client / Build a stream from scripted events / source behaviors
     /// 驗證來源送出一段文字後丟出對話錯誤，串流先交出那段文字，再丟出同一個錯誤，不改寫也不吞掉
     ///
@@ -64,6 +66,7 @@ struct LKAIChatStreamTests {
         #expect(error == sourceError)
     }
 
+    // spectra-scenario: chat-client / Build a stream from scripted events
     // spectra-scenario: chat-client / Build a stream from scripted events / source behaviors
     /// 驗證來源丟出不是對話錯誤的錯誤時，串流降級成無效回應錯誤，不讓未知的錯誤直接漏給 App
     ///
@@ -89,6 +92,7 @@ struct LKAIChatStreamTests {
         #expect(outcome.events.isEmpty)
     }
 
+    // spectra-scenario: chat-client / Build a stream from scripted events
     // spectra-scenario: chat-client / Build a stream from scripted events / source behaviors
     /// 驗證來源丟出 `CancellationError` 或對話錯誤的 `cancelled` 時，串流視為被取消而不是失敗，正常結束
     ///
@@ -111,6 +115,7 @@ struct LKAIChatStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: chat-client / Build a stream from scripted events
     // spectra-scenario: chat-client / Build a stream from scripted events / source behaviors
     /// 驗證迭代的 task 被取消之後來源才丟出錯誤，串流仍正常結束，取消後不論錯誤是什麼都不當成失敗
     ///

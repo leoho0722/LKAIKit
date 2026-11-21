@@ -52,6 +52,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Skip thinking deltas and ping events
     // spectra-scenario: anthropic-provider / Skip thinking deltas and ping events / stream with thinking and ping
     /// 驗證串流有思考區塊與 `ping` 事件時，只交出文字區塊的文字，再交出完成事件，思考內容與 `ping` 都不產生事件
     @Test(.timeLimit(.minutes(1)))
@@ -114,6 +115,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Map stop reasons
     // spectra-scenario: anthropic-provider / Map stop reasons / stop reasons
     /// 驗證 `end_turn`、`stop_sequence`、`max_tokens` 與 `model_context_window_exceeded` 各自對應的結束原因
     ///
@@ -149,6 +151,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Map stop reasons
     // spectra-scenario: anthropic-provider / Map stop reasons / stop reasons
     /// 驗證 `refusal` 丟出拒答錯誤，原因是 `stop_details` 的類別；沒有 `stop_details` 或類別為 null 時沒有原因
     ///
@@ -184,6 +187,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == expectedError)
     }
 
+    // spectra-scenario: anthropic-provider / Map stop reasons
     // spectra-scenario: anthropic-provider / Map stop reasons / stop reasons
     /// 驗證不認得的 `stop_reason` 丟出無效回應錯誤，不交出結束事件，不把未知的原因當成正常完成
     ///
@@ -309,6 +313,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == expectedError)
     }
 
+    // spectra-scenario: anthropic-provider / Combine usage from the start and delta events
     // spectra-scenario: anthropic-provider / Combine usage from the start and delta events / cached prompt
     /// 驗證用量合併 `message_start` 與 `message_delta`：輸入含快取建立與讀取，輸出以後來回報的為準
     ///
@@ -339,6 +344,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Combine usage from the start and delta events
     // spectra-scenario: anthropic-provider / Combine usage from the start and delta events / thinking tokens
     /// 驗證 `output_tokens_details` 的思考 token 成為用量的推理輸出，沒有快取欄位時快取輸入為 nil
     ///
@@ -370,6 +376,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Combine usage from the start and delta events
     // spectra-scenario: anthropic-provider / Combine usage from the start and delta events / usage only in the delta event
     /// 驗證 `message_start` 沒有 `usage`、用量全在 `message_delta` 時，仍交出用量，null 的快取讀取視為沒有回報
     ///
@@ -401,6 +408,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Combine usage from the start and delta events
     // spectra-scenario: anthropic-provider / Combine usage from the start and delta events / input tokens never reported
     /// 驗證從頭到尾都沒有回報輸入 token 時，結束事件不帶用量，不拿 0 或不完整的數字充數
     ///
@@ -479,6 +487,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Report the responding model of a stream
     // spectra-scenario: anthropic-provider / Report the responding model of a stream / stream without a fallback block
     /// 驗證串流沒有 `fallback` 區塊時，實際回應的模型取 `message_start` 的模型
     @Test(.timeLimit(.minutes(1)))
@@ -505,6 +514,7 @@ struct LKAnthropicClientStreamTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: anthropic-provider / Report the responding model of a stream
     // spectra-scenario: anthropic-provider / Report the responding model of a stream / fallback in the middle of a stream
     /// 驗證串流途中切換到備援模型時，前後的文字都照常交出，`fallback` 區塊不產生事件，實際回應的模型是備援模型
     @Test(.timeLimit(.minutes(1)))

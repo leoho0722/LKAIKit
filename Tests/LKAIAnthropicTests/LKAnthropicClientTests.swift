@@ -122,6 +122,7 @@ struct LKAnthropicClientTests {
         #expect(recordedBody == expectedBody)
     }
 
+    // spectra-scenario: anthropic-provider / Send the fallback setting
     // spectra-scenario: anthropic-provider / Send the fallback setting / fallback settings
     /// 驗證每一種備援設定送出預期的 `anthropic-beta` 標頭與 `fallbacks` 欄位，沒開啟時兩者都不送
     ///
@@ -177,6 +178,7 @@ struct LKAnthropicClientTests {
         #expect(recordedBody["fallbacks"] as? NSObject == expectedFallbacks)
     }
 
+    // spectra-scenario: anthropic-provider / Reject an invalid fallback model list
     // spectra-scenario: anthropic-provider / Reject an invalid fallback model list / invalid fallback model lists
     /// 驗證指定的備援模型清單違反規則時，串流與非串流呼叫都丟出無效請求錯誤，而且沒有送出任何請求
     ///
@@ -221,6 +223,7 @@ struct LKAnthropicClientTests {
         #expect(mock.requests.isEmpty)
     }
 
+    // spectra-scenario: chat-client / Reject an invalid request before sending
     // spectra-scenario: chat-client / Reject an invalid request before sending / invalid requests
     /// 驗證模型為空、沒有訊息，或輸出上限小於 1 的請求，串流與非串流呼叫都丟出無效請求錯誤，而且沒有送出任何請求
     ///

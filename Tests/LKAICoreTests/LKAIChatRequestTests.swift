@@ -12,6 +12,7 @@ import Testing
 /// `LKAIChatRequest` 的單元測試
 struct LKAIChatRequestTests {
 
+    // spectra-scenario: chat-client / Reject an invalid request before sending
     // spectra-scenario: chat-client / Reject an invalid request before sending / invalid requests
     /// 驗證規格範例表的三種不合法請求，`validate()` 都丟出 invalidRequest，且訊息不是 nil、含有違反的欄位名稱
     ///

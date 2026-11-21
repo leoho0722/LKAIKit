@@ -127,6 +127,7 @@ struct LKAnthropicClientErrorTests {
         maxOutputTokens: 1024
     )
 
+    // spectra-scenario: anthropic-provider / Classify HTTP error responses
     // spectra-scenario: anthropic-provider / Classify HTTP error responses / error responses
     /// 驗證非 2xx 的 Messages API 回應依 `error.type` 與標頭分類，結果與範例表預期的錯誤一致
     ///
@@ -155,6 +156,7 @@ struct LKAnthropicClientErrorTests {
         #expect(error == testCase.expectedError)
     }
 
+    // spectra-scenario: anthropic-provider / Error event in the middle of a stream
     // spectra-scenario: anthropic-provider / Error event in the middle of a stream / error events
     /// 驗證串流中途的 `error` 事件依 `error.type` 分類：先交出已收到的文字，再以範例表預期的結果結束
     ///
