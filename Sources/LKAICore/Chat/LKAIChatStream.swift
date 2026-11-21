@@ -60,16 +60,10 @@ extension LKAIChatStream {
                 return try await sourceIterator.next(isolation: actor)
             } catch {
                 // 取消後來源仍可能在空檔丟出錯誤，所以最先判斷取消，這些錯誤才不會漏給 App
-                guard !Task.isCancelled, !(error is CancellationError) else {
+                guard !Task.isCancelled, let failure = LKAIError.streamFailure(for: error) else {
                     return nil
                 }
-                guard let chatError = error as? LKAIError else {
-                    throw .invalidResponse(reason: "Unexpected error: \(error)")
-                }
-                guard chatError != .cancelled else {
-                    return nil
-                }
-                throw chatError
+                throw failure
             }
         }
 
