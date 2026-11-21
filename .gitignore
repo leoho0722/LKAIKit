@@ -63,3 +63,4 @@ fastlane/test_output
 
 # Spectra app data
 .spectra/
+.worktrees/

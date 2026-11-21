@@ -7,11 +7,12 @@ context: |
   命名前綴：本專案固定使用 `LK` 作為前綴字（例如 LKAIKit）。
   命名規則：
     - 模組名稱為 `LKAI<名稱>`，例如 LKAICore、LKAIKit、LKAIOpenAI。
-    - source target 的頂層型別：非供應商 target（LKAICore、LKAIKit、LKAIKitCLI）用 `LKAI<名稱>`；供應商 target 用 `LK<供應商><名稱>`，例如 LKOpenAIClient。
+    - source target 的頂層型別：非供應商 target（LKAICore、LKAIKit、LKAIKitCLI、LKAITestSupport）用 `LKAI<名稱>`；供應商 target 用 `LK<供應商><名稱>`，例如 LKOpenAIClient。
     - 巢狀型別與測試 target 的型別不受前綴規則限制；測試型別跟隨受測型別命名，沒有受測型別時跟隨來源檔命名（例如 ExportsTests 對應 Exports.swift）。
     - 型別不得與任何模組同名。
     - 不在 public 層級擴充非本 package 的型別（例如 Data、String、URLRequest）；package 層級的這類擴充只允許寫在 LKAICore。
     - 不宣告 public 或 package 層級的頂層函式。
+    - 非本 package 的型別遵循本 package 的 `public` protocol，只能寫在 LKAICore。
   使用方式：
     - library：主要供 iOS App 專案整合使用，例如 BuyLedger。
     - executableTarget：主要供 CI/CD 使用，不用於 App 專案。
