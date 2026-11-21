@@ -4,6 +4,7 @@ import PackageDescription
 /// LKAIKit 套件的宣告，包含名稱、最低支援平台、對外的 product 與各個 target
 let package = Package(
     name: "LKAIKit",
+    defaultLocalization: "en",
     platforms: [.iOS(.v26), .macOS(.v26)],
     products: [
         .library(name: "LKAIKit", targets: ["LKAIKit"]),
@@ -14,7 +15,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.2"),
     ],
     targets: [
-        .target(name: "LKAICore"),
+        .target(name: "LKAICore", resources: [.process("Resources")]),
         .testTarget(name: "LKAICoreTests", dependencies: ["LKAICore"]),
         .target(name: "LKAIKit", dependencies: ["LKAICore"]),
         .testTarget(name: "LKAIKitTests", dependencies: ["LKAIKit"]),
