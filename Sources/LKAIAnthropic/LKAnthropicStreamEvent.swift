@@ -14,12 +14,12 @@ import Foundation
 /// - Note: 認得的 `type` 欄位格式不符時解碼失敗；JSON 的鍵是 snake_case，請用 `init(data:)` 解碼
 enum LKAnthropicStreamEvent {
 
-    /// `message_start`：訊息開始，帶回應的模型與開頭回報的用量
+    /// `message_start`：訊息開始，帶回應的模型（可能沒有）與開頭回報的用量
     ///
     /// - Parameters:
-    ///   - model: `message.model`；沒有備援切換時就是實際回應的模型
+    ///   - model: `message.model`；API 沒有回報時為 nil，這不是錯誤，回應的模型因此為 nil，除非之後有 fallback 區塊
     ///   - usage: `message.usage`；API 沒有回報時為 nil
-    case messageStart(model: String, usage: Usage?)
+    case messageStart(model: String?, usage: Usage?)
 
     /// `content_block_start` 的 `fallback` 區塊：伺服器端的拒答備援把回答切換到另一個模型
     ///
@@ -116,8 +116,8 @@ extension LKAnthropicStreamEvent {
     /// `message_start` 的 `message`，只取模型與用量
     struct Message: Decodable {
 
-        /// 訊息的模型識別碼
-        let model: String
+        /// 訊息的模型識別碼；API 沒有回報時為 nil，這不是錯誤
+        let model: String?
 
         /// 開頭回報的用量；沒有時為 nil
         let usage: Usage?

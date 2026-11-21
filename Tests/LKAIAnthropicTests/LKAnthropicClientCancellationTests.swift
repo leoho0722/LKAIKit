@@ -95,13 +95,7 @@ struct LKAnthropicClientCancellationTests {
         // Given
         let mock = makeStoppedMock()
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
-        let expectedFinishedEvent = LKAIChatStreamEvent.finished(
-            LKAIChatCompletion(
-                finishReason: .completed,
-                usage: nil,
-                respondingModel: "claude-opus-5-5"
-            )
-        )
+        let expectedFinishedEvent = LKAnthropicClientTestSupport.finishedEvent(.completed)
         let expectedEvents = [LKAIChatStreamEvent.textDelta("Hel"), expectedFinishedEvent]
 
         // When

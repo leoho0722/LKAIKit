@@ -13,13 +13,14 @@ import LKAICore
 /// - Note: 用量欄位是累計值，事件回報的值覆寫先前的值；null 或沒有出現的欄位保留先前的值
 /// - Note: 結束原因取最後一個不是 null 的 `stop_reason`，拒答的類別跟著它一起更新
 /// - Note: 實際回應的模型以最後一個 `fallback` 區塊的 `to.model` 為準，沒有時是 `message_start` 的 `model`
+/// - Note: 兩者都沒有時實際回應的模型為 nil，這不是錯誤
 /// - Note: 依使用者黏著改由備援模型回答的回合沒有 `fallback` 區塊，此時 `message_start` 的 `model` 已是備援模型
 /// - Note: 開啟備援時頂層用量只涵蓋最後產生回應的那一次嘗試，這裡不加總 `usage.iterations`
 struct LKAnthropicStreamState {
 
     // MARK: - Properties
 
-    /// 目前已知實際回應的模型；還沒有收到 `message_start` 時為 nil
+    /// 目前已知實際回應的模型；還沒有收到帶模型的 `message_start` 或 `fallback` 區塊時為 nil
     private var respondingModel: String?
 
     /// 最後一個不是 null 的 `stop_reason`；還沒有時為 nil
@@ -61,7 +62,9 @@ extension LKAnthropicStreamState {
     mutating func apply(_ event: LKAnthropicStreamEvent) -> String? {
         switch event {
         case .messageStart(let model, let usage):
-            respondingModel = model
+            if let model {
+                respondingModel = model
+            }
             merge(usage)
             return nil
 

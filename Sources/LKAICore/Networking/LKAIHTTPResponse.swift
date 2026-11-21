@@ -48,7 +48,7 @@ extension LKAIHTTPResponse {
     ///
     /// - Returns: 串接後的內容，最多 65_536 個 UTF-8 位元組（64 KiB），不會切在多位元組字元中間
     /// - Throws: 讀取過程中逐行內容丟出的 `LKAIError` 原樣丟出
-    /// - Note: 64 KiB 是估計值，足以容納三家已知的錯誤格式，這個上限只限制回傳字串的大小，擋不住異常大型回應佔用的記憶體（見 design Risks）
+    /// - Note: 64 KiB 是估計值，足以容納三家已知的錯誤格式，這個上限只限制回傳字串的大小，擋不住異常大型回應佔用的記憶體；支援自訂端點前要加上單行長度上限
     /// - Note: 逐行內容只支援單一消費者，讀過之後不能再迭代 `lines`
     /// - Note: 呼叫端讀完後應釋放這個回應，底層傳輸才會被取消
     package func readErrorBody() async throws(LKAIError) -> String {

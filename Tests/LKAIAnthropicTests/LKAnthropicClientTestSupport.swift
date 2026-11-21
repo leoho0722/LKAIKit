@@ -279,4 +279,25 @@ extension LKAnthropicClientTestSupport {
         }
         return actualError
     }
+
+    /// 建立預期的結束事件，用來寫期望值；模型預設是 `message_start` 預設的模型
+    ///
+    /// - Parameters:
+    ///   - finishReason: 預期的結束原因
+    ///   - usage: 預期的用量；預設沒有
+    ///   - respondingModel: 預期實際回應的模型
+    /// - Returns: 帶著這些內容的結束事件
+    static func finishedEvent(
+        _ finishReason: LKAIFinishReason,
+        usage: LKAIUsage? = nil,
+        respondingModel: String = "claude-opus-5-5"
+    ) -> LKAIChatStreamEvent {
+        .finished(
+            LKAIChatCompletion(
+                finishReason: finishReason,
+                usage: usage,
+                respondingModel: respondingModel
+            )
+        )
+    }
 }

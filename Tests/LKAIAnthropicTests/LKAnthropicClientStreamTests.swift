@@ -30,7 +30,7 @@ struct LKAnthropicClientStreamTests {
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Hel"),
             .textDelta("lo"),
-            finishedEvent(.completed),
+            LKAnthropicClientTestSupport.finishedEvent(.completed),
         ]
 
         // When
@@ -63,7 +63,7 @@ struct LKAnthropicClientStreamTests {
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Hel"),
             .textDelta("lo"),
-            finishedEvent(.completed),
+            LKAnthropicClientTestSupport.finishedEvent(.completed),
         ]
 
         // When
@@ -93,7 +93,7 @@ struct LKAnthropicClientStreamTests {
         ])
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Hi"),
-            finishedEvent(.completed),
+            LKAnthropicClientTestSupport.finishedEvent(.completed),
         ]
 
         // When
@@ -130,7 +130,7 @@ struct LKAnthropicClientStreamTests {
             .messageDelta(stopReason: stopReason),
             .messageStop(),
         ])
-        let expectedEvents = [finishedEvent(expectedFinishReason)]
+        let expectedEvents = [LKAnthropicClientTestSupport.finishedEvent(expectedFinishReason)]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -213,7 +213,7 @@ struct LKAnthropicClientStreamTests {
             .messageDelta(stopReason: nil),
             .messageStop(),
         ])
-        let expectedEvents = [finishedEvent(.completed)]
+        let expectedEvents = [LKAnthropicClientTestSupport.finishedEvent(.completed)]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -238,7 +238,7 @@ struct LKAnthropicClientStreamTests {
         ])
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Partial"),
-            finishedEvent(.maxOutputTokens),
+            LKAnthropicClientTestSupport.finishedEvent(.maxOutputTokens),
         ]
 
         // When
@@ -264,7 +264,7 @@ struct LKAnthropicClientStreamTests {
         ])
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Partial"),
-            finishedEvent(.contextWindowExceeded),
+            LKAnthropicClientTestSupport.finishedEvent(.contextWindowExceeded),
         ]
 
         // When
@@ -323,7 +323,9 @@ struct LKAnthropicClientStreamTests {
             cachedInputTokens: 20,
             reasoningOutputTokens: nil
         )
-        let expectedEvents = [finishedEvent(.completed, usage: expectedUsage)]
+        let expectedEvents = [
+            LKAnthropicClientTestSupport.finishedEvent(.completed, usage: expectedUsage),
+        ]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -355,7 +357,9 @@ struct LKAnthropicClientStreamTests {
             cachedInputTokens: nil,
             reasoningOutputTokens: 100
         )
-        let expectedEvents = [finishedEvent(.completed, usage: expectedUsage)]
+        let expectedEvents = [
+            LKAnthropicClientTestSupport.finishedEvent(.completed, usage: expectedUsage),
+        ]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -387,7 +391,9 @@ struct LKAnthropicClientStreamTests {
             cachedInputTokens: nil,
             reasoningOutputTokens: nil
         )
-        let expectedEvents = [finishedEvent(.completed, usage: expectedUsage)]
+        let expectedEvents = [
+            LKAnthropicClientTestSupport.finishedEvent(.completed, usage: expectedUsage),
+        ]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -410,7 +416,7 @@ struct LKAnthropicClientStreamTests {
             .messageDelta(stopReason: "end_turn", usage: #"{"output_tokens":5}"#),
             .messageStop(),
         ])
-        let expectedEvents = [finishedEvent(.completed)]
+        let expectedEvents = [LKAnthropicClientTestSupport.finishedEvent(.completed)]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -440,7 +446,9 @@ struct LKAnthropicClientStreamTests {
             cachedInputTokens: nil,
             reasoningOutputTokens: nil
         )
-        let expectedEvents = [finishedEvent(.completed, usage: expectedUsage)]
+        let expectedEvents = [
+            LKAnthropicClientTestSupport.finishedEvent(.completed, usage: expectedUsage),
+        ]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -465,7 +473,7 @@ struct LKAnthropicClientStreamTests {
         ])
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Hi"),
-            finishedEvent(.completed),
+            LKAnthropicClientTestSupport.finishedEvent(.completed),
         ]
 
         // When
@@ -492,7 +500,10 @@ struct LKAnthropicClientStreamTests {
         ])
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Hi"),
-            finishedEvent(.completed, respondingModel: "claude-opus-5-5"),
+            LKAnthropicClientTestSupport.finishedEvent(
+                .completed,
+                respondingModel: "claude-opus-5-5"
+            ),
         ]
 
         // When
@@ -525,7 +536,10 @@ struct LKAnthropicClientStreamTests {
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Sure"),
             .textDelta(", here"),
-            finishedEvent(.completed, respondingModel: "claude-opus-4-8"),
+            LKAnthropicClientTestSupport.finishedEvent(
+                .completed,
+                respondingModel: "claude-opus-4-8"
+            ),
         ]
 
         // When
@@ -554,7 +568,10 @@ struct LKAnthropicClientStreamTests {
         ])
         let expectedEvents: [LKAIChatStreamEvent] = [
             .textDelta("Hi"),
-            finishedEvent(.completed, respondingModel: "claude-opus-4-7"),
+            LKAnthropicClientTestSupport.finishedEvent(
+                .completed,
+                respondingModel: "claude-opus-4-7"
+            ),
         ]
 
         // When
@@ -575,7 +592,12 @@ struct LKAnthropicClientStreamTests {
             .messageDelta(stopReason: "end_turn"),
             .messageStop(),
         ])
-        let expectedEvents = [finishedEvent(.completed, respondingModel: "claude-opus-4-8")]
+        let expectedEvents = [
+            LKAnthropicClientTestSupport.finishedEvent(
+                .completed,
+                respondingModel: "claude-opus-4-8"
+            ),
+        ]
 
         // When
         let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
@@ -605,6 +627,46 @@ struct LKAnthropicClientStreamTests {
         // Then
         #expect(response.text == "Hi")
         #expect(response.completion.respondingModel == "claude-opus-4-8")
+    }
+
+    // spectra-scenario: chat-client / Provider reports no model
+    /// 驗證 `message_start` 的訊息沒有 `model` 欄位時，串流照常交出文字與完成事件，完成事件的回應模型為 nil
+    @Test(.timeLimit(.minutes(1)))
+    func stream_messageStart沒有model_照常完成且回應模型為nil() async {
+        // Given
+        let client = LKAnthropicClientTestSupport.makeClient(events: [
+            .init(
+                name: "message_start",
+                data: #"{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}"#
+            ),
+            .textBlockStart(),
+            .textDelta("Hi"),
+            .blockStop(),
+            .messageDelta(stopReason: "end_turn", usage: #"{"output_tokens":5}"#),
+            .messageStop(),
+        ])
+        let expectedEvents: [LKAIChatStreamEvent] = [
+            .textDelta("Hi"),
+            .finished(
+                LKAIChatCompletion(
+                    finishReason: .completed,
+                    usage: LKAIUsage(
+                        inputTokens: 10,
+                        outputTokens: 5,
+                        cachedInputTokens: nil,
+                        reasoningOutputTokens: nil
+                    ),
+                    respondingModel: nil
+                )
+            ),
+        ]
+
+        // When
+        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+
+        // Then
+        #expect(outcome.events == expectedEvents)
+        #expect(outcome.error == nil)
     }
 
     // spectra-scenario: chat-client / Stream ends before a finish is reported
@@ -647,27 +709,6 @@ struct LKAnthropicClientStreamTests {
 // MARK: - Private Method
 
 private extension LKAnthropicClientStreamTests {
-
-    /// 建立預期的結束事件，用來寫期望值；模型預設是 `message_start` 預設的模型
-    ///
-    /// - Parameters:
-    ///   - finishReason: 預期的結束原因
-    ///   - usage: 預期的用量；預設沒有
-    ///   - respondingModel: 預期實際回應的模型
-    /// - Returns: 帶著這些內容的結束事件
-    func finishedEvent(
-        _ finishReason: LKAIFinishReason,
-        usage: LKAIUsage? = nil,
-        respondingModel: String = "claude-opus-5-5"
-    ) -> LKAIChatStreamEvent {
-        .finished(
-            LKAIChatCompletion(
-                finishReason: finishReason,
-                usage: usage,
-                respondingModel: respondingModel
-            )
-        )
-    }
 
     /// 判斷錯誤是不是無效回應錯誤，只看種類，不看原因文字
     ///
