@@ -12,6 +12,15 @@ import Testing
 /// `LKAIChatClientProtocol` 的單元測試，以只實作串流的測試替身驗證非串流呼叫的預設實作
 struct LKAIChatClientProtocolTests {
 
+    // MARK: - Properties
+
+    /// 測試共用的合法請求，各測試只讀取、不改動
+    private let request = LKAIChatRequest(
+        model: "claude-opus-5-5",
+        messages: [LKAIMessage(role: .user, text: "Hi")],
+        maxOutputTokens: 1024
+    )
+
     // spectra-scenario: chat-client / Receive a complete response
     /// 驗證來源依序送出兩段文字與結束事件後，非串流呼叫回傳串接好的文字，並原樣帶入結束資訊
     @Test
@@ -34,11 +43,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.finished(completion))
         sourceContinuation.finish()
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         let response = try await client.invoke(request)
@@ -64,11 +68,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.finished(completion))
         sourceContinuation.finish()
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         let response = try await client.invoke(request)
@@ -93,11 +92,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.finished(completion))
         sourceContinuation.finish()
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         let response = try await client.invoke(request)
@@ -118,11 +112,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.textDelta("Sure"))
         sourceContinuation.finish(throwing: LKAIError.refused(detail: "cyber"))
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         do {
@@ -147,11 +136,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.textDelta("Hel"))
         sourceContinuation.finish()
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         do {
@@ -172,17 +156,15 @@ struct LKAIChatClientProtocolTests {
 
     // spectra-scenario: chat-client / Cancel a non-streaming call
     /// 驗證等待中的非串流呼叫被取消時，丟出 cancelled 錯誤，不回傳已收到的文字
+    ///
+    /// - Note: 等替身的串流被請求之後才取消，避免取消落在 invoke 開始之前
     @Test(.timeLimit(.minutes(1)))
     func invoke_等待中被取消_丟出cancelled() async throws {
         // Given
         let (source, sourceContinuation) = Source.makeStream()
         sourceContinuation.yield(.textDelta("Hel"))
-        let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
+        let (streamStartedSignals, streamStartedSignal) = AsyncStream<Void>.makeStream()
+        let client = ScriptedChatClient(source: source, streamStarted: streamStartedSignal)
 
         // When
         let task = Task<LKAIError?, Never> {
@@ -193,12 +175,53 @@ struct LKAIChatClientProtocolTests {
                 return error
             }
         }
+        for await _ in streamStartedSignals {
+            break
+        }
         task.cancel()
         let actualError = await task.value
 
         // Then
         let error = try #require(actualError)
         #expect(error == .cancelled)
+    }
+
+    // spectra-scenario: chat-client / Cancel a non-streaming call
+    /// 驗證非串流呼叫的 task 已被取消、而來源的結束事件已在緩衝區時，呼叫丟出 cancelled 錯誤，不回傳任何結果
+    ///
+    /// - Note: `AsyncThrowingStream` 取消後仍會交出緩衝區裡的元素，所以取消要在收到結束事件後再檢查
+    @Test(.timeLimit(.minutes(1)))
+    func invoke_task已取消且結束事件已緩衝_丟出cancelled且不回傳結果() async throws {
+        // Given
+        let completion = LKAIChatCompletion(
+            finishReason: .completed,
+            usage: nil,
+            respondingModel: nil
+        )
+        let (source, sourceContinuation) = Source.makeStream()
+        sourceContinuation.yield(.textDelta("Hel"))
+        sourceContinuation.yield(.finished(completion))
+        let client = ScriptedChatClient(source: source)
+        let (gate, gateContinuation) = AsyncStream<Void>.makeStream()
+
+        // When
+        let task = Task<(response: LKAIChatResponse?, error: LKAIError?), Never> {
+            for await _ in gate {}
+            do throws(LKAIError) {
+                let response = try await client.invoke(request)
+                return (response: response, error: nil)
+            } catch {
+                return (response: nil, error: error)
+            }
+        }
+        task.cancel()
+        gateContinuation.finish()
+        let outcome = await task.value
+
+        // Then
+        let error = try #require(outcome.error)
+        #expect(error == .cancelled)
+        #expect(outcome.response == nil)
     }
 
     /// 驗證非串流呼叫被取消後，來源才丟出頻率限制錯誤，呼叫仍丟出 cancelled，錯誤不外漏
@@ -213,11 +236,6 @@ struct LKAIChatClientProtocolTests {
         }
         sourceContinuation.yield(.textDelta("Hel"))
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         let task = Task<LKAIError?, Never> {
@@ -251,11 +269,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.textDelta("Hel"))
         sourceContinuation.finish(throwing: sourceError)
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         do {
@@ -289,11 +302,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.finished(completion))
         sourceContinuation.finish()
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         let response = try await client.invoke(request)
@@ -323,11 +331,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.finished(completion))
         sourceContinuation.finish()
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         let response = try await client.invoke(request)
@@ -350,11 +353,6 @@ struct LKAIChatClientProtocolTests {
         sourceContinuation.yield(.finished(completion))
         sourceContinuation.finish()
         let client = ScriptedChatClient(source: source)
-        let request = LKAIChatRequest(
-            model: "claude-opus-5-5",
-            messages: [LKAIMessage(role: .user, text: "Hi")],
-            maxOutputTokens: 1024
-        )
 
         // When
         let response = try await client.invoke(request)
@@ -377,12 +375,26 @@ extension LKAIChatClientProtocolTests {
         /// 事件的來源，由測試決定何時送出事件、何時結束或丟出錯誤
         let source: Source
 
+        /// 串流被請求時送出一個訊號的通道，讓測試知道非串流呼叫已開始；不需要時為 nil
+        let streamStarted: AsyncStream<Void>.Continuation?
+
+        /// 建立測試替身
+        ///
+        /// - Parameters:
+        ///   - source: 事件的來源
+        ///   - streamStarted: 串流被請求時送出訊號的通道，預設為 nil
+        init(source: Source, streamStarted: AsyncStream<Void>.Continuation? = nil) {
+            self.source = source
+            self.streamStarted = streamStarted
+        }
+
         /// 把來源包成串流交回，不檢查請求的內容
         ///
         /// - Parameter request: 要送出的請求，測試替身不使用
         /// - Returns: 依來源送出事件的串流
         func stream(_ request: LKAIChatRequest) -> LKAIChatStream {
-            LKAIChatStream(source)
+            streamStarted?.yield()
+            return LKAIChatStream(source)
         }
     }
 }

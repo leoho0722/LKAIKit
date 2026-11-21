@@ -25,6 +25,7 @@ public protocol LKAIChatClientProtocol: Sendable {
     /// - Returns: 依序串接好的完整文字，加上結束時的資訊
     /// - Throws: 被取消時丟出 `cancelled`；沒有結束事件就結束時丟出 `invalidResponse`；其餘錯誤原樣丟出
     /// - Note: 拒答時丟出 `refused`，不回傳已生成的部分文字
+    /// - Note: 收到結束事件時若 task 已被取消，仍丟出 `cancelled`，不回傳已收到的文字
     func invoke(_ request: LKAIChatRequest) async throws(LKAIError) -> LKAIChatResponse
 }
 
@@ -39,15 +40,20 @@ public extension LKAIChatClientProtocol {
     /// - Throws: 被取消時一律丟出 `cancelled`；沒有結束事件就結束時丟出 `invalidResponse`；其餘錯誤原樣丟出
     /// - Note: 非串流由串流彙整，彙整邏輯只寫在這一處，各供應商只需實作串流
     /// - Note: Claude API 的參考資料建議輸出可能較長時一律用串流，以免 HTTP 請求逾時
+    /// - Note: 收到結束事件時若 task 已被取消，仍丟出 `cancelled`，因為緩衝區裡的事件在取消後仍會交出
     func invoke(_ request: LKAIChatRequest) async throws(LKAIError) -> LKAIChatResponse {
         var text = ""
-        do {
+        do throws(LKAIError) {
             for try await event in stream(request) {
                 switch event {
                 case .textDelta(let delta):
                     text += delta
 
                 case .finished(let completion):
+                    // 結束事件可能已在緩衝區，取消後仍會交出，所以拿到結束事件時也要先檢查取消
+                    guard !Task.isCancelled else {
+                        throw LKAIError.cancelled
+                    }
                     return LKAIChatResponse(text: text, completion: completion)
                 }
             }
