@@ -95,6 +95,33 @@ struct LKAnthropicClientCancellationTests {
         // Then
         #expect(actualError == expectedError)
     }
+
+    /// 驗證收到 `message_stop` 並交出結束事件後，串流正常結束，client 放開回應，底層請求被取消
+    ///
+    /// - Note: 替身推送完整的事件後不結束；少了「結束事件之後放開回應」的行為，替身一直等不到取消
+    @Test(.timeLimit(.minutes(1)))
+    func stream_收到messageStop並交出結束事件_放開回應且底層請求被取消() async throws {
+        // Given
+        let mock = makeStoppedMock()
+        let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
+        let expectedFinishedEvent = LKAIChatStreamEvent.finished(
+            LKAIChatCompletion(
+                finishReason: .completed,
+                usage: nil,
+                respondingModel: "claude-opus-5-5"
+            )
+        )
+        let expectedEvents = [LKAIChatStreamEvent.textDelta("Hel"), expectedFinishedEvent]
+
+        // When
+        let outcome = await collectOutcome(from: client)
+        try await waitUntil { mock.isCancelled }
+
+        // Then
+        #expect(outcome.events == expectedEvents)
+        #expect(outcome.error == nil)
+        #expect(mock.isCancelled)
+    }
 }
 
 // MARK: - Nested Types
@@ -199,5 +226,21 @@ private extension LKAnthropicClientCancellationTests {
             actualError = error
         }
         return actualError
+    }
+
+    /// 建立一個推送完整事件後不結束的替身：`makePendingMock()` 的內容之後，再送出結束原因與 `message_stop`
+    ///
+    /// - Returns: 已送出 `message_stop`，但連線還沒結束的替身
+    func makeStoppedMock() -> LKAIMockHTTPClient {
+        let mock = makePendingMock()
+        mock.yield(lines: [
+            "event: message_delta",
+            #"data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}"#,
+            "",
+            "event: message_stop",
+            #"data: {"type":"message_stop"}"#,
+            "",
+        ])
+        return mock
     }
 }

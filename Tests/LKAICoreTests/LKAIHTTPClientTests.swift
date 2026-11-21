@@ -277,6 +277,55 @@ struct LKAIHTTPClientTests {
         #expect(outcome.error == nil)
     }
 
+    // spectra-scenario: chat-client / Cancel a streaming call
+    /// 驗證逐行讀取到一半、回應還沒結束時取消 task，底層的傳輸真的停止，`URLSession` 裡沒有進行中的傳輸
+    ///
+    /// - Note: 只看 `lines` 沒有錯誤，`LKAIHTTPLines` 自己的規則就能成立；要看到傳輸清空，才證明取消傳到了傳輸層
+    @Test(.timeLimit(.minutes(1)))
+    func fetch_逐行讀取中取消task_底層傳輸停止() async throws {
+        // Given
+        let request = try makeOpenRequest()
+        let session = makeSession()
+        let client = LKAIHTTPClient(session: session)
+        let (receivedSignals, receivedSignal) = AsyncStream<Void>.makeStream()
+        let iterationTask = Task {
+            let response = try await client.fetch(request)
+            return await collectLines(from: response.lines) { _ in
+                receivedSignal.yield()
+            }
+        }
+
+        // When
+        for await _ in receivedSignals {
+            break
+        }
+        iterationTask.cancel()
+        _ = try await iterationTask.value
+        let remainingTaskCount = try await remainingActiveTaskCount(in: session)
+
+        // Then
+        #expect(remainingTaskCount == 0)
+    }
+
+    // spectra-scenario: chat-client / Release a stream after leaving the loop
+    /// 驗證迭代到第一行就離開迴圈並釋放回應後，底層的傳輸真的停止，過程中沒有取消任何 task
+    @Test(.timeLimit(.minutes(1)))
+    func fetch_離開迴圈並釋放回應_底層傳輸停止() async throws {
+        // Given
+        let request = try makeOpenRequest()
+        let session = makeSession()
+        let client = LKAIHTTPClient(session: session)
+        let expectedLine = "line1"
+
+        // When
+        let firstLine = try await receiveFirstLine(of: client, for: request)
+        let remainingTaskCount = try await remainingActiveTaskCount(in: session)
+
+        // Then
+        #expect(firstLine == expectedLine)
+        #expect(remainingTaskCount == 0)
+    }
+
     /// 驗證來源丟出 `CancellationError` 或 `cancelled` 時，已送出的行照常交出，`lines` 再正常結束
     ///
     /// - Parameter thrownError: 來源丟出的取消類錯誤
@@ -592,9 +641,16 @@ private extension LKAIHTTPClientTests {
     ///
     /// - Returns: 不連網、只回出請求上假回應的 `LKAIHTTPClient`
     func makeClient() -> LKAIHTTPClient {
+        LKAIHTTPClient(session: makeSession())
+    }
+
+    /// 建立以假 `URLProtocol` 攔截所有請求的 `URLSession`；測試要自己查它的傳輸時，用它再交給 `LKAIHTTPClient`
+    ///
+    /// - Returns: 不連網、只回出請求上假回應的 `URLSession`
+    func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FakeURLProtocol.self]
-        return LKAIHTTPClient(session: URLSession(configuration: configuration))
+        return URLSession(configuration: configuration)
     }
 
     /// 逐行收下逐行內容交出的每一行，並記下它是正常結束還是丟出了錯誤
@@ -634,5 +690,61 @@ private extension LKAIHTTPClientTests {
             actualError = error
         }
         return actualError
+    }
+
+    /// 建立送出一行後不結束的請求：狀態碼 200、內容 `line1` 加 LF，回應一直開著
+    ///
+    /// - Returns: 帶著這份假回應設定的請求
+    /// - Throws: 測試用的網址無法建立時丟出
+    func makeOpenRequest() throws -> URLRequest {
+        let url = try #require(URL(string: "https://lkai.test/open"))
+        return FakeURLProtocol.makeRequest(
+            url: url,
+            statusCode: 200,
+            body: "line1\n",
+            keepsOpen: true
+        )
+    }
+
+    /// 最多等 2 秒，每 10 毫秒查一次，等 `URLSession` 裡進行中的傳輸清空；取消是非同步的，所以要等
+    ///
+    /// - Parameter session: 要查的 `URLSession`
+    /// - Returns: 等待結束時進行中的傳輸數；清空時為 0，等滿仍沒有清空時為仍在進行的數量
+    /// - Throws: 測試的 task 在等待中被取消時丟出
+    func remainingActiveTaskCount(in session: URLSession) async throws -> Int {
+        for _ in 0..<200 {
+            let count = await activeTaskCount(of: session)
+            if count == 0 {
+                return 0
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        return await activeTaskCount(of: session)
+    }
+
+    /// 數 `URLSession` 裡進行中或暫停中的傳輸，已取消或已完成的不算
+    ///
+    /// - Parameter session: 要查的 `URLSession`
+    /// - Returns: 進行中或暫停中的傳輸數
+    func activeTaskCount(of session: URLSession) async -> Int {
+        await session.allTasks.filter { $0.state == .running || $0.state == .suspended }.count
+    }
+
+    /// 送出請求、取得第一行就離開迴圈，函式返回時回應與逐行內容跟著釋放，不取消任何 task
+    ///
+    /// - Parameters:
+    ///   - client: 送出請求的 HTTP client
+    ///   - request: 要送出的請求
+    /// - Returns: 逐行內容的第一行；沒有任何一行就結束時為 nil
+    /// - Throws: 送出請求或讀取第一行失敗時丟出
+    func receiveFirstLine(
+        of client: LKAIHTTPClient,
+        for request: URLRequest
+    ) async throws(LKAIError) -> String? {
+        let response = try await client.fetch(request)
+        for try await line in response.lines {
+            return line
+        }
+        return nil
     }
 }
