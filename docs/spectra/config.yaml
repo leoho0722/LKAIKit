@@ -1,0 +1,21 @@
+schema: spec-driven
+
+context: |
+  專案定位：LKAIKit 是專供 Leo Ho 個人專案使用的 AI 服務套件，整合多家 AI 服務供應商（例如 OpenAI GPT、Anthropic Claude、Google Gemini）。
+  技術棧：Swift 6，以 Swift Package 發佈。
+  支援平台：iOS 26.0+、macOS 26.0+。
+  命名前綴：本專案固定使用 `LK` 作為前綴字（例如 LKAIKit）。
+  使用方式：
+    - library：主要供 iOS App 專案整合使用，例如 BuyLedger。
+    - executableTarget：主要供 CI/CD 使用，不用於 App 專案。
+
+rules:
+  proposal:
+    - 請使用正體中文進行撰寫
+  design:
+    - 請使用正體中文進行撰寫
+    - 請將長期架構維護列為每次提案設計的優先考量
+  specs:
+    - 使用 Given/When/Then 格式：每個 `#### Scenario:` 依序以 `- **GIVEN**`（前置條件）、`- **WHEN**`（觸發動作）、`- **THEN**`（預期結果）撰寫，額外的條件或結果以 `- **AND**` 接續
+  tasks:
+    - 請使用正體中文進行撰寫

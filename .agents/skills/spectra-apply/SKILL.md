@@ -1,0 +1,142 @@
+---
+name: spectra-apply
+description: "Implement or resume tasks for an identified Spectra change. Use when an identified Spectra change is ready for implementation or its task work is continuing"
+argument-hint: "[change-name]"
+license: MIT
+compatibility: Requires spectra CLI.
+metadata:
+  author: spectra
+  version: "1.0"
+  generatedBy: "Spectra"
+---
+
+Implement a Spectra change's tasks.
+
+**Input:** Optional change name.
+
+**Task tracking:** `tasks.md` checkboxes are truth. Attribute files by task baseline or explicit paths, never the whole dirty tree. `<task-number>` is the number written before the task in `tasks.md`, e.g. `2.1`; use the task's 1-based position only when it has no number or the number repeats.
+
+An implementation checkbox records its delivered implementation and permitted checks. Owner verification records its own result separately; a completed implementation stays checked while owner checks remain pending.
+
+**Prerequisites**: the `spectra` CLI. When `spectra` is not found, check its install location: `%LOCALAPPDATA%\Spectra\spectra.exe` on Windows, `~/.local/bin/spectra` on macOS. When that file runs, use its full path in place of `spectra` for every remaining command, and tell the user once that `spectra` is not on this agent's PATH: fully quitting and reopening the agent (closing its window can leave it running) makes it read the current PATH. When neither runs, report the error and STOP.
+
+## Write for the reader
+
+The reader is using Spectra for the first time: they know their own project and have not learned this workflow's vocabulary. Every user-visible message is written so that reader can act on it.
+
+### Conversation language
+
+Use the active conversation language for user-visible analysis, questions, labels, and conclusion. Resolve it in this order: an explicit language instruction for subsequent user-visible output; the primary natural language of the current user request; the most recently established conversation language when the request is mixed or contains only technical identifiers. Keep established Traditional Chinese or English. User context selects it independently of the internal template and repository artifact locale; artifacts use the locale returned by `spectra instructions`.
+
+### Plain wording
+
+- Lead with what happened and what the reader does next; evidence and detail follow.
+- Keep a term only when the reader can see it on screen, type it in a command, or open it as a file (change, spec, proposal, tasks, archive, CLI output such as Critical). Explain it in one clause the first time it appears.
+- Every other term belongs to this workflow, so say what it means for the reader: "scenario coverage" becomes "which spec scenarios have a test"; RED becomes "the new test failed before the change, as intended".
+- Write headings, table columns, and labels as plain descriptions in the conversation language; section names in this template stay internal.
+- Commands, paths, identifiers, and required handoff lines stay verbatim.
+- Emphasis, grouping, and pointing are carried by the words and the structure alone: a heading, a list, a table cell, bold text, or the sentence itself.
+
+**Steps**
+
+1. **Select the change**
+
+   Use an explicit name, else a unique confirmed conversation target. If unresolved, list and auto-select only one candidate, otherwise ask.
+   - Ambiguous: run `spectra list --json` and `spectra list --parked --json`; mark parked entries and ask. Empty: suggest `$spectra-propose` and STOP.
+
+   Announce "Using change: <name>"; override `$spectra-apply <other>`.
+
+2. **Check status and parking**
+
+   Run `spectra status --change "<name>" --json` and `spectra list --parked --json`; errors stop. If parked, disclose parking; restore when already explicitly requested. A known refusal blocks restore. With missing authorization, ask before:
+
+   `spectra unpark "<name>"`, `spectra in-progress add "<name>"`, then `spectra status --change "<name>" --json`.
+
+   Else run `spectra in-progress add "<name>"` silently. Keep schemaName/tasks artifact.
+
+3. **Load compact instructions and preflight**
+
+   **Initial completion check**: `spectra instructions apply --change "<name>" --json --summary`.
+   If `state: "all_done"`: report existing completion and verification evidence (missing execution: not-run), give step 7's handoff, and STOP before implementation preflight/analyze. Otherwise load:
+
+   `spectra instructions apply --change "<name>" --json --compact`
+
+   Read `tasks.md` at `contextFiles.tasks`; follow returned diagnostics/preflight/instruction.
+
+   - `blocked`: report `blockedReason`; missing artifacts -> `$spectra-propose`. STOP.
+   - Compact `all_done`: same exit.
+   - Preflight: continue on clean; summarize warnings; for critical, list missing files/source artifacts and ask to continue.
+
+   Run `spectra analyze <name> --json`; summarize Warning/Suggestion findings. For Critical, give location and recommendation; ask fix, continue, or stop.
+
+   Use CLI `dormancy`: `triggered` runs `spectra drift <name> --json` before tasks; `fresh` skips full drift; `unknown` reports its reason. Surface findings; continue authorized apply unless a new decision is needed. Core owns dates/history.
+
+   **Context validity**: if full required content remains loaded with matching version/content fingerprints, reuse without another identical file read. On file changes, when compaction removes needed content, or if identity is uncertain, reload affected content before editing or checking. Necessary rereads remain allowed. With matching identities for relevant source/tests/config/environment and recorded command/scope/result source, reuse valid results without rerunning the gate; missing or stale evidence remains unverified and needs affected checks.
+4. **Read context and project preferences**
+
+   Read `contextFiles` and `.spectra.yaml`, using the context validity rule:
+
+   - `tdd: true`: fetch `spectra instructions --skill tdd --agent codex` once; use Red-Green-Refactor per task.
+   - `audit: true`: fetch `spectra instructions --skill audit --agent codex` once; follow its checklist while implementing each task.
+   - Dispatch together those pending tasks whose prerequisites are all complete and which share no dependency edge with each other. Grouping does not depend on tasks being adjacent in the file. Where the environment lacks parallel execution, run them in order without reporting an error.
+
+   Display schema, pending tasks, `progress.complete`/`progress.total` and `progress.remaining`; checkboxes are task truth, CLI provides totals.
+
+5. **Implement pending tasks**
+
+   Follow task order unless parallel dispatch applies.
+
+   **Parallel worker packet** (one task):
+
+   - task number and complete description
+   - allowed scope and target files
+   - relevant Implementation Contract excerpt
+   - relevant Requirement, Scenario, and Example blocks
+   - verification commands
+   - explicit execution restrictions and owner-reserved checks; return unexecuted commands with the restriction as evidence
+   - active TDD and audit flags, and the root-cause fix rule below
+
+   Exclude unrelated tasks, complete proposal, complete design, and unrelated spec set. Workers must not run `spectra task start` or `spectra task done`; return touched files, verification evidence, unresolved blockers. Missing/conflicting context: stop without guessing; main supplies relevant excerpts or reports the blocker.
+
+   **Main-thread completion**
+
+   Only the main thread attributes tasks. Before dispatch/edits: `spectra task start --change "<name>" <task-number>`. Incomplete work stays pending.
+
+   For every task:
+
+   1. Announce; review task/design/specs under context validity. **Read the Implementation Contract for this task before editing any source file.** If absent, use `tasks.md`; unclear criteria block work.
+      **Classify by the deliverable**, not the word "owner": an implementation with a note such as "verification performed by owner" can finish before that verification. A task delivering an executed verification result stays pending until that result exists. An explicit condition such as "mark done only after owner acceptance" remains binding until satisfied or explicitly changed by the user. Continue other authorized dependency-ready tasks.
+   2. For `## Design Source`, read `.spectra/design-cache/<name>/*.dc.html` under the validity rule. Missing source: pause and ask to re-provide it; never guess visual values.
+   3. A path-only/vague task, contract conflict or refuted premise (disproved savings/mechanism) blocks work. Pause, report evidence and propose an artifact update; never edit artifacts silently.
+   4. Check reuse/patterns, scope, efficiency/placeholders; first TDD tests use `##### Example:` GIVEN/WHEN/THEN values. Whether or not tdd is on, above each test you write or change for a delta-spec scenario or example, add one comment line per scenario or example it verifies: a `//`, `#`, `--`, `;`, `/*`, `*` or `<!--` marker, then `spectra-scenario: <capability> / <scenario>`, plus ` / <example>` for an example, with the capability folder and heading names copied from the delta spec.
+   5. Capture the baseline as above.
+   6. Change only what the task's behavior requires; fix defects you meet under the root-cause fix rule below.
+   7. **Verify before marking done**: review `tasks.md` and Implementation Contract under the validity rule; for implementation, confirm every implementation requirement and required test file, then run authorized relevant checks and require their success. Missing implementation or an unresolved relevant failure keeps the task pending. Passing verification does not settle a refuted premise. With `tdd: true`, a test the task names whose subject the test scope criterion excludes is met by its recorded exclusion ground; report that test with its ground when marking the task done.
+      Checks explicitly reserved for the owner remain not-run: record task number, command/manual action and reason as non-checkbox evidence in `tasks.md`, or reference a separate owner task with that information. Preserve task wording, numbering and dependencies. Once implementation criteria above are met, proceed to task done without waiting for owner results, another permission request, or an ingest rewrite. Owner restrictions defer execution; required test code, authorized checks and known failures retain their obligations. Example: check 1.1 after its implementation checks; leave owner app acceptance 2.1 pending. Verification deliverables and explicit owner completion gates still require their actual results.
+   8. A worker's task: `spectra task done --change "<name>" <task-number> --file <path>`; repeat `--file` for every worker-reported touched path. Your own task with a baseline: omit `--file`; without one, repeat `--file <path>` for attributable source/tests. With no baseline or explicit files, update only the checkbox; never attribute the whole dirty tree.
+
+   **Classify failures before pausing**:
+   - Expected behavioral RED: retain the failure evidence and continue to GREEN.
+   - Setup/syntax failure is not RED; repair in-scope causes and retry the focused test.
+   - Recoverable compile/test failures: at most 2 evidence-driven repair attempts; rerun only affected commands. Stop when the same failure recurs without new evidence.
+   - Exhausted repair, missing external capability, unresolved contract, refuted task premise or a root cause outside the task's scope: report observations, repairs and next decision as a blocker; never edit artifacts silently. Pause on user interruption.
+
+   **Root-cause fix**: fix a defect where its cause originates, changing only what that fix requires. A cause in code shared by several callers is fixed at the shared site; report the callers whose behavior changes with it. A separate site repeating the mistake is a same-pattern issue to report. The fix's size (files touched, tasks added, time spent) is an invalid ground for a change that suppresses the symptom while the cause remains.
+
+   When the root-cause fix reaches beyond the authorized scope, stop and report the cause with its evidence, where the fix belongs, and the route: `$spectra-ingest` into the identified change or `$spectra-propose` for a new change. List a symptom-only change separately as a mitigation and apply it only when the user chooses it. Record a chosen mitigation and where the root-cause fix is tracked (a change or an upstream issue) in the identified change's design.md decisions, or its proposal Non-Goals without design.md; in standalone debugging, label it a mitigation in the final report.
+
+6. **Final check**
+
+   Run `spectra instructions apply --change "<name>" --json --summary`. If state is `all_done`, do not request instructions again. Run `spectra instructions apply --change "<name>" --json --compact` only when state is not `all_done` and authorized dependency-ready work remains. If only owner verification and work waiting on it remain, report their task numbers and pending evidence, then finish this session without repeating compact requests or requiring immediate owner acceptance.
+
+   **Check that every spec scenario has a test** (`tdd: true` only): run `spectra coverage "<name>" --json` and classify each `#### Scenario`/`##### Example` of an ADDED or MODIFIED requirement in the delta specs into exactly one of three results: covered by a test, excluded by the test scope criterion (`spectra instructions --skill tdd --agent codex`), or an uncovered gap. A `missing` entry is an uncovered gap; for an `excluded` entry, report its ground for exclusion and leave it out of the gaps/test recommendations; an `annotated` entry is covered by a test once confirmed under `$spectra-verify` **Scenario Coverage**/**Example Traceability**, otherwise an uncovered gap. Recommend gap fixes or report "every scenario has a test or a recorded exclusion". This check does not block completion. When `tdd` is not `true`, skip this check entirely and proceed to the completion report unchanged.
+   With delta specs, fetch `spectra instructions --skill verify-spec-coverage --agent codex` once and use only its Scenario Coverage and Example Traceability checks, reporting their findings as the three results above.
+   Run this coverage check even when handing off owner work. A present but unexecuted test establishes coverage only, not a passing result.
+
+7. **Report status**
+
+   Show this session's completed tasks and N/M from the CLI; separate executed checks from pending owner checks from `tasks.md`, including completed legacy tasks. `all_done` records checkbox completion; owner acceptance and unexecuted checks retain their reported status. If all done: recommend `$spectra-verify <name>` and `$spectra-review <name>` before `$spectra-archive`.
+
+   Completion line, only when every checkbox is complete: "All tasks complete! Run `$spectra-verify <change-name>` and `$spectra-review <change-name>` before archiving with `$spectra-archive`."
+
+**Guardrails**: use CLI paths/totals, keep edits scoped, update implementation checkboxes immediately after their completion checks, and continue authorized dependency-ready work until done, blocked or handed off to the owner.

@@ -1,0 +1,4 @@
+spec_dir: docs/spectra
+locale: tw
+tdd: true
+audit: true
