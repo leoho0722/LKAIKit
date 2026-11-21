@@ -17,15 +17,6 @@ import Testing
 /// - Note: 替身送出一段文字後不結束，讓串流停在等待更多資料；取消是非同步的，要等替身偵測到才檢查
 struct LKAnthropicClientCancellationTests {
 
-    // MARK: - Properties
-
-    /// 多個測試共用的合法請求，內容與取消行為無關
-    private let validRequest = LKAIChatRequest(
-        model: "claude-opus-5-5",
-        messages: [LKAIMessage(role: .user, text: "Hi")],
-        maxOutputTokens: 1024
-    )
-
     // spectra-scenario: chat-client / Cancel a streaming call
     /// 驗證串流送出一段文字後取消迭代的 task，迭代沒有錯誤就結束，而且底層請求被取消
     @Test(.timeLimit(.minutes(1)))
@@ -36,7 +27,7 @@ struct LKAnthropicClientCancellationTests {
         let expectedEvents: [LKAIChatStreamEvent] = [.textDelta("Hel")]
         let (receivedSignals, receivedSignal) = AsyncStream<Void>.makeStream()
         let iterationTask = Task {
-            await collectOutcome(from: client) { _ in
+            await LKAnthropicClientTestSupport.collectOutcome(from: client) { _ in
                 receivedSignal.yield()
             }
         }
@@ -114,28 +105,13 @@ struct LKAnthropicClientCancellationTests {
         let expectedEvents = [LKAIChatStreamEvent.textDelta("Hel"), expectedFinishedEvent]
 
         // When
-        let outcome = await collectOutcome(from: client)
+        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
         try await waitUntil { mock.isCancelled }
 
         // Then
         #expect(outcome.events == expectedEvents)
         #expect(outcome.error == nil)
         #expect(mock.isCancelled)
-    }
-}
-
-// MARK: - Nested Types
-
-extension LKAnthropicClientCancellationTests {
-
-    /// 迭代完一條串流後的結果：收到的全部事件，以及串流丟出的錯誤
-    struct StreamOutcome {
-
-        /// 依收到的順序排列的全部事件
-        let events: [LKAIChatStreamEvent]
-
-        /// 串流丟出的錯誤；正常結束時為 nil
-        let error: LKAIError?
     }
 }
 
@@ -148,41 +124,12 @@ private extension LKAnthropicClientCancellationTests {
     /// - Returns: 回應停在等待更多資料的替身
     func makePendingMock() -> LKAIMockHTTPClient {
         let mock = LKAIMockHTTPClient()
-        mock.yield(lines: [
-            "event: message_start",
-            #"data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-opus-5-5","stop_reason":null,"stop_sequence":null}}"#,
-            "",
-            "event: content_block_start",
-            #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
-            "",
-            "event: content_block_delta",
-            #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}"#,
-            "",
-        ])
+        mock.yield(lines: LKAnthropicClientTestSupport.lines(of: [
+            .messageStart(),
+            .textBlockStart(),
+            .textDelta("Hel"),
+        ]))
         return mock
-    }
-
-    /// 迭代 client 的串流到結束，收集事件並記下丟出的錯誤
-    ///
-    /// - Parameters:
-    ///   - client: 要呼叫的 client
-    ///   - onEvent: 每收到一個事件就呼叫一次；不需要時省略
-    /// - Returns: 收到的全部事件，以及串流丟出的錯誤；正常結束時錯誤為 nil
-    func collectOutcome(
-        from client: LKAnthropicClient,
-        onEvent: (LKAIChatStreamEvent) -> Void = { _ in }
-    ) async -> StreamOutcome {
-        var events: [LKAIChatStreamEvent] = []
-        var actualError: LKAIError?
-        do {
-            for try await event in client.stream(validRequest) {
-                events.append(event)
-                onEvent(event)
-            }
-        } catch {
-            actualError = error
-        }
-        return StreamOutcome(events: events, error: actualError)
     }
 
     /// 最多等 2 秒，每 10 毫秒檢查一次條件，條件成立就立刻返回；取消是非同步的，所以要等替身偵測到
@@ -207,7 +154,7 @@ private extension LKAnthropicClientCancellationTests {
     func receiveFirstEvent(
         of client: LKAnthropicClient
     ) async throws(LKAIError) -> LKAIChatStreamEvent? {
-        let stream = client.stream(validRequest)
+        let stream = client.stream(LKAnthropicClientTestSupport.validRequest)
         for try await event in stream {
             return event
         }
@@ -221,7 +168,7 @@ private extension LKAnthropicClientCancellationTests {
     func invokeError(on client: LKAnthropicClient) async -> LKAIError? {
         var actualError: LKAIError?
         do {
-            _ = try await client.invoke(validRequest)
+            _ = try await client.invoke(LKAnthropicClientTestSupport.validRequest)
         } catch {
             actualError = error
         }
@@ -233,14 +180,10 @@ private extension LKAnthropicClientCancellationTests {
     /// - Returns: 已送出 `message_stop`，但連線還沒結束的替身
     func makeStoppedMock() -> LKAIMockHTTPClient {
         let mock = makePendingMock()
-        mock.yield(lines: [
-            "event: message_delta",
-            #"data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null}}"#,
-            "",
-            "event: message_stop",
-            #"data: {"type":"message_stop"}"#,
-            "",
-        ])
+        mock.yield(lines: LKAnthropicClientTestSupport.lines(of: [
+            .messageDelta(stopReason: "end_turn"),
+            .messageStop(),
+        ]))
         return mock
     }
 }

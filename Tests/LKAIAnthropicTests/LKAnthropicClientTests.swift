@@ -15,19 +15,11 @@ import Testing
 /// `LKAnthropicClient` 的單元測試，以 `LKAIMockHTTPClient` 記錄送出的請求，不連網
 struct LKAnthropicClientTests {
 
-    // MARK: - Properties
-
-    /// 多個測試共用的合法請求：模型、一則使用者訊息與輸出上限，沒有系統指示
-    private let validRequest = LKAIChatRequest(
-        model: "claude-opus-5-5",
-        messages: [LKAIMessage(role: .user, text: "Hi")],
-        maxOutputTokens: 1024
-    )
-
     // spectra-scenario: anthropic-provider / Send a request with a system prompt
     /// 驗證送出有系統指示的請求時，記錄到的是對 Messages API 的 POST，帶齊金鑰與版本標頭，內容與規格一致
     ///
     /// - Note: 內容以 JSON 值比對，不在意鍵的順序；另外確認沒有 `anthropic-beta` 標頭
+    /// - Note: `NSDictionary` 比對會把 `1` 當成 `true`，所以 `stream` 另外用 `JSONDecoder` 確認是 JSON 布林
     @Test(.timeLimit(.minutes(1)))
     func stream_有系統指示的請求_送出符合MessagesAPI的POST請求() async throws {
         // Given
@@ -43,11 +35,12 @@ struct LKAnthropicClientTests {
         let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"system":"Be brief.","messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
 
         // When
-        _ = await callError(on: client, with: request, mode: .stream)
+        _ = await LKAnthropicClientTestSupport.callError(on: client, with: request, mode: .stream)
 
         // Then
         let recorded = try #require(mock.requests.first)
         let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedStreamFlag = try decodeStreamFlag(of: recorded)
         #expect(recorded.httpMethod == "POST")
         #expect(recorded.url?.absoluteString == "https://api.anthropic.com/v1/messages")
         #expect(recorded.value(forHTTPHeaderField: "x-api-key") == "test-key")
@@ -55,9 +48,12 @@ struct LKAnthropicClientTests {
         #expect(recorded.value(forHTTPHeaderField: "content-type") == "application/json")
         #expect(recorded.value(forHTTPHeaderField: "anthropic-beta") == nil)
         #expect(recordedBody == expectedBody)
+        #expect(recordedStreamFlag)
     }
 
     /// 驗證非串流呼叫也以 `stream: true` 送出同樣格式的請求，因為非串流由串流彙整
+    ///
+    /// - Note: `stream` 另外用 `JSONDecoder` 確認是 JSON 布林，不是 `1`
     @Test(.timeLimit(.minutes(1)))
     func invoke_非串流呼叫_同樣以stream為true送出請求() async throws {
         // Given
@@ -67,14 +63,16 @@ struct LKAnthropicClientTests {
         let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
 
         // When
-        _ = await callError(on: client, with: validRequest, mode: .invoke)
+        _ = await LKAnthropicClientTestSupport.callError(on: client, mode: .invoke)
 
         // Then
         let recorded = try #require(mock.requests.first)
         let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedStreamFlag = try decodeStreamFlag(of: recorded)
         #expect(recorded.httpMethod == "POST")
         #expect(recorded.url?.absoluteString == "https://api.anthropic.com/v1/messages")
         #expect(recordedBody == expectedBody)
+        #expect(recordedStreamFlag)
     }
 
     // spectra-scenario: anthropic-provider / Omit the system field without a system prompt
@@ -87,7 +85,7 @@ struct LKAnthropicClientTests {
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
 
         // When
-        _ = await callError(on: client, with: validRequest, mode: .stream)
+        _ = await LKAnthropicClientTestSupport.callError(on: client, mode: .stream)
 
         // Then
         let recorded = try #require(mock.requests.first)
@@ -96,6 +94,8 @@ struct LKAnthropicClientTests {
     }
 
     /// 驗證有多則訊息時，內容依序送出每一則的角色與文字，使用者與助理的角色都照原樣對應
+    ///
+    /// - Note: `stream` 另外用 `JSONDecoder` 確認是 JSON 布林，不是 `1`
     @Test(.timeLimit(.minutes(1)))
     func stream_多則訊息_依序送出各則的角色與文字() async throws {
         // Given
@@ -114,12 +114,14 @@ struct LKAnthropicClientTests {
         let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"},{"role":"user","content":"Bye"}],"stream":true}"#)
 
         // When
-        _ = await callError(on: client, with: request, mode: .stream)
+        _ = await LKAnthropicClientTestSupport.callError(on: client, with: request, mode: .stream)
 
         // Then
         let recorded = try #require(mock.requests.first)
         let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedStreamFlag = try decodeStreamFlag(of: recorded)
         #expect(recordedBody == expectedBody)
+        #expect(recordedStreamFlag)
     }
 
     // spectra-scenario: anthropic-provider / Send the fallback setting
@@ -168,7 +170,7 @@ struct LKAnthropicClientTests {
             .map { try jsonFragment(from: $0) }
 
         // When
-        _ = await callError(on: client, with: validRequest, mode: .stream)
+        _ = await LKAnthropicClientTestSupport.callError(on: client, mode: .stream)
 
         // Then
         let recorded = try #require(mock.requests.first)
@@ -194,11 +196,11 @@ struct LKAnthropicClientTests {
             .models(["claude-opus-4-8", "claude-opus-4-8"]),
             .models([""]),
         ] as [LKAnthropicRefusalFallback],
-        CallMode.allCases
+        LKAnthropicClientTestSupport.CallMode.allCases
     )
     func stream與invoke_不合法的備援模型清單_丟出無效請求錯誤且不送出請求(
         setting: LKAnthropicRefusalFallback,
-        mode: CallMode
+        mode: LKAnthropicClientTestSupport.CallMode
     ) async throws {
         // Given
         let mock = LKAIMockHTTPClient()
@@ -210,7 +212,7 @@ struct LKAnthropicClientTests {
         )
 
         // When
-        let actualError = await callError(on: client, with: validRequest, mode: mode)
+        let actualError = await LKAnthropicClientTestSupport.callError(on: client, mode: mode)
 
         // Then
         let error = try #require(actualError)
@@ -246,11 +248,11 @@ struct LKAnthropicClientTests {
                 maxOutputTokens: 0
             ),
         ] as [LKAIChatRequest],
-        CallMode.allCases
+        LKAnthropicClientTestSupport.CallMode.allCases
     )
     func stream與invoke_不合法的請求_丟出無效請求錯誤且不送出請求(
         request: LKAIChatRequest,
-        mode: CallMode
+        mode: LKAnthropicClientTestSupport.CallMode
     ) async throws {
         // Given
         let mock = LKAIMockHTTPClient()
@@ -258,7 +260,11 @@ struct LKAnthropicClientTests {
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
 
         // When
-        let actualError = await callError(on: client, with: request, mode: mode)
+        let actualError = await LKAnthropicClientTestSupport.callError(
+            on: client,
+            with: request,
+            mode: mode
+        )
 
         // Then
         let error = try #require(actualError)
@@ -298,8 +304,10 @@ struct LKAnthropicClientTests {
     ///
     /// - Parameter mode: 呼叫方式，串流或非串流
     /// - Note: 只檢查描述不含金鑰，不比對是哪一種錯誤，錯誤的分類由供應商的錯誤對應決定
-    @Test(.timeLimit(.minutes(1)), arguments: CallMode.allCases)
-    func stream與invoke_HTTP401回應_錯誤描述不含金鑰(mode: CallMode) async throws {
+    @Test(.timeLimit(.minutes(1)), arguments: LKAnthropicClientTestSupport.CallMode.allCases)
+    func stream與invoke_HTTP401回應_錯誤描述不含金鑰(
+        mode: LKAnthropicClientTestSupport.CallMode
+    ) async throws {
         // Given
         let mock = LKAIMockHTTPClient(
             statusCode: 401,
@@ -310,7 +318,7 @@ struct LKAnthropicClientTests {
         let client = LKAnthropicClient(apiKey: "sk-ant-secret-123", httpClient: mock)
 
         // When
-        let actualError = await callError(on: client, with: validRequest, mode: mode)
+        let actualError = await LKAnthropicClientTestSupport.callError(on: client, mode: mode)
 
         // Then
         let error = try #require(actualError)
@@ -323,14 +331,11 @@ struct LKAnthropicClientTests {
 
 extension LKAnthropicClientTests {
 
-    /// 呼叫 client 的方式，串流與非串流走同一套請求檢查與送出流程
-    enum CallMode: CaseIterable, Sendable {
+    /// 只解出請求內容的 `stream` 欄位，用來嚴格確認它是 JSON 布林
+    struct StreamFlagBody: Decodable {
 
-        /// 呼叫 `stream(_:)`，迭代串流到結束
-        case stream
-
-        /// 呼叫 `invoke(_:)`，等整段回答完成
-        case invoke
+        /// 請求內容的 `stream`；`JSONDecoder` 不會把數字 `1` 解成 `Bool`，解不出時丟出錯誤
+        let stream: Bool
     }
 
     /// 備援設定範例表的一列：備援設定，以及預期送出的標頭與欄位
@@ -370,33 +375,14 @@ private extension LKAnthropicClientTests {
         return try #require(value as? NSDictionary)
     }
 
-    /// 以指定的方式呼叫 client，迭代或等待到結束，並記下丟出的錯誤
+    /// 以 `JSONDecoder` 解出請求內容的 `stream`；它只接受 JSON 布林，內容是數字 `1` 時解碼失敗
     ///
-    /// - Parameters:
-    ///   - client: 要呼叫的 client
-    ///   - request: 要送出的對話請求
-    ///   - mode: 呼叫方式，串流或非串流
-    /// - Returns: 呼叫丟出的錯誤；順利結束時為 nil
-    func callError(
-        on client: LKAnthropicClient,
-        with request: LKAIChatRequest,
-        mode: CallMode
-    ) async -> LKAIError? {
-        var actualError: LKAIError?
-        do {
-            switch mode {
-            case .stream:
-                for try await _ in client.stream(request) {
-                    // 只需要迭代到結束，事件的內容不在這裡檢查
-                }
-
-            case .invoke:
-                _ = try await client.invoke(request)
-            }
-        } catch {
-            actualError = error
-        }
-        return actualError
+    /// - Parameter request: 記錄到的請求
+    /// - Returns: 請求內容的 `stream` 值
+    /// - Throws: 請求沒有內容，或 `stream` 不是 JSON 布林時丟出
+    func decodeStreamFlag(of request: URLRequest) throws -> Bool {
+        let body = try #require(request.httpBody)
+        return try JSONDecoder().decode(StreamFlagBody.self, from: body).stream
     }
 
     /// 把 JSON 文字解析成 JSON 值，最外層可以是字串或陣列

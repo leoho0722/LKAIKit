@@ -120,13 +120,6 @@ struct LKAnthropicClientErrorTests {
         ErrorEventCase(data: "not json", expectation: .invalidResponse),
     ] as [ErrorEventCase]
 
-    /// 多個測試共用的合法請求：模型、一則使用者訊息與輸出上限，沒有系統指示
-    private let validRequest = LKAIChatRequest(
-        model: "claude-opus-5-5",
-        messages: [LKAIMessage(role: .user, text: "Hi")],
-        maxOutputTokens: 1024
-    )
-
     // spectra-scenario: anthropic-provider / Classify HTTP error responses
     // spectra-scenario: anthropic-provider / Classify HTTP error responses / error responses
     /// 驗證非 2xx 的 Messages API 回應依 `error.type` 與標頭分類，結果與範例表預期的錯誤一致
@@ -146,7 +139,7 @@ struct LKAnthropicClientErrorTests {
 
         // When
         do {
-            _ = try await client.invoke(validRequest)
+            _ = try await client.invoke(LKAnthropicClientTestSupport.validRequest)
         } catch {
             actualError = error
         }
@@ -165,24 +158,15 @@ struct LKAnthropicClientErrorTests {
     @Test(.timeLimit(.minutes(1)), arguments: LKAnthropicClientErrorTests.errorEventCases)
     func stream_串流中途的error事件_先交出文字再以範例表的錯誤結束(testCase: ErrorEventCase) async throws {
         // Given
-        let mock = LKAIMockHTTPClient()
-        let prefixLines = [
-            "event: message_start",
-            #"data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-opus-5-5","stop_reason":null,"stop_sequence":null}}"#,
-            "",
-            "event: content_block_start",
-            #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
-            "",
-            "event: content_block_delta",
-            #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}"#,
-            "",
-        ]
-        mock.yield(lines: prefixLines + ["event: error", "data: \(testCase.data)", ""])
-        mock.finish()
-        let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
+        let client = LKAnthropicClientTestSupport.makeClient(events: [
+            .messageStart(),
+            .textBlockStart(),
+            .textDelta("Hel"),
+            .init(name: "error", data: testCase.data),
+        ])
 
         // When
-        let outcome = await collectOutcome(from: client)
+        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
 
         // Then
         #expect(outcome.events == [.textDelta("Hel")])
@@ -204,15 +188,17 @@ struct LKAnthropicClientErrorTests {
     /// 驗證連線失敗時，串流與非串流呼叫都丟出 `transport`，並保留底層 `URLError` 的代碼
     ///
     /// - Parameter mode: 呼叫方式，串流或非串流
-    @Test(.timeLimit(.minutes(1)), arguments: CallMode.allCases)
-    func stream與invoke_連線失敗_丟出transport且保留底層錯誤代碼(mode: CallMode) async throws {
+    @Test(.timeLimit(.minutes(1)), arguments: LKAnthropicClientTestSupport.CallMode.allCases)
+    func stream與invoke_連線失敗_丟出transport且保留底層錯誤代碼(
+        mode: LKAnthropicClientTestSupport.CallMode
+    ) async throws {
         // Given
         let mock = LKAIMockHTTPClient()
         mock.failFetch(with: .transport(underlying: URLError(.notConnectedToInternet)))
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
 
         // When
-        let actualError = await callError(on: client, with: validRequest, mode: mode)
+        let actualError = await LKAnthropicClientTestSupport.callError(on: client, mode: mode)
 
         // Then
         let error = try #require(actualError)
@@ -228,16 +214,6 @@ struct LKAnthropicClientErrorTests {
 // MARK: - Nested Types
 
 extension LKAnthropicClientErrorTests {
-
-    /// 呼叫 client 的方式，串流與非串流走同一套錯誤對應
-    enum CallMode: CaseIterable, Sendable {
-
-        /// 呼叫 `stream(_:)`，迭代串流到結束
-        case stream
-
-        /// 呼叫 `invoke(_:)`，等整段回答完成
-        case invoke
-    }
 
     /// HTTP 錯誤回應範例表的一列：狀態碼、額外的標頭、回應內容，以及預期的錯誤
     struct ErrorResponseCase: Sendable {
@@ -273,66 +249,5 @@ extension LKAnthropicClientErrorTests {
 
         /// 丟出的錯誤必須是無效回應，原因文字不比對
         case invalidResponse
-    }
-
-    /// 迭代完一條串流後的結果：收到的全部事件，以及串流丟出的錯誤
-    struct StreamOutcome {
-
-        /// 依收到的順序排列的全部事件
-        let events: [LKAIChatStreamEvent]
-
-        /// 串流丟出的錯誤；正常結束時為 nil
-        let error: LKAIError?
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAnthropicClientErrorTests {
-
-    /// 以指定的方式呼叫 client，迭代或等待到結束，並記下丟出的錯誤
-    ///
-    /// - Parameters:
-    ///   - client: 要呼叫的 client
-    ///   - request: 要送出的對話請求
-    ///   - mode: 呼叫方式，串流或非串流
-    /// - Returns: 呼叫丟出的錯誤；順利結束時為 nil
-    func callError(
-        on client: LKAnthropicClient,
-        with request: LKAIChatRequest,
-        mode: CallMode
-    ) async -> LKAIError? {
-        var actualError: LKAIError?
-        do {
-            switch mode {
-            case .stream:
-                for try await _ in client.stream(request) {
-                    // 只需要迭代到結束，事件的內容不在這裡檢查
-                }
-
-            case .invoke:
-                _ = try await client.invoke(request)
-            }
-        } catch {
-            actualError = error
-        }
-        return actualError
-    }
-
-    /// 迭代 client 的串流到結束，收集事件並記下丟出的錯誤
-    ///
-    /// - Parameter client: 要呼叫的 client
-    /// - Returns: 收到的全部事件，以及串流丟出的錯誤；正常結束時錯誤為 nil
-    func collectOutcome(from client: LKAnthropicClient) async -> StreamOutcome {
-        var events: [LKAIChatStreamEvent] = []
-        var actualError: LKAIError?
-        do {
-            for try await event in client.stream(validRequest) {
-                events.append(event)
-            }
-        } catch {
-            actualError = error
-        }
-        return StreamOutcome(events: events, error: actualError)
     }
 }
