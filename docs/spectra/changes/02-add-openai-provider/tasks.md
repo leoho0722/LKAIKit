@@ -170,7 +170,7 @@
   - Open Questions：測試 helper 的重複、503 的 `Retry-After`、`LKAIError.refused` 的隱私說明、格式不符的 `error` 事件、兩家不認得的串流錯誤、指標的層數。
 - 派工依 design「平行實作沿用兩個 git worktree」：5.1、5.2 由 sonnet 依序做，5.3、5.4 由主對話做。
 
-- [ ] 5.1 依 ios-dev-kit `formatting.md`，修正實作審查找到的排版，行為不變（sonnet）：
+- [x] 5.1 依 ios-dev-kit `formatting.md`，修正實作審查找到的排版，行為不變（sonnet）：
   - 新增與修改的檔案中超過 100 字元的 `///` 改寫成多行；修改前的 `Sources/`、`Tests/` 沒有任何一行非標記註解超過 100（opus 量測）。
   - `LKOpenAIStreamState` 的 private computed property `refusalText` 移到 Private Method 區最前面：「區內排序」規定 Private Method 區先放 property 再放方法。
   - `LKOpenAIErrorBody.Detail.isQuotaExhausted` 的多 pattern `case` 改成每行排滿、續行比 `case` 多縮 8 格。
@@ -179,7 +179,7 @@
   驗證：
   - 完整 `swift test` 通過且零警告，測試數不變。
   - 以腳本確認 `Sources/` 與 `Tests/` 內沒有超過 100 字元的非標記註解。
-- [ ] 5.2 [after: 5.1] 依 design「OpenAI 串流事件的對應規則」修改後的拒答規則，交付 openai-provider 的「Finish and refusal mapping」與「Error mapping」新增的範例列（sonnet）：
+- [x] 5.2 [after: 5.1] 依 design「OpenAI 串流事件的對應規則」修改後的拒答規則，交付 openai-provider 的「Finish and refusal mapping」與「Error mapping」新增的範例列（sonnet）：
   - `LKOpenAIStreamState` 的拒答文字改成：delta 依序串接；串接後為空時，改用 done 依序串接。累積的狀態可改成兩個 `String`。
   - 結束事件範例表加上 delta 為空字串的那一列。
   - HTTP 錯誤範例表加上 402 那一列，串流 `error` 事件範例表加上 `data_residency_mismatch` 那一列。
@@ -189,13 +189,37 @@
   - 主對話先觀察到 delta 為空字串的那一列在實作前失敗，實作後通過。
   - 402 與 `data_residency_mismatch` 兩列，以及修改後的並存測試，描述的是已經實作的行為，在目前的實作上就會通過。依 TDD 的 Regression，由 5.4 的反向檢查把關。
   - 完整 `swift test` 通過且零警告。
-- [ ] 5.3 依 design「config.yaml 的指標加上本 change」修改後的文字，把 `docs/spectra/config.yaml` API 演進規則的指標換成 design 引用的新文字（主對話）。
+- [x] 5.3 依 design「config.yaml 的指標加上本 change」修改後的文字，把 `docs/spectra/config.yaml` API 演進規則的指標換成 design 引用的新文字（主對話）。
 
   驗證：`spectra instructions proposal --change "02-add-openai-provider" --json` 回傳的 context 含有新的指標，與 design 引用的文字逐字相同。
-- [ ] 5.4 [after: 5.1, 5.2, 5.3] 修正後的驗收（主對話）：
+- [x] 5.4 [after: 5.1, 5.2, 5.3] 修正後的驗收（主對話）：
   - 依 design Implementation Contract 的「驗收」重新執行建置、測試、spec 標記、`spectra coverage` 與 iOS 建置。
   - 執行反向檢查表新增的四項（拒答文字改回「有任何 delta 事件就只用 delta」、改成「有 done 就用 done」、不排除 402、`data_residency_mismatch` 改走不認得的代碼）。
   - 重跑 4.1 中與拒答文字有關的兩項（`response.refusal.delta` 當成文字交出、拒答文字只讀 delta）。
   - 每一項的執行結果記錄在本任務下方。
 
   驗證：每一項結果都符合 Implementation Contract 的描述，測試數與 4.1 相同。
+
+  執行結果（2026-11-22，功能分支 `504550e`，主對話執行）：
+
+  - **建置與測試**：`swift package clean` 後 `swift build`、`swift build --build-tests` 與 `swift test` 都零警告。
+    - Swift Testing 共 147 個通過，與 4.1 相同：LKAICore 66、LKAIAnthropic 45、LKAIOpenAI 23、LKAIKitCLI 7、LKAIKit 3、LKAITestSupportTests 3。
+    - 2 個實際 API 測試因沒有金鑰而略過。
+    - 5.2 只在既有的參數化測試加列：結束事件範例表 8 列、HTTP 錯誤範例表 20 列、串流 `error` 事件範例表 13 列。
+  - **行寬**：`Sources/` 與 `Tests/` 內沒有超過 100 字元的非標記註解（以字元數量測）。
+  - **spectra-scenario 標記**：共 119 行，與 4.1 逐行相同。
+  - **`spectra coverage`**：`openai-provider` 的 24 個情境與範例全部 `annotated`。
+  - **grep**：`Sources/LKAIOpenAI/` 內沒有 `Task {` 與 `JSONDecoder()`。
+  - **XcodeBuildMCP（iPhone 17 模擬器）**：
+    - `LKAIKit` scheme 建置成功、零警告。
+    - `LKAIKit-Package` 建置測試的錯誤只有 `LKAICommandTests.swift:226` 既有的 `Process`，`LKAIOpenAI` 的原始碼與測試都有編譯。
+    - 紀錄中另有兩行 `appintentsmetadataprocessor` 的「Metadata extraction skipped」訊息，是 Xcode 工具的輸出，不是編譯器警告。
+    - 驗收後 session 的 scheme 已改回 `LKAIKit`。
+  - **反向檢查**：在功能分支上以腳本逐項暫時改壞，執行 `swift test --filter LKAIOpenAITests`，觀察到預期的失敗後以 `git checkout` 還原。
+    - 拒答文字改回「有任何 delta 事件就只用 delta」（以 `\u{0}` 取代空字串的 delta 來模擬）：結束事件範例表 delta 為空字串的那一列失敗。
+    - 拒答文字改成「有 done 就用 done」：拒答 delta 與 done 並存的測試失敗。
+    - HTTP 規則 3 不排除 402：HTTP 錯誤範例表的 402 列失敗。
+    - `data_residency_mismatch` 改走不認得的代碼：串流 `error` 事件範例表的那一列以 `.invalidResponse` 失敗。
+    - 重跑 `response.refusal.delta` 當成文字交出：結束事件範例表的拒答列、非串流拒答、並存三個測試失敗。
+    - 重跑拒答文字只讀 delta：結束事件範例表只有 done 的列與 delta 為空字串的列失敗。
+  - **還原後**：`git status` 只剩本檔的修改。
