@@ -16,8 +16,9 @@ import LKAICore
 /// - Note: 結束資訊只取自 `interaction.completed` 的 `interaction`，其他事件不帶用量與模型
 /// - Note: Gemini 分不開生成途中塞滿 context window 與達到輸出上限，兩者都是 `incomplete`，
 ///   所以結束事件的結束原因不會是 `.contextWindowExceeded`
-/// - Note: `failed` 狀態與 `error` 事件的錯誤對應還沒有實作，目前 `failed` 與其他狀態一樣回報 `invalidResponse`，
-///   `error` 事件與不認得的事件一樣略過
+/// - Note: 串流中的 `error` 事件與 `failed` 狀態的 `errors` 依 `code` 分類成錯誤丟出，分類規則見 `LKGeminiErrorBody.Detail`
+/// - Note: `failed` 取 `errors` 的第一筆；`errors` 沒有、為 null 或空陣列時視為沒有代碼，
+///   依 chat-client 的共同規則由 `LKAIError.unrecognizedStreamError(code:message:)` 回報
 struct LKGeminiStreamState {
 
     // MARK: - Properties
@@ -40,8 +41,9 @@ extension LKGeminiStreamState: LKAIServerSentEventMapping {
     /// - Parameter event: 剛解析出的 SSE 事件，事件種類以 `data` 裡的 `event_type` 為準，不看事件名稱
     /// - Returns: 有文字時為只含 `.textDelta` 的陣列；正常結束時為只含 `.finished` 的陣列；其餘為空陣列
     /// - Throws: `data` 解碼失敗丟 `invalidResponse`；
-    ///   `interaction.completed` 的狀態是 `requires_action`、`cancelled`、`failed`、其他值或沒有狀態，
-    ///   丟 `invalidResponse`
+    ///   `interaction.completed` 的狀態是 `requires_action`、`cancelled`、其他值或沒有狀態丟 `invalidResponse`；
+    ///   `error` 事件與 `failed` 狀態丟 `code` 對應的錯誤，
+    ///   沒有代碼或不認得的代碼丟 `LKAIError.unrecognizedStreamError(code:message:)` 的結果
     /// - Note: `step.start` 帶著文字時，依序交出每一段，然後才輪到之後的 `step.delta`
     mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAIChatStreamEvent] {
         switch try decode(event) {
@@ -58,6 +60,9 @@ extension LKGeminiStreamState: LKAIServerSentEventMapping {
         case .completed(let interaction):
             let completion = try makeCompletion(from: interaction)
             return [.finished(completion)]
+
+        case .error(let detail):
+            throw detail.streamError
 
         case .ignored:
             return []
@@ -86,10 +91,15 @@ private extension LKGeminiStreamState {
     ///
     /// - Parameter interaction: `interaction.completed` 帶的互動
     /// - Returns: 帶著結束原因、用量與實際回應的模型的結束資訊
-    /// - Throws: 狀態不是 `completed` 或 `incomplete` 時丟出 `invalidResponse`
+    /// - Throws: 狀態是 `failed` 時丟出 `errors` 第一筆對應的錯誤，沒有第一筆時丟出沒有代碼的錯誤；
+    ///   狀態不是 `completed`、`incomplete` 或 `failed` 時丟出 `invalidResponse`
     func makeCompletion(
         from interaction: LKGeminiStreamEvent.Interaction
     ) throws(LKAIError) -> LKAIChatCompletion {
+        if interaction.status == "failed" {
+            throw interaction.errors?.first?.streamError
+                ?? .unrecognizedStreamError(code: nil, message: nil)
+        }
         let finishReason = try makeFinishReason(fromStatus: interaction.status)
         return LKAIChatCompletion(
             finishReason: finishReason,

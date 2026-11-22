@@ -14,6 +14,7 @@ import LKAICore
 /// - Note: 不認得的 `event_type`、不需要對應的事件都解成 `.ignored`，API 之後新增事件時串流不會失敗
 /// - Note: 欄位只在用得到時才解碼：`step.start` 的 `content` 只在步驟類型是 `model_output` 時解碼，
 ///   `step.delta` 的 `text` 只在片段類型是 `text` 時解碼，其他類型帶什麼內容都不影響串流
+/// - Note: `interaction.completed` 的 `errors` 也只在 `status` 是 `failed` 時解碼，其他狀態完全不讀
 /// - Note: 認得的事件欄位格式不符時解碼失敗；JSON 的鍵是 snake_case，請用 `init(data:)` 解碼
 enum LKGeminiStreamEvent {
 
@@ -38,7 +39,12 @@ enum LKGeminiStreamEvent {
     /// - Parameter interaction: 即 `interaction`，裡面有結束的狀態、實際回應的模型與用量
     case completed(Interaction)
 
-    /// 其他事件：生命週期、`step.stop`、`error` 等，以及不認得的類型，一律略過
+    /// `error`：串流中途的錯誤，`error` 物件放的是錯誤內容；由 `LKGeminiStreamState.handle(_:)` 對應成錯誤丟出
+    ///
+    /// - Parameter detail: 錯誤內容，即事件的 `error` 物件
+    case error(LKGeminiErrorBody.Detail)
+
+    /// 其他事件：生命週期、`step.stop` 等，以及不認得的類型，一律略過
     case ignored
 
     // MARK: - Init
@@ -74,6 +80,9 @@ extension LKGeminiStreamEvent {
 
         /// `interaction.completed` 的互動
         case interaction
+
+        /// `error` 事件的錯誤內容
+        case error
     }
 
     /// `step.start` 的 `step`，只取步驟類型與開始時帶著的文字
@@ -144,12 +153,14 @@ extension LKGeminiStreamEvent {
         }
     }
 
-    /// `interaction.completed` 的 `interaction`，只取結束的狀態、實際回應的模型與用量
+    /// `interaction.completed` 的 `interaction`，只取結束的狀態、實際回應的模型、用量與失敗的錯誤
     ///
-    /// - Note: 不讀 `errors`，沒有宣告的欄位自動略過
+    /// - Note: `errors` 是整份設計中證據最弱的欄位，只在 `status` 是 `failed` 時才解碼，
+    ///   其他狀態帶什麼 `errors` 都不影響，不能讓 `completed` 因它失敗
+    /// - Note: 沒有宣告的欄位自動略過
     struct Interaction: Decodable {
 
-        /// 互動結束的狀態，例如 `completed`、`incomplete`；沒有時為 nil
+        /// 互動結束的狀態，例如 `completed`、`incomplete`、`failed`；沒有時為 nil
         let status: String?
 
         /// 實際回應的模型識別碼；API 沒有回報時為 nil，這不是錯誤
@@ -157,6 +168,46 @@ extension LKGeminiStreamEvent {
 
         /// 這次互動的用量；為 null 或沒有這個欄位時為 nil
         let usage: Usage?
+
+        /// 失敗的錯誤，依序排列；只有 `status` 是 `failed` 才會解碼，其他狀態、為 null 或沒有這個欄位時為 nil
+        let errors: [LKGeminiErrorBody.Detail]?
+
+        /// 依狀態解碼：先解 `status`，只有 `failed` 才讀 `errors`，其他狀態的 `errors` 完全不看
+        ///
+        /// - Parameter decoder: 提供 JSON 內容的解碼器
+        /// - Throws: `status`、`model`、`usage` 型別不符，或狀態是 `failed` 而 `errors` 有值卻不是陣列，
+        ///   或有一筆不是物件、`code` 或 `message` 不是字串與 null 時丟出 `DecodingError`
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let interactionStatus = try container.decodeIfPresent(String.self, forKey: .status)
+            status = interactionStatus
+            model = try container.decodeIfPresent(String.self, forKey: .model)
+            usage = try container.decodeIfPresent(Usage.self, forKey: .usage)
+            if interactionStatus == "failed" {
+                errors = try container.decodeIfPresent(
+                    [LKGeminiErrorBody.Detail].self,
+                    forKey: .errors
+                )
+            } else {
+                errors = nil
+            }
+        }
+
+        /// 互動的鍵
+        enum CodingKeys: String, CodingKey {
+
+            /// 互動結束的狀態
+            case status
+
+            /// 實際回應的模型
+            case model
+
+            /// 用量
+            case usage
+
+            /// 失敗的錯誤
+            case errors
+        }
     }
 
     /// 互動的用量；API 沒有回報或回報 null 的欄位是 nil，代表沒有回報
@@ -200,6 +251,9 @@ extension LKGeminiStreamEvent: Decodable {
 
         case "interaction.completed":
             self = try .completed(container.decode(Interaction.self, forKey: .interaction))
+
+        case "error":
+            self = try .error(container.decode(LKGeminiErrorBody.Detail.self, forKey: .error))
 
         default:
             self = .ignored

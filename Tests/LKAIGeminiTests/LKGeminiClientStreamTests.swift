@@ -200,6 +200,8 @@ struct LKGeminiClientStreamTests {
     /// - Note: 每列在第一個結束事件之後都再接一個狀態是 `completed` 的事件，
     ///   結束事件沒有結束串流時，它會多交出一個完成事件
     /// - Note: 無效回應只比對是不是無效回應，原因文字不比對
+    /// - Note: 狀態是 `failed` 的六列，依 `errors` 的第一筆的代碼分類；沒有、null 與空陣列的 `errors`
+    ///   都視同沒有代碼；第一筆的 `code` 是數字時，`errors` 解不出來，是無效回應
     @Test(
         .timeLimit(.minutes(1)),
         arguments: [
@@ -246,6 +248,45 @@ struct LKGeminiClientStreamTests {
                 terminalEvent: LKAIServerSentEvent(
                     event: "interaction.completed",
                     data: #"{"event_type":"interaction.completed"}"#
+                ),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .invalidResponse(containing: [])
+            ),
+            TerminalEventCase(
+                terminalEvent: .interactionCompleted(
+                    status: "failed",
+                    errors: #"[{"code":"safety","message":"Blocked."}]"#
+                ),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.refused(detail: "safety"))
+            ),
+            TerminalEventCase(
+                terminalEvent: .interactionCompleted(
+                    status: "failed",
+                    errors: #"[{"code":"api_error","message":"Internal error."}]"#
+                ),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
+            ),
+            TerminalEventCase(
+                terminalEvent: .interactionCompleted(status: "failed"),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
+            ),
+            TerminalEventCase(
+                terminalEvent: .interactionCompleted(status: "failed", errors: "null"),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
+            ),
+            TerminalEventCase(
+                terminalEvent: .interactionCompleted(status: "failed", errors: "[]"),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
+            ),
+            TerminalEventCase(
+                terminalEvent: .interactionCompleted(
+                    status: "failed",
+                    errors: #"[{"code":500,"message":"Internal error."}]"#
                 ),
                 expectedEvents: [.textDelta("Hel")],
                 expectedError: .invalidResponse(containing: [])

@@ -14,6 +14,8 @@ import LKAICore
 /// - Note: 端點固定為 Gemini 官方的 Interactions API v1
 /// - Note: 非串流呼叫也以 `stream: true` 送出，由 `LKAICore` 的預設實作彙整成完整回答
 /// - Note: 回應保存預設關閉，由 App 建立 client 時用 `shouldStoreResponses` 開啟；Gemini 的 `store` 預設是開啟，所以每次都明確送出
+/// - Note: `refused` 的 detail 是 Gemini 回報的被擋下代碼，例如 `safety`，不含 Gemini 的 `message`，
+///   因為 `message` 可能描述使用者的輸入
 public struct LKGeminiClient: Sendable {
 
     // MARK: - Properties
@@ -137,15 +139,22 @@ extension LKGeminiClient: LKAIServerSentEventChatStreaming {
         return urlRequest
     }
 
-    /// 目前沒有 Gemini 專屬的錯誤分類，一律回傳 nil，由共同流程改用狀態碼的預設分類
+    /// 依 Gemini 的兩種錯誤格式分類非 2xx 的回應，先試 Interactions 格式，再試 Google 通用格式
     ///
     /// - Parameters:
-    ///   - statusCode: 回應的 HTTP 狀態碼，這裡不使用
+    ///   - statusCode: 回應的 HTTP 狀態碼，用來判斷是不是 401、402、403、429 以外的 4xx
     ///   - headers: 回應標頭，這裡不使用
-    ///   - body: Gemini 的錯誤 JSON，這裡不使用
-    /// - Returns: 一律為 nil
+    ///   - body: Gemini 的錯誤 JSON，格式見 `LKGeminiErrorBody` 與 `LKGeminiGoogleErrorBody`
+    /// - Returns: 對應的錯誤；內容解析不了，或規則都不符合時為 nil，改用預設分類
+    /// - Note: Interactions 格式依序套用：被擋下的代碼為拒答、額度代碼為額度用完、
+    ///   401、402、403、429 以外的 4xx 為帶訊息的無效請求
+    /// - Note: Google 通用格式的外層可以是物件或陣列，`details` 有 `API_KEY_INVALID` 的是金鑰無效
+    /// - Note: 額度用完不讀 `retry-after`；走預設分類的 429 限流與 5xx 服務不可用，才由共同流程讀它
     package func httpError(statusCode: Int, headers: [String: String], body: String) -> LKAIError? {
-        nil
+        if let interactionsBody = LKGeminiErrorBody(text: body) {
+            return interactionsBody.error.httpError(statusCode: statusCode)
+        }
+        return LKGeminiGoogleErrorBody(text: body)?.httpError()
     }
 
     /// 建立 `LKGeminiStreamState`，由它處理這條串流的 SSE 事件
