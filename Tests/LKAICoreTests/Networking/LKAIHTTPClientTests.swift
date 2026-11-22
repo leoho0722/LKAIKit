@@ -265,7 +265,7 @@ extension LKAIHTTPClientTests {
     /// - Note: 回應的標頭預設加上 `Content-Type: text/event-stream`，否則 `URLSession` 會先緩衝內容
     /// - Note: 請求自己指定了 `Content-Type` 時，以指定的為準
     /// - Note: 什麼都沒設定時既不回應也不結束，模擬等不到回應；要求不結束時，送完內容後不結束
-    final class FakeURLProtocol: URLProtocol {
+    final class MockURLProtocol: URLProtocol {
 
         /// 攔截所有請求，不論網址
         ///
@@ -433,7 +433,7 @@ private extension LKAIHTTPClientTests {
     /// - Returns: 不連網、只回出請求上假回應的 `URLSession`
     func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [FakeURLProtocol.self]
+        configuration.protocolClasses = [MockURLProtocol.self]
         return URLSession(configuration: configuration)
     }
 

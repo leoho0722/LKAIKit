@@ -28,7 +28,7 @@ struct LKAIServerSentEventChatStreamingTests {
         )
         let expectedEvents: [LKAIChatStreamEvent] = [.textDelta("Hel"), .finished(completion)]
         let counter = CallCounter()
-        let provider = FakeProvider(completion: completion, counter: counter)
+        let provider = MockProvider(completion: completion, counter: counter)
         let request = LKAIChatRequest(
             model: "test-model",
             messages: [LKAIMessage(role: .user, text: "Hi")],
@@ -77,7 +77,7 @@ extension LKAIServerSentEventChatStreamingTests {
     }
 
     /// 假的 HTTP client：不連網，固定回傳狀態碼 200 與兩則 SSE 事件的逐行內容
-    struct FakeHTTPClient: LKAIHTTPClientProtocol {
+    struct MockHTTPClient: LKAIHTTPClientProtocol {
 
         /// 送出請求，回傳帶著固定逐行內容的回應；請求的內容不檢查
         ///
@@ -99,7 +99,7 @@ extension LKAIServerSentEventChatStreamingTests {
     }
 
     /// 假的 mapper：每處理一則 SSE 事件計數加一，固定回傳一段文字、結束事件與另一段文字
-    struct FakeMapper: LKAIServerSentEventMapping {
+    struct MockMapper: LKAIServerSentEventMapping {
 
         /// 結束事件的內容
         let completion: LKAIChatCompletion
@@ -119,10 +119,10 @@ extension LKAIServerSentEventChatStreamingTests {
     }
 
     /// 假的供應商：HTTP client 與 mapper 都是假的，網址與錯誤分類是固定的
-    struct FakeProvider: LKAIServerSentEventChatStreaming {
+    struct MockProvider: LKAIServerSentEventChatStreaming {
 
         /// 送出請求的假 HTTP client
-        let httpClient: any LKAIHTTPClientProtocol = FakeHTTPClient()
+        let httpClient: any LKAIHTTPClientProtocol = MockHTTPClient()
 
         /// 結束事件的內容
         let completion: LKAIChatCompletion
@@ -161,7 +161,7 @@ extension LKAIServerSentEventChatStreamingTests {
         ///
         /// - Returns: 假的 mapper
         func makeEventMapper() -> any LKAIServerSentEventMapping {
-            FakeMapper(completion: completion, counter: counter)
+            MockMapper(completion: completion, counter: counter)
         }
     }
 }
