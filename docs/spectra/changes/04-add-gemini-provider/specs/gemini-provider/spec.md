@@ -58,13 +58,13 @@ The gemini-provider capability defines how `LKGeminiClient` fulfils the chat-cli
 
 #### Scenario: Skip lifecycle and thought events
 
-- **GIVEN** an Interactions API stream that contains lifecycle events, a thought step, and a model output step
+- **GIVEN** an Interactions API stream that contains lifecycle events, a thought step, a model output step, and a text delta at an index no `step.start` has recorded
 - **WHEN** an app iterates the streaming call
 - **THEN** it receives only the text of the model output step, followed by the finished event
 
 ##### Example: stream with lifecycle events and a thought step
 
-- **GIVEN** the stream events, in order: `interaction.created`; `interaction.status_update` with status `in_progress`; `step.start` at index 0 with type `thought`; `step.delta` at index 0 with delta type `thought_signature`; `step.delta` at index 0 with delta type `text` and text "Thinking"; `step.stop` at index 0; `step.start` at index 1 with type `model_output`; `step.delta` at index 1 with delta type `text` and text "Hel"; `step.delta` at index 1 with delta type `text` and text "lo"; `step.stop` at index 1; `step.start` at index 2 with type `google_search_call` and content `{"queries":["sky colour"]}`; `step.delta` at index 2 with delta type `google_search_result` and text `{"items":[]}`; `step.stop` at index 2; `interaction.completed` with status `completed`
+- **GIVEN** the stream events, in order: `interaction.created`; `interaction.status_update` with status `in_progress`; `step.start` at index 0 with type `thought`; `step.delta` at index 0 with delta type `thought_signature`; `step.delta` at index 0 with delta type `text` and text "Thinking"; `step.stop` at index 0; `step.start` at index 1 with type `model_output`; `step.delta` at index 1 with delta type `text` and text "Hel"; `step.delta` at index 1 with delta type `text` and text "lo"; `step.stop` at index 1; `step.start` at index 2 with type `google_search_call` and content `{"queries":["sky colour"]}`; `step.delta` at index 2 with delta type `google_search_result` and text `{"items":[]}`; `step.stop` at index 2; `step.delta` at index 5 with delta type `text` and text "Orphan"; `interaction.completed` with status `completed`
 - **WHEN** an app iterates the streaming call
 - **THEN** it receives text-delta "Hel", text-delta "lo", and a finished event whose finish reason is completed
 
@@ -76,7 +76,7 @@ The gemini-provider capability defines how `LKGeminiClient` fulfils the chat-cli
 
 ##### Example: text in the start of a model output step
 
-- **GIVEN** the stream events, in order: `step.start` at index 0 with type `thought` and summary `[{"type":"text","text":"Thinking"}]`; `step.stop` at index 0; `step.start` at index 1 with type `model_output` and content `[{"type":"text","text":"Hel"}]`; `step.delta` at index 1 with delta type `text` and text "lo"; `step.stop` at index 1; `interaction.completed` with status `completed`
+- **GIVEN** the stream events, in order: `step.start` at index 0 with type `thought` and summary `[{"type":"text","text":"Thinking"}]`; `step.stop` at index 0; `step.start` at index 1 with type `model_output` and content `[{"type":"text","text":"Hel"},{"type":"image","data":"aGk="}]`; `step.delta` at index 1 with delta type `text` and text "lo"; `step.stop` at index 1; `interaction.completed` with status `completed`
 - **WHEN** an app iterates the streaming call
 - **THEN** it receives text-delta "Hel", text-delta "lo", and a finished event whose finish reason is completed
 
@@ -102,6 +102,8 @@ The gemini-provider capability defines how `LKGeminiClient` fulfils the chat-cli
 | `{"event_type":"step.start","step":{"type":"model_output"}}` | `index` of `step.start` |
 | `{"event_type":"step.start","index":2,"step":{}}` | `step.type` |
 | `{"event_type":"step.start","index":2,"step":{"type":"model_output","content":[{"type":"text"}]}}` | `text` of a content entry of type `text` |
+| `{"event_type":"step.start","index":2,"step":{"type":"model_output","content":"Hel"}}` | `content` of a `model_output` step that is not an array |
+| `{"event_type":"step.start","index":2,"step":{"type":"model_output","content":[{"text":"Hel"}]}}` | `type` of a content entry |
 | `{"event_type":"step.delta","delta":{"type":"text","text":"x"}}` | `index` of `step.delta` |
 | `{"event_type":"step.delta","index":1,"delta":{"text":"x"}}` | `delta.type` |
 | `{"event_type":"step.delta","index":1,"delta":{"type":"text"}}` | `delta.text` of a `text` delta |
@@ -152,6 +154,12 @@ The gemini-provider capability defines how `LKGeminiClient` fulfils the chat-cli
 - **GIVEN** an Interactions API stream for a request with the model `gemini-3.5-flash` whose `interaction.completed` event carries an interaction with the model `gemini-3.6-flash`
 - **WHEN** an app iterates the streaming call to the finished event
 - **THEN** the finished event's responding model is `gemini-3.6-flash`
+
+#### Scenario: Report no model when the completed interaction has none
+
+- **GIVEN** an Interactions API stream whose `interaction.created` event carries an interaction with the model `gemini-3.6-flash` and whose `interaction.completed` event carries an interaction without a `model`
+- **WHEN** an app iterates the streaming call to the finished event
+- **THEN** the finished event has no responding model
 
 ### Requirement: Usage mapping
 
