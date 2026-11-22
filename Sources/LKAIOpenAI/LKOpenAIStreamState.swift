@@ -71,7 +71,7 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
 
         case .failed(let response):
             throw response.error?.streamError
-                ?? .serviceUnavailable(statusCode: 500, retryAfter: nil)
+                ?? .unrecognizedStreamError(code: nil, message: nil)
 
         case .error(let detail):
             throw detail.streamError

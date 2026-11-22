@@ -142,7 +142,7 @@ struct LKOpenAIClientErrorTests {
         ),
     ] as [ErrorResponseCase]
 
-    /// 串流中途 `error` 事件的範例表，每一列是事件的 `code` 與 `message`，以及預期的結果
+    /// 串流中途 `error` 事件的範例表，每一列是要推送的事件，以及預期的結果
     private static let errorEventCases = [
         ErrorEventCase(
             code: "rate_limit_exceeded",
@@ -209,6 +209,14 @@ struct LKOpenAIClientErrorTests {
             message: "Something went wrong.",
             expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
+        ErrorEventCase(
+            data: #"{"type":"error","sequence_number":1}"#,
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
+        ),
+        ErrorEventCase(
+            data: #"{"type":"error","code":500,"message":"Something went wrong.","param":null,"sequence_number":1}"#,
+            expectation: .invalidResponse(containing: [])
+        ),
     ] as [ErrorEventCase]
 
     /// `response.failed` 事件的範例表，每一列是 `response.error` 的 JSON，以及預期的結果
@@ -273,15 +281,17 @@ struct LKOpenAIClientErrorTests {
     // spectra-scenario: openai-provider / Error event in the middle of a stream / error event codes
     /// 驗證串流中途的 `error` 事件依 `code` 分類：先交出已收到的文字，再以範例表預期的結果結束
     ///
-    /// - Parameter testCase: 一列範例：`error` 事件的 `code` 與 `message`，以及預期的結果
+    /// - Parameter testCase: 一列範例：`error` 事件（以 `code` 與 `message` 或原始 `data` 組出），以及預期的結果
     /// - Note: `error` 事件之後再接一個 `response.completed`，忽略 `error` 事件的實作會多交出一個完成事件，測試就會失敗
     /// - Note: 不認得的代碼只比對是無效回應，而且說明文字同時含代碼與 `message`
+    /// - Note: 以 `data` 組出的兩列：沒有 `code` 與 `message` 仍解得出來，視同 null 代碼；
+    ///   `code` 是數字解不出來，只比對是無效回應
     @Test(.timeLimit(.minutes(1)), arguments: LKOpenAIClientErrorTests.errorEventCases)
     func stream_串流中途的error事件_先交出文字再以範例表的錯誤結束(testCase: ErrorEventCase) async throws {
         // Given
         let client = LKOpenAIClientTestSupport.makeClient(events: [
             .outputTextDelta("Hel"),
-            .errorEvent(code: testCase.code, message: testCase.message),
+            testCase.event,
             .responseCompleted(),
         ])
 
@@ -349,17 +359,35 @@ extension LKOpenAIClientErrorTests {
         let expectedError: LKAIError
     }
 
-    /// 串流中途 `error` 事件範例表的一列：事件的代碼與說明，以及預期的結果
+    /// 串流中途 `error` 事件範例表的一列：要推送的事件，以及預期的結果
     struct ErrorEventCase: Sendable {
 
-        /// `error` 事件的 `code`；nil 表示 JSON 裡寫成 null
-        let code: String?
-
-        /// `error` 事件的 `message`
-        let message: String
+        /// 要推送的 `error` 事件
+        let event: LKAIServerSentEvent
 
         /// 預期的結果
         let expectation: Expectation
+
+        /// 以 `code` 與 `message` 組出平的 JSON 事件
+        ///
+        /// - Parameters:
+        ///   - code: `error` 事件的 `code`；nil 表示 JSON 裡寫成 null
+        ///   - message: `error` 事件的 `message`
+        ///   - expectation: 預期的結果
+        init(code: String?, message: String, expectation: Expectation) {
+            self.event = .errorEvent(code: code, message: message)
+            self.expectation = expectation
+        }
+
+        /// 以原始的 `data` 字串組出事件，用來表達 `code` 與 `message` 缺少或型別不對的資料
+        ///
+        /// - Parameters:
+        ///   - data: `error` 事件的 `data`，原樣推送
+        ///   - expectation: 預期的結果
+        init(data: String, expectation: Expectation) {
+            self.event = LKAIServerSentEvent(event: "error", data: data)
+            self.expectation = expectation
+        }
     }
 
     /// `response.failed` 事件範例表的一列：`response.error` 的 JSON，以及預期的結果

@@ -177,6 +177,67 @@ struct LKAIErrorTests {
         #expect(isInvalidResponse)
     }
 
+    // spectra-scenario: chat-client / Report a stream error the provider does not recognize
+    // spectra-scenario: chat-client / Report a stream error the provider does not recognize / unrecognized stream errors
+    /// 驗證串流中對應不到的錯誤依範例表回報：有代碼是不可重試的無效回應，沒有代碼是可重試的 500
+    ///
+    /// - Parameter testCase: 一列範例：錯誤代碼與訊息、預期的錯誤，以及預期可否重試
+    /// - Note: 有代碼的列只比對是無效回應，而且說明文字含全部指定的文字，不比對整句
+    /// - Note: 沒有代碼的列不論有沒有訊息，結果都一樣
+    @Test(arguments: [
+        UnrecognizedStreamCase(
+            code: "new_unknown_code",
+            message: "Something went wrong.",
+            expectation: .invalidResponse(
+                containing: ["new_unknown_code", "Something went wrong."]
+            ),
+            expectedIsRetryable: false
+        ),
+        UnrecognizedStreamCase(
+            code: "new_unknown_code",
+            message: nil,
+            expectation: .invalidResponse(containing: ["new_unknown_code"]),
+            expectedIsRetryable: false
+        ),
+        UnrecognizedStreamCase(
+            code: nil,
+            message: "Something went wrong.",
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil)),
+            expectedIsRetryable: true
+        ),
+        UnrecognizedStreamCase(
+            code: nil,
+            message: nil,
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil)),
+            expectedIsRetryable: true
+        ),
+    ])
+    func unrecognizedStreamError_代碼與訊息的各種組合_依範例表回報錯誤(testCase: UnrecognizedStreamCase) {
+        // Given
+
+        // When
+        let error = LKAIError.unrecognizedStreamError(
+            code: testCase.code,
+            message: testCase.message
+        )
+
+        // Then
+        #expect(error.isRetryable == testCase.expectedIsRetryable)
+        switch testCase.expectation {
+        case .error(let expectedError):
+            #expect(error == expectedError)
+
+        case .invalidResponse(let fragments):
+            guard case .invalidResponse(let reason) = error else {
+                Issue.record("預期是無效回應，實際是 \(error)")
+                return
+            }
+            for fragment in fragments {
+                #expect(reason.contains(fragment), "說明文字 \"\(reason)\" 沒有含 \"\(fragment)\"")
+            }
+        }
+    }
+
     // spectra-scenario: chat-client / Look up the description of each error kind
     // spectra-scenario: chat-client / Look up the description of each error kind / supported languages
     /// 驗證在 `en` 與 `zh-Hant` 的語言資料夾，每種錯誤都查得到非空、且不是 key 本身的說明
@@ -291,5 +352,35 @@ extension LKAIErrorTests {
 
         /// 預期分類出的錯誤
         let expectedError: LKAIError
+    }
+
+    /// 串流中對應不到的錯誤的一列範例：供應商給的代碼與訊息，以及預期的錯誤與可否重試
+    struct UnrecognizedStreamCase {
+
+        /// 供應商給的錯誤代碼，沒有代碼時為 nil
+        let code: String?
+
+        /// 供應商給的錯誤訊息，沒有訊息時為 nil
+        let message: String?
+
+        /// 預期的錯誤
+        let expectation: Expectation
+
+        /// 預期的 `isRetryable`
+        let expectedIsRetryable: Bool
+
+        /// 預期的錯誤：指定的錯誤，或只要求是無效回應且說明含指定的文字
+        enum Expectation {
+
+            /// 回報的錯誤必須等於指定的錯誤
+            ///
+            /// - Parameter error: 預期的錯誤
+            case error(LKAIError)
+
+            /// 回報的錯誤必須是無效回應，而且說明文字含全部指定的文字
+            ///
+            /// - Parameter containing: 說明文字必須含有的文字
+            case invalidResponse(containing: [String])
+        }
     }
 }

@@ -182,6 +182,29 @@ extension LKAIError {
         return chatError
     }
 
+    /// 串流開始後，供應商回報的錯誤對應不到任何已知的錯誤種類時，統一轉成要交給 App 的錯誤
+    ///
+    /// - Parameters:
+    ///   - code: 供應商給的錯誤代碼；沒有任何代碼時為 nil
+    ///   - message: 供應商給的錯誤訊息，只放進說明幫助除錯；沒有時為 nil
+    /// - Returns: 有代碼時是 `.invalidResponse`，說明為
+    ///   `Unrecognized stream error code <code>: <message>`，沒有訊息時 `<message>` 為 `no message`；
+    ///   沒有代碼時是 `.serviceUnavailable(statusCode: 500, retryAfter: nil)`，不看 `message`
+    /// - Note: 這是 chat-client「Unrecognized stream errors」的共同規則，各供應商串流中對應不到的錯誤都呼叫它
+    /// - Note: 說明文字只在這裡組出，格式才不會因供應商而異
+    /// - Note: 有代碼但不認得的錯誤一律不可重試，因為新代碼多半是政策性阻擋這類重送也不會成功的錯誤，
+    ///   當成可重試會讓 App 自動重送被擋下的請求
+    /// - Note: 完全沒有代碼時沒有任何線索可判斷，當成服務暫時無法使用，可重試
+    /// - Note: 只用在串流；HTTP 錯誤回應有狀態碼可以判斷，供應商分類不了時改用預設的狀態碼分類
+    package static func unrecognizedStreamError(code: String?, message: String?) -> LKAIError {
+        guard let code else {
+            return .serviceUnavailable(statusCode: 500, retryAfter: nil)
+        }
+        return .invalidResponse(
+            reason: "Unrecognized stream error code \(code): \(message ?? "no message")"
+        )
+    }
+
     /// 把 `retry-after` 標頭的原始值轉成等待時間
     ///
     /// - Parameter rawValue: `retry-after` 標頭的原始值，沒有標頭時為 nil
