@@ -6,6 +6,7 @@
 //
 
 import LKAICore
+import LKAITestSupport
 
 // MARK: - Internal Method
 
@@ -106,8 +107,8 @@ extension LKAIServerSentEvent {
         model: String? = "gpt-6-luna-2026-09-01",
         usage: String? = nil
     ) -> LKAIServerSentEvent {
-        let modelField = optionalField("model", model.map { "\"\($0)\"" })
-        let usageField = optionalField("usage", usage)
+        let modelField = LKAITestJSON.optionalField("model", model.map { "\"\($0)\"" })
+        let usageField = LKAITestJSON.optionalField("usage", usage)
         return LKAIServerSentEvent(
             event: "response.completed",
             data: #"{"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed"\#(modelField),"output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hello","annotations":[]}]}]\#(usageField)},"sequence_number":7}"#
@@ -133,7 +134,7 @@ extension LKAIServerSentEvent {
     /// - Parameter error: 回應物件 `error` 的 JSON；nil 表示不放 `error` 這個鍵
     /// - Returns: `response.failed` 事件
     static func responseFailed(error: String?) -> LKAIServerSentEvent {
-        let errorField = optionalField("error", error)
+        let errorField = LKAITestJSON.optionalField("error", error)
         return LKAIServerSentEvent(
             event: "response.failed",
             data: #"{"type":"response.failed","response":{"id":"resp_1","object":"response","status":"failed","model":"gpt-6-luna-2026-09-01","output":[],"usage":null\#(errorField)},"sequence_number":9}"#
@@ -152,33 +153,15 @@ extension LKAIServerSentEvent {
         model: String? = "gpt-6-luna-2026-09-01",
         usage: String? = nil
     ) -> LKAIServerSentEvent {
-        let incompleteDetailsField = optionalField(
+        let incompleteDetailsField = LKAITestJSON.optionalField(
             "incomplete_details",
             reason.map { #"{"reason":"\#($0)"}"# }
         )
-        let modelField = optionalField("model", model.map { "\"\($0)\"" })
-        let usageField = optionalField("usage", usage)
+        let modelField = LKAITestJSON.optionalField("model", model.map { "\"\($0)\"" })
+        let usageField = LKAITestJSON.optionalField("usage", usage)
         return LKAIServerSentEvent(
             event: "response.incomplete",
             data: #"{"type":"response.incomplete","response":{"id":"resp_1","object":"response","status":"incomplete"\#(incompleteDetailsField)\#(modelField),"output":[]\#(usageField)},"sequence_number":8}"#
         )
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAIServerSentEvent {
-
-    /// 組出 JSON 物件裡可有可無的欄位，前面帶逗號，接在其他欄位之後
-    ///
-    /// - Parameters:
-    ///   - name: 欄位名稱
-    ///   - json: 欄位值的 JSON；nil 表示不放這個欄位
-    /// - Returns: `,"名稱":值`；沒有值時為空字串
-    static func optionalField(_ name: String, _ json: String?) -> String {
-        guard let json else {
-            return ""
-        }
-        return ",\"\(name)\":\(json)"
     }
 }

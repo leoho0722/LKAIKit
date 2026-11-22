@@ -17,7 +17,7 @@ public enum LKAIFinishReason: CaseIterable, Sendable {
     /// 輸出的長度用完了呼叫端設定的上限，回答被截斷
     ///
     /// - Note: 一般調高輸出上限可以解決
-    /// - Note: 有些供應商在生成途中塞滿 context window 時也回報這個原因，例如 OpenAI；
+    /// - Note: 有些供應商在生成途中塞滿 context window 時也回報這個原因，例如 OpenAI 與 Gemini；
     ///   在這些供應商上調高輸出上限不一定有用
     case maxOutputTokens
 

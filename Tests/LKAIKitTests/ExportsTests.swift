@@ -63,4 +63,21 @@ struct ExportsTests {
         // Then
         #expect(client is LKOpenAIClient)
     }
+
+    // spectra-scenario: gemini-provider / Create the client through the umbrella module
+    /// 驗證只 `import LKAIKit` 就能建立 `LKGeminiClient`，並存成 `any LKAIChatClientProtocol` 使用
+    @Test
+    func init_透過LKAIKit建立LKGeminiClient_可存成共用介面() {
+        // Given
+        let session = URLSession(configuration: .ephemeral)
+
+        // When
+        let client: any LKAIChatClientProtocol = LKGeminiClient(
+            apiKey: "test-key",
+            urlSession: session
+        )
+
+        // Then
+        #expect(client is LKGeminiClient)
+    }
 }

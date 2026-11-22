@@ -210,7 +210,7 @@ struct LKAnthropicClientErrorTests {
         // Then
         #expect(outcome.events == [.textDelta("Hel")])
         let error = try #require(outcome.error)
-        #expect(matches(error, testCase.expectation), "Actual error: \(error)")
+        #expect(testCase.expectation.matches(error), "Actual error: \(error)")
     }
 
     /// 驗證連線失敗時，串流與非串流呼叫都丟出 `transport`，並保留底層 `URLError` 的代碼
@@ -335,44 +335,6 @@ extension LKAnthropicClientErrorTests {
         let data: String
 
         /// 預期的結果
-        let expectation: Expectation
-    }
-
-    /// `error` 事件的預期結果：指定的錯誤，或只要求是無效回應且說明含指定的文字
-    enum Expectation: Sendable {
-
-        /// 丟出的錯誤必須等於指定的錯誤
-        ///
-        /// - Parameter error: 預期的錯誤
-        case error(LKAIError)
-
-        /// 丟出的錯誤必須是無效回應，而且說明文字含全部指定的文字
-        ///
-        /// - Parameter containing: 說明文字必須含有的文字；傳空陣列表示不比對說明文字
-        case invalidResponse(containing: [String])
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAnthropicClientErrorTests {
-
-    /// 判斷丟出的錯誤是否符合預期的結果
-    ///
-    /// - Parameters:
-    ///   - error: 實際丟出的錯誤
-    ///   - expectation: 預期的結果
-    /// - Returns: 符合時為 `true`；預期無效回應時，錯誤必須是無效回應，而且說明文字含全部指定的文字
-    func matches(_ error: LKAIError, _ expectation: Expectation) -> Bool {
-        switch expectation {
-        case .error(let expectedError):
-            return error == expectedError
-
-        case .invalidResponse(let fragments):
-            guard case .invalidResponse(let reason) = error else {
-                return false
-            }
-            return fragments.allSatisfy { reason.contains($0) }
-        }
+        let expectation: LKAIErrorTestSupport.Expectation
     }
 }

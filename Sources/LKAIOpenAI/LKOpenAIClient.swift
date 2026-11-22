@@ -19,8 +19,8 @@ public struct LKOpenAIClient: Sendable {
 
     // MARK: - Properties
 
-    /// App 保管的 OpenAI API 金鑰，只放進請求標頭，不出現在任何描述裡
-    private let apiKey: String
+    /// App 保管的 OpenAI API 金鑰，原始值只在組請求時讀取、放進請求標頭，不出現在任何描述裡
+    private let apiKey: LKAIAPIKey
 
     /// 實際送出請求的 HTTP client，測試時換成不連網的替身；共同流程從這裡取用
     package let httpClient: any LKAIHTTPClientProtocol
@@ -59,7 +59,7 @@ public struct LKOpenAIClient: Sendable {
         httpClient: any LKAIHTTPClientProtocol,
         shouldStoreResponses: Bool = false
     ) {
-        self.apiKey = apiKey
+        self.apiKey = LKAIAPIKey(apiKey)
         self.httpClient = httpClient
         self.shouldStoreResponses = shouldStoreResponses
     }
@@ -130,7 +130,7 @@ extension LKOpenAIClient: LKAIServerSentEventChatStreaming {
         }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
-        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("Bearer \(apiKey.unredactedValue)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
         urlRequest.httpBody = try encodeBody(for: request)
         return urlRequest

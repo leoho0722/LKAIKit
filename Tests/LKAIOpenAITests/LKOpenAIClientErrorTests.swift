@@ -304,7 +304,7 @@ struct LKOpenAIClientErrorTests {
         // Then
         #expect(outcome.events == [.textDelta("Hel")])
         let error = try #require(outcome.error)
-        #expect(matches(error, testCase.expectation), "Actual error: \(error)")
+        #expect(testCase.expectation.matches(error), "Actual error: \(error)")
     }
 
     // spectra-scenario: openai-provider / Failed response in the middle of a stream
@@ -335,7 +335,7 @@ struct LKOpenAIClientErrorTests {
         // Then
         #expect(outcome.events == [.textDelta("Hel")])
         let error = try #require(outcome.error)
-        #expect(matches(error, testCase.expectation), "Actual error: \(error)")
+        #expect(testCase.expectation.matches(error), "Actual error: \(error)")
     }
 }
 
@@ -366,7 +366,7 @@ extension LKOpenAIClientErrorTests {
         let event: LKAIServerSentEvent
 
         /// 預期的結果
-        let expectation: Expectation
+        let expectation: LKAIErrorTestSupport.Expectation
 
         /// 以 `code` 與 `message` 組出平的 JSON 事件
         ///
@@ -374,7 +374,7 @@ extension LKOpenAIClientErrorTests {
         ///   - code: `error` 事件的 `code`；nil 表示 JSON 裡寫成 null
         ///   - message: `error` 事件的 `message`
         ///   - expectation: 預期的結果
-        init(code: String?, message: String, expectation: Expectation) {
+        init(code: String?, message: String, expectation: LKAIErrorTestSupport.Expectation) {
             self.event = .errorEvent(code: code, message: message)
             self.expectation = expectation
         }
@@ -384,7 +384,7 @@ extension LKOpenAIClientErrorTests {
         /// - Parameters:
         ///   - data: `error` 事件的 `data`，原樣推送
         ///   - expectation: 預期的結果
-        init(data: String, expectation: Expectation) {
+        init(data: String, expectation: LKAIErrorTestSupport.Expectation) {
             self.event = LKAIServerSentEvent(event: "error", data: data)
             self.expectation = expectation
         }
@@ -397,44 +397,6 @@ extension LKOpenAIClientErrorTests {
         let errorJSON: String?
 
         /// 預期的結果
-        let expectation: Expectation
-    }
-
-    /// 串流中途錯誤的預期結果：指定的錯誤，或只要求是無效回應且說明含指定的文字
-    enum Expectation: Sendable {
-
-        /// 丟出的錯誤必須等於指定的錯誤
-        ///
-        /// - Parameter error: 預期的錯誤
-        case error(LKAIError)
-
-        /// 丟出的錯誤必須是無效回應，而且說明文字含全部指定的文字
-        ///
-        /// - Parameter containing: 說明文字必須含有的文字
-        case invalidResponse(containing: [String])
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKOpenAIClientErrorTests {
-
-    /// 判斷丟出的錯誤是否符合預期的結果
-    ///
-    /// - Parameters:
-    ///   - error: 實際丟出的錯誤
-    ///   - expectation: 預期的結果
-    /// - Returns: 符合時為 `true`；預期無效回應時，錯誤必須是無效回應，而且說明文字含全部指定的文字
-    func matches(_ error: LKAIError, _ expectation: Expectation) -> Bool {
-        switch expectation {
-        case .error(let expectedError):
-            return error == expectedError
-
-        case .invalidResponse(let fragments):
-            guard case .invalidResponse(let reason) = error else {
-                return false
-            }
-            return fragments.allSatisfy { reason.contains($0) }
-        }
+        let expectation: LKAIErrorTestSupport.Expectation
     }
 }

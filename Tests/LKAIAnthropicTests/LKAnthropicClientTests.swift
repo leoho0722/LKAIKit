@@ -32,7 +32,7 @@ struct LKAnthropicClientTests {
             systemPrompt: "Be brief.",
             maxOutputTokens: 1024
         )
-        let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"system":"Be brief.","messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
+        let expectedBody = try LKAITestJSON.jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"system":"Be brief.","messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
 
         // When
         _ = await LKAIChatClientProtocolTestSupport.callError(
@@ -43,8 +43,9 @@ struct LKAnthropicClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
-        let recordedStreamFlag = try decodeStreamFlag(of: recorded)
+        let recordedData = try #require(recorded.httpBody)
+        let recordedBody = try LKAITestJSON.jsonObject(from: recordedData)
+        let recordedStreamFlag = try LKAITestJSON.booleanField("stream", in: recordedData)
         #expect(recorded.httpMethod == "POST")
         #expect(recorded.url?.absoluteString == "https://api.anthropic.com/v1/messages")
         #expect(recorded.value(forHTTPHeaderField: "x-api-key") == "test-key")
@@ -64,7 +65,7 @@ struct LKAnthropicClientTests {
         let mock = LKAIMockHTTPClient()
         mock.finish()
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
-        let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
+        let expectedBody = try LKAITestJSON.jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
 
         // When
         _ = await LKAIChatClientProtocolTestSupport.callError(
@@ -75,8 +76,9 @@ struct LKAnthropicClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
-        let recordedStreamFlag = try decodeStreamFlag(of: recorded)
+        let recordedData = try #require(recorded.httpBody)
+        let recordedBody = try LKAITestJSON.jsonObject(from: recordedData)
+        let recordedStreamFlag = try LKAITestJSON.booleanField("stream", in: recordedData)
         #expect(recorded.httpMethod == "POST")
         #expect(recorded.url?.absoluteString == "https://api.anthropic.com/v1/messages")
         #expect(recordedBody == expectedBody)
@@ -101,7 +103,7 @@ struct LKAnthropicClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedBody = try LKAITestJSON.jsonObject(from: #require(recorded.httpBody))
         #expect(recordedBody["system"] == nil)
     }
 
@@ -123,7 +125,7 @@ struct LKAnthropicClientTests {
             ],
             maxOutputTokens: 1024
         )
-        let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"},{"role":"user","content":"Bye"}],"stream":true}"#)
+        let expectedBody = try LKAITestJSON.jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"},{"role":"user","content":"Bye"}],"stream":true}"#)
 
         // When
         _ = await LKAIChatClientProtocolTestSupport.callError(
@@ -134,8 +136,9 @@ struct LKAnthropicClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
-        let recordedStreamFlag = try decodeStreamFlag(of: recorded)
+        let recordedData = try #require(recorded.httpBody)
+        let recordedBody = try LKAITestJSON.jsonObject(from: recordedData)
+        let recordedStreamFlag = try LKAITestJSON.booleanField("stream", in: recordedData)
         #expect(recordedBody == expectedBody)
         #expect(recordedStreamFlag)
     }
@@ -183,7 +186,7 @@ struct LKAnthropicClientTests {
             LKAnthropicClient(apiKey: "test-key", httpClient: mock)
         }
         let expectedFallbacks = try testCase.expectedFallbacksJSON
-            .map { try jsonFragment(from: $0) }
+            .map { try LKAITestJSON.jsonFragment(from: $0) }
 
         // When
         _ = await LKAIChatClientProtocolTestSupport.callError(
@@ -194,7 +197,7 @@ struct LKAnthropicClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedBody = try LKAITestJSON.jsonObject(from: #require(recorded.httpBody))
         let recordedBetaHeader = recorded.value(forHTTPHeaderField: "anthropic-beta")
         #expect(recordedBetaHeader == testCase.expectedBetaHeader)
         #expect(recordedBody["fallbacks"] as? NSObject == expectedFallbacks)
@@ -359,13 +362,6 @@ struct LKAnthropicClientTests {
 
 extension LKAnthropicClientTests {
 
-    /// 只解出請求內容的 `stream` 欄位，用來嚴格確認它是 JSON 布林
-    struct StreamFlagBody: Decodable {
-
-        /// 請求內容的 `stream`；`JSONDecoder` 不會把數字 `1` 解成 `Bool`，解不出時丟出錯誤
-        let stream: Bool
-    }
-
     /// 備援設定範例表的一列：備援設定，以及預期送出的標頭與欄位
     struct FallbackCase {
 
@@ -377,52 +373,5 @@ extension LKAnthropicClientTests {
 
         /// 預期的 `fallbacks` 欄位，寫成 JSON 文字；nil 表示不該出現
         let expectedFallbacksJSON: String?
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAnthropicClientTests {
-
-    /// 把 JSON 文字解析成 JSON 物件，比對時不受鍵的順序影響
-    ///
-    /// - Parameter text: JSON 文字，最外層必須是物件
-    /// - Returns: 解析出的 JSON 物件
-    /// - Throws: 文字不是合法的 JSON，或最外層不是物件時丟出
-    func jsonObject(from text: String) throws -> NSDictionary {
-        try jsonObject(from: Data(text.utf8))
-    }
-
-    /// 把 JSON 資料解析成 JSON 物件，比對時不受鍵的順序影響
-    ///
-    /// - Parameter data: JSON 資料，最外層必須是物件
-    /// - Returns: 解析出的 JSON 物件
-    /// - Throws: 資料不是合法的 JSON，或最外層不是物件時丟出
-    func jsonObject(from data: Data) throws -> NSDictionary {
-        let value = try JSONSerialization.jsonObject(with: data)
-        return try #require(value as? NSDictionary)
-    }
-
-    /// 以 `JSONDecoder` 解出請求內容的 `stream`；它只接受 JSON 布林，內容是數字 `1` 時解碼失敗
-    ///
-    /// - Parameter request: 記錄到的請求
-    /// - Returns: 請求內容的 `stream` 值
-    /// - Throws: 請求沒有內容，或 `stream` 不是 JSON 布林時丟出
-    func decodeStreamFlag(of request: URLRequest) throws -> Bool {
-        let body = try #require(request.httpBody)
-        return try JSONDecoder().decode(StreamFlagBody.self, from: body).stream
-    }
-
-    /// 把 JSON 文字解析成 JSON 值，最外層可以是字串或陣列
-    ///
-    /// - Parameter text: JSON 文字
-    /// - Returns: 解析出的 JSON 值
-    /// - Throws: 文字不是合法的 JSON 時丟出
-    func jsonFragment(from text: String) throws -> NSObject {
-        let value = try JSONSerialization.jsonObject(
-            with: Data(text.utf8),
-            options: .fragmentsAllowed
-        )
-        return try #require(value as? NSObject)
     }
 }
