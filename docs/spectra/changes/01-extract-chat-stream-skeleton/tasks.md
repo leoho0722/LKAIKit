@@ -96,3 +96,48 @@
     - 拿掉替身的 `Issue.record`：第二次 `fetch` 的測試兩組參數都以「Known issue was not recorded」失敗。
     - 另外加做一項：替身第一次 `fetch` 就記錄問題時，`fetch_只呼叫一次_不記錄問題並回傳設定的狀態碼` 失敗。
   - **還原後**：完整 `swift test` 再跑一次，118 個通過、零警告。
+
+## 4. 實作審查的修正
+
+四份審查（`/spectra-verify`、`/spectra-review`、fable、opus）都沒有必修。以下是查證成立的建議：
+
+- 4.1、4.2 只改說明、排列與命名，不改行為。
+- 4.3 依 design 的決策「Anthropic 的測試走不到的共同行為在 LKAICoreTests 直接測試」補測試，並依 TDD 的 Regression 在目前的實作上就要通過。
+- 4.3 的測試名稱見 design Implementation Contract 的分支對照表。
+- 派工依 design「平行實作沿用兩個 git worktree」的第 4 組：4.1 由 sonnet 做，4.2、4.3 由 haiku 做，4.4 由主對話做。
+
+- [ ] 4.1 修正說明與方法的排列，不改行為（sonnet）：
+  - `LKAIChatClientProtocol.stream(_:)` 的 `- Note:` 不再寫「由各供應商實作這項檢查」，改成本 package 的供應商由共同流程檢查。
+  - `LKAnthropicStreamState` 的 Private Method 依 ios-dev-kit「呼叫者在前、深度優先」排列：`decode`、`makeCompletion`、`makeFinishReason`、`makeUsage`、`apply`、`merge`。
+  - `LKAnthropicClient` 遵循 `LKAIServerSentEventChatStreaming` 的三個成員，說明改寫成 Anthropic 的做法，不照抄 protocol 的句子：
+    - `makeURLRequest(for:)` 的 `- Returns:`。
+    - `httpError(statusCode:headers:body:)` 的 `- Note:`。
+    - `makeEventMapper()` 的摘要。
+  - `LKAnthropicErrorBody.init?(text:)` 的 `try?`，把「失敗可忽略」的理由寫回同一行。
+
+  驗證：`swift test` 全部通過且零警告；diff 只有說明文字與方法位置的變動。
+- [ ] 4.2 `LKAIMockHTTPClientTests` 依 ios-dev-kit 修正寫法，不改行為（haiku）：
+  - 第一次 `fetch` 的 `try?` 在同一行補上失敗可忽略的理由。
+  - 存第二次 `fetch` 錯誤的變數改名為 `actualError`。
+
+  驗證：`swift test` 全部通過且零警告，`LKAITestSupportTests` 仍是 2 個測試。
+- [ ] 4.3 在 `LKAICoreTests` 補四個既有行為的回歸測試（haiku）：
+  - `LKAIChatStreamTests` 新增 `init(producing:)` 的三個測試：
+    - 正常返回時依序交出事件後正常結束。
+    - 丟錯時先交出事件，再以同一個錯誤結束。
+    - 收到第一個事件後釋放串流時，生產端的 task 被取消；條件沒有成立時，幾秒內就失敗。
+  - 新增 `Tests/LKAICoreTests/Chat/LKAIServerSentEventChatStreamingTests.swift`，檔內放假的供應商、假的 mapper 與假的 HTTP client：
+    - 假的 mapper 每次都回傳 `[.textDelta("Hel"), .finished(結束資訊), .textDelta("lo")]`，回應有兩則 SSE 事件。
+    - 預期只交出 `.textDelta("Hel")` 與 `.finished`，正常結束，mapper 只被呼叫一次。
+
+  驗證：
+  - 四個測試在目前的實作上通過。
+  - 主對話做反向檢查表的兩項：`init(producing:)` 丟錯時改呼叫 `finish()`，以及 `makeStream(for:)` 交出 `.finished` 後不返回。
+  - 完整 `swift test` 通過且零警告，LKAICore 為 66 個測試。
+- [ ] 4.4 [after: 4.1, 4.2, 4.3] 修正後的驗收（主對話）：
+  - `swift package clean` 後建置與完整 `swift test` 零警告，共 122 個測試。
+  - `Tests/` 內的 `spectra-scenario:` 行排序後與修改前逐行相同。
+  - 4.3 的兩項反向檢查。
+  - 每一項的執行結果記錄在本任務下方。
+
+  驗證：每一項結果都符合 design Implementation Contract 的描述。

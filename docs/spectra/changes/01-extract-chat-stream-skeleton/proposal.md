@@ -21,6 +21,7 @@
 - **共用的測試 helper 搬進 `LKAITestSupport`**：與供應商無關的 helper 從 `LKAnthropicClientTestSupport` 與 `LKAnthropicClientCancellationTests` 搬過去，包括呼叫方式、收集串流結果、取得呼叫丟出的錯誤、取得第一個事件、等待條件成立。
 - **替身擋下第二次請求**：`LKAIMockHTTPClient` 收到第二次以上的 `fetch` 時，另以 Swift Testing 記錄測試失敗。否則「供應商誤送兩次請求」會被只比對錯誤種類的測試當成通過。新增測試 target `LKAITestSupportTests` 驗證這個行為（使用者決定）。
 - **補兩個回歸測試**：補上目前沒有測試的兩個既有行為：串流途中連線中斷，以及讀取錯誤內容時連線中斷。
+- **直接測試共同流程自己的行為**：在 `LKAICoreTests` 直接測試 `init(producing:)`，以及同一個陣列交出多個事件時在 `.finished` 停止。這兩處 Anthropic 的測試走不到；實作審查後由使用者決定補上。
 - **更新 `config.yaml`**：`docs/spectra/config.yaml` 的 API 演進規則指向本 change 的 design，並寫明以 SSE 串流的供應商一律走共同流程。
 
 範圍外的項目與否決的做法記在 design 的 Goals / Non-Goals 與各決策。
@@ -36,9 +37,11 @@
     - `Sources/LKAITestSupport/LKAIChatClientProtocolTestSupport.swift`
     - `Sources/LKAITestSupport/LKAITestWaiting.swift`
     - `Tests/LKAITestSupportTests/LKAIMockHTTPClientTests.swift`
+    - `Tests/LKAICoreTests/Chat/LKAIServerSentEventChatStreamingTests.swift`
   - Modified:
     - `Package.swift`（新增 `LKAITestSupportTests` 測試 target）
     - `docs/spectra/config.yaml`（API 演進規則的指標）
+    - `Sources/LKAICore/Chat/LKAIChatClientProtocol.swift`（`stream(_:)` 的說明）
     - `Sources/LKAICore/Chat/LKAIChatStream.swift`
     - `Sources/LKAICore/Chat/LKAIError.swift`
     - `Sources/LKAICore/Networking/LKAIHTTPLines.swift`
@@ -52,6 +55,7 @@
     - `Tests/LKAIAnthropicTests/LKAnthropicClientStreamTests.swift`
     - `Tests/LKAIAnthropicTests/LKAnthropicClientErrorTests.swift`
     - `Tests/LKAIAnthropicTests/LKAnthropicClientCancellationTests.swift`
+    - `Tests/LKAICoreTests/Chat/LKAIChatStreamTests.swift`
   - Removed: (none)
 - Dependencies: `LKAITestSupport` 開始 `import Testing`。Swift Testing 隨工具鏈提供，`Package.swift` 不需要為它新增依賴。
 - Compatibility: no capability-level observable behavior changes。唯一的文字差異：串流沒有結束事件就結束時，`.invalidResponse` 的開發者說明文字由「Stream ended before message_stop」改為不分供應商的說明；錯誤種類不變。

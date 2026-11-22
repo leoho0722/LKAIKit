@@ -1,6 +1,6 @@
 ## Context
 
-`add-chat-abstraction-anthropic` 完成了共用對話抽象與 Anthropic 實作。它封存後的 design 在 Open Questions 建議：第二家供應商的 change 開始前，先把 `stream(_:)` 的共同流程抽進 `LKAICore`，並一併處理實作審查留下的四項。下一家是 OpenAI（`02-add-openai-provider`），使用者在 2026-11-22 的討論中決定把抽出共同流程拆成本 change，先做。規劃完成後經 fable 與 opus 兩位審查者審查，本文件已納入查證成立的修正。
+`add-chat-abstraction-anthropic` 完成了共用對話抽象與 Anthropic 實作。它封存後的 design 在 Open Questions 建議：第二家供應商的 change 開始前，先把 `stream(_:)` 的共同流程抽進 `LKAICore`，並一併處理實作審查留下的四項。下一家是 OpenAI（`02-add-openai-provider`），使用者在 2026-11-22 的討論中決定把抽出共同流程拆成本 change，先做。規劃完成後經 fable 與 opus 兩位審查者審查，本文件已納入查證成立的修正。實作完成後的四份審查（`/spectra-verify`、`/spectra-review`、fable、opus）都沒有必修；查證成立的建議由第 4 組任務處理，見決策「Anthropic 的測試走不到的共同行為在 LKAICoreTests 直接測試」與 Open Questions。
 
 目前的狀態（2026-11-22 讀取原始碼）：
 
@@ -44,6 +44,7 @@
   - body 丟出的錯誤本身就會被當成已知問題。
   - 加上 `matching:` 並只接受 `issue.kind` 為 `.unconditional`，就只接受 `Issue.record` 記錄的問題。
   - body 沒有記錄任何問題時，測試以「Known issue was not recorded」失敗。
+  - `Issue.record` 返回之前，`matching:` 就已經執行完；從 body 內的非結構化 `Task` 呼叫也一樣。這一項是實作審查（opus）提出疑問後，在 2026-11-22 另以 probe 實測。
 - **跨模組的 `Sendable`**：沒有明寫 `Sendable` 的 `package struct` 從另一個模組作為 `Task` 的回傳值，可以編譯。
 
 以 XcodeBuildMCP 對 iOS 26.5 模擬器實測目前的 `main`：
@@ -65,7 +66,9 @@
 - OpenAI 的實作，由 `02-add-openai-provider` 負責。
 - `LKAIHTTPClient.makeLines(from:)` 讀取位元組的 task 不改用 `init(producing:)`：它的元素是 `String`，錯誤轉換屬於 `LKAIHTTPLines`；而且只有這一處，寫在 `LKAICore` 內，供應商不會重寫。
 - 公開 API 不變：`LKAIChatStream.init(_:)`、`LKAIChatClientProtocol`、`LKAIError` 的 case 都不改；不新增錯誤種類，也不在 `serviceUnavailable` 加等待時間。
-- 不為共同流程另寫 `LKAICoreTests`：分支由 `LKAIAnthropicTests` 的測試把關，見 Implementation Contract 的對照，其中兩個分支由任務 2.3 補上回歸測試。測試的長期位置留在 Open Questions。
+- 共同流程的分支不在 `LKAICoreTests` 重寫一份：由 `LKAIAnthropicTests` 的測試把關，見 Implementation Contract 的對照，其中兩個分支由任務 2.3 補上回歸測試。
+  - 例外是 Anthropic 的測試走不到的行為，見決策「Anthropic 的測試走不到的共同行為在 LKAICoreTests 直接測試」。
+  - 測試的長期位置留在 Open Questions。
 - SSE 分框的測試 helper 不搬：`SSEEvent` 的 `name`／`data` 與 `lines(of:)` 和 Anthropic 的事件建構寫在同一個型別裡。等 OpenAI 的測試需要時再拆，見 Open Questions。
 - 不重跑實際 API 測試：送出的請求內容不變，由 `LKAnthropicClientTests` 比對標頭與內容的測試把關。
 - 只 `import LKAIKit` 的使用端檢查 package，延後到 BuyLedger 整合。
@@ -272,6 +275,25 @@ mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAICha
 - `package-distribution` spec 的「Module dependency direction」明寫不含 `.testTarget`。
 - 「Test support stays out of the library build」只限制 `LKAITestSupport` 的依賴，而 `Testing` 不是 target 依賴。
 
+### Anthropic 的測試走不到的共同行為在 LKAICoreTests 直接測試
+
+實作審查（fable）指出兩處沒有直接的測試，使用者在 2026-11-22 決定現在補上：
+
+- **同一個陣列的多個事件**：`makeStream(for:)` 依序交出 mapper 回傳的陣列；交出 `.finished` 後，同一個陣列裡之後的事件不交出，也不再讀取。
+  - Anthropic 的 `handle(_:)` 每次只回傳 0 或 1 個事件，依兩家對照表 OpenAI 也是，要到 Gemini 才會走到。
+  - 這是本 change 新增的行為，不是搬移，所以前一版「分支由 `LKAIAnthropicTests` 把關」的前提對它不成立。
+- **`LKAIChatStream.init(producing:)`**：正常返回、丟錯、釋放串流後取消生產端三條路徑，原本只由 Anthropic 的測試間接把關，`Tests/` 內沒有直接呼叫它的地方（grep 確認）。
+
+做法：
+
+- `LKAIChatStreamTests` 新增 `init(producing:)` 的三個測試。
+- 新增 `Tests/LKAICoreTests/Chat/LKAIServerSentEventChatStreamingTests.swift`：
+  - 檔內放假的供應商、假的 mapper，以及回傳固定回應的假 HTTP client。
+  - `LKAICoreTests` 不因此依賴 `LKAITestSupport`。
+- 其餘分支仍由 Anthropic 的測試把關，不在這裡重寫一份。
+
+考慮過的替代方案：記進 Open Questions，由 02 或 Gemini 的 change 補。這兩處都是 `LKAICore` 自己的契約；等第一個用到的供應商出現才補，新行為在那之前就一直沒有測試，否決。
+
 ### config.yaml 的指標改為同時指向本 change
 
 `docs/spectra/config.yaml` 的 API 演進規則目前要求新增供應商前先讀 `add-chat-abstraction-anthropic` 的 design。本 change 封存後，那份 design 有三處過時：
@@ -302,6 +324,11 @@ mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAICha
   - 2.3 只新增兩個測試。
 - **兩組檔案不重疊**：第 1 組只改 `Sources/LKAICore` 與 `Sources/LKAIAnthropic`；第 2 組改 `Package.swift`、`Sources/LKAITestSupport` 與 `Tests/`。
 - **主對話**：做 3.1 與 3.2。
+- **第 4 組（實作審查的修正）**：
+  - sonnet 做 4.1，只改 `Sources/`。
+  - haiku 做 4.2、4.3，只改 `Tests/`。
+  - 主對話做 4.4。
+  - 兩個 worktree 先重設到合併後的功能分支再開始。
 
 ## Implementation Contract
 
@@ -329,7 +356,7 @@ mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAICha
 | `LKAIServerSentEventChatStreaming.swift` | `data/Service.swift` 的 Protocol 區，比照 `LKAIChatClientProtocol.swift`；共同流程寫在同檔的 `package` extension，刪掉 Implementation 區 |
 | `LKAIServerSentEventMapping.swift` | 沒有對應樣板，手寫。它描述的是能力，不是 Service 或 Client 這類角色，ios-dev-kit 沒有能力式 protocol 的樣板 |
 | `LKAISnakeCaseJSON.swift`、`LKAIChatClientProtocolTestSupport.swift`、`LKAITestWaiting.swift` | 沒有對應樣板，依 `file-templates.md` 檔頭規則、`formatting.md` 與 `coding-style.md` 手寫；兩個 TestSupport 依 `tests/Tests.swift` 一節的 TestSupport 規則 |
-| `LKAIMockHTTPClientTests.swift` | `tests/Tests.swift` |
+| `LKAIMockHTTPClientTests.swift`、`LKAIServerSentEventChatStreamingTests.swift` | `tests/Tests.swift` |
 
 **共同流程的表列分支與把關的測試**：依 TDD 的 Regression，表內的分支都由測試覆蓋，既有測試的期望值不改。
 
@@ -348,13 +375,16 @@ mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAICha
 | `.finished` 後停止讀取並放開回應 | `LKAnthropicClientCancellationTests` 的 `stream_收到messageStop並交出結束事件_放開回應且底層請求被取消` |
 | 取消迭代的 task、釋放串流 | `LKAnthropicClientCancellationTests` 的 `stream_送出一段文字後取消迭代的task_迭代正常結束且底層請求被取消`、`stream_離開迴圈並釋放串流_底層請求被取消` |
 | `streamFailure` 的 `isCancelled` | `LKAIChatStreamTests` 與 `LKAIHTTPLinesTests` 的 `init_先取消迭代的task再由來源丟出錯誤_正常結束且沒有錯誤` |
+| 同一個陣列依序交出，`.finished` 之後的事件不交出、不再讀取 | 任務 4.3 新增：`LKAIServerSentEventChatStreamingTests` 的 `makeStream_一則事件回傳文字結束與文字_交出到結束事件為止且不再讀取` |
+| `init(producing:)` 正常返回、丟錯、釋放串流後取消生產端 | 任務 4.3 新增：`LKAIChatStreamTests` 的 `initProducing_生產端交出事件後正常返回_依序交出事件後正常結束`、`initProducing_生產端交出事件後丟出錯誤_先交出事件再以該錯誤結束`、`initProducing_收到第一個事件後釋放串流_生產端的task被取消` |
 
-任務 2.3 的兩個測試是既有行為的回歸測試：在修改前的實作上就要通過，合併第 1 組之後也要通過。
+任務 2.3 與 4.3 的測試都是既有行為的回歸測試：在當時的實作上就要通過。2.3 的兩個測試在合併第 1 組之後也要通過。
 
 **驗收（主對話執行）**：
 
 - **建置與測試**：`swift package clean` 後 `swift build` 與完整 `swift test` 零警告。
-  - Swift Testing 共 118 個：LKAICore 62、LKAIAnthropic 45（原本 43，加任務 2.3 的 2 個）、LKAIKitCLI 7、LKAIKit 2、LKAITestSupportTests 2。
+  - 任務 3.2 驗收時，Swift Testing 共 118 個：LKAICore 62、LKAIAnthropic 45（原本 43，加任務 2.3 的 2 個）、LKAIKitCLI 7、LKAIKit 2、LKAITestSupportTests 2。
+  - 任務 4.4 驗收時共 122 個：LKAICore 再加任務 4.3 的 4 個，成為 66 個，其餘不變。
   - 2 個實際 API 測試沒有金鑰時略過。
 - **spectra-scenario 標記**：`Tests/` 內所有 `spectra-scenario:` 行排序後與修改前逐行相同。
 - **`swift package dump-package`**：
@@ -375,11 +405,13 @@ mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAICha
 | `makeStream(for:)` 讀不到錯誤內容時改用空字串 | `stream與invoke_讀取錯誤內容時連線中斷_丟出transport且保留底層錯誤代碼` |
 | 讓 `makeStream(for:)` 送出兩次 `fetch` | `stream_回應沒有任何事件_丟出無效回應錯誤`，因替身記錄的問題而失敗；這個測試原本只比對錯誤種類 |
 | 拿掉替身的 `Issue.record` | `LKAIMockHTTPClientTests` 的第二次 `fetch` 測試，以「Known issue was not recorded」失敗 |
+| 任務 4.4：`init(producing:)` 丟錯時改呼叫 `finish()` | `initProducing_生產端交出事件後丟出錯誤_先交出事件再以該錯誤結束` |
+| 任務 4.4：`makeStream(for:)` 交出 `.finished` 後不返回 | `makeStream_一則事件回傳文字結束與文字_交出到結束事件為止且不再讀取` |
 
 ## Risks / Trade-offs
 
 - [`LKAnthropicClient` 的 `httpClient` 與三個方法提高到 `package`] → 只在 package 內可見，公開 API 不變；`customMirror` 仍不含 `httpClient`，`makeURLRequest(for:)` 的 `///` 寫明只給共同流程使用。
-- [共同流程只由一家供應商的測試把關] → 以上方的反向檢查確認表列分支有測試擋住；`02-add-openai-provider` 會帶來第二組使用它的測試，長期位置見 Open Questions。
+- [共同流程大多只由一家供應商的測試把關] → 以上方的反向檢查確認表列分支有測試擋住；Anthropic 走不到的兩處由 `LKAICoreTests` 直接測試；`02-add-openai-provider` 會帶來第二組使用它的測試，長期位置見 Open Questions。
 - [`LKAITestSupport` 開始 `import Testing`] → macOS 上 `swift build` 零警告（實測）。在 iOS 上，`LKAIKit` 與 `LKAIKit-Package` 的一般建置都不含 `LKAITestSupport`（實測），只有建置測試時會編譯它；這種建置目前已因 `Process` 失敗，3.2 以「`LKAITestSupport` 沒有新錯誤」驗收。
 - [`Issue.record` 在測試以外被呼叫] → `LKAITestSupport` 不屬於任何 product，只有測試使用。
 - [`.invalidResponse` 的說明文字改變] → 只是開發者看的文字；測試只比對錯誤種類（grep 確認），spec 沒有規定這段文字。
@@ -403,8 +435,13 @@ mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAICha
 - `LKAIHTTPClient.makeLines(from:)` 的 task 寫法是否也收進共用的建構方式：等出現第二個建立逐行內容的地方再決定。
 - 共同流程分支的測試長期放哪裡：目前由 `LKAIAnthropicTests` 把關，其中 14 行標記為 `spectra-scenario: chat-client`（2026-11-22 計數）。
   - 如果 `02-add-openai-provider` 照抄一份，之後改一次共同流程就要改每一家的測試。
-  - 另一條路是在 `LKAICoreTests` 用假的供應商測一次；這要讓 `LKAICoreTests` 依賴 `LKAITestSupport`。
-  - 由 02 決定。
+  - 另一條路是在 `LKAICoreTests` 用假的供應商測一次。任務 4.3 已在 `LKAIServerSentEventChatStreamingTests` 放了檔內的假供應商與假 HTTP client，`LKAICoreTests` 不必依賴 `LKAITestSupport`；其餘分支要不要移過去，仍由 02 決定。
+- Gemini 沒有獨立的結束事件：mapper 只能在帶 `finishReason` 的那一則交出 `.finished`，共同流程隨即停止讀取。
+  - 如果實際回應在那之後還有帶用量的事件，用量會漏掉。這一點 fable 提出，尚未以實際回應驗證。
+  - Gemini 的 change 先以實際回應確認；需要時在 `LKAIServerSentEventMapping` 加一個讀完時呼叫的要求，只動 package 內的型別。
+- `LKAITestWaiting.waitUntil(_:)` 等不到條件時直接返回，靠呼叫端接著斷言。
+  - `LKAnthropicClientCancellationTests` 的非串流取消測試，等 `requests.count == 1` 之後沒有斷言這個條件。這是修改前就有的寫法，本 change 不改。
+  - 02 的取消測試，等待之後一律對同一個條件斷言。
 - SSE 分框的測試 helper：`SSEEvent` 的 `name`／`data` 與 `lines(of:)` 是 SSE 的分框，不是 Anthropic 專屬。02 使用時，把分框的部分搬進 `LKAITestSupport`，Anthropic 的事件建構留在原處。
 - 金鑰遮蔽：`LKAnthropicClient` 的 `CustomStringConvertible`、`CustomDebugStringConvertible`、`CustomReflectable` 三個遵循要每家各寫一次，漏了 `CustomReflectable` 時 `dump(_:)` 會印出金鑰。02 要有對應的測試，並考慮能否共用。
 - Ollama 原生串流若為 NDJSON（fable 的認知，未查證）：Ollama 的 change 應重用 `makeStream(for:)` 的步驟 1–4 與 6，只抽換步驟 5 的分框方式，不複製整段流程。
