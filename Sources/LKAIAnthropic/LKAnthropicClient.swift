@@ -18,8 +18,8 @@ public struct LKAnthropicClient: Sendable {
 
     // MARK: - Properties
 
-    /// App 保管的 Anthropic API 金鑰，只放進請求標頭，不出現在任何描述裡
-    private let apiKey: String
+    /// App 保管的 Anthropic API 金鑰，原始值只在組請求時讀取、放進請求標頭，不出現在任何描述裡
+    private let apiKey: LKAIAPIKey
 
     /// 實際送出請求的 HTTP client，測試時換成不連網的替身；共同流程從這裡取用
     package let httpClient: any LKAIHTTPClientProtocol
@@ -58,7 +58,7 @@ public struct LKAnthropicClient: Sendable {
         httpClient: any LKAIHTTPClientProtocol,
         refusalFallback: LKAnthropicRefusalFallback = .disabled
     ) {
-        self.apiKey = apiKey
+        self.apiKey = LKAIAPIKey(apiKey)
         self.httpClient = httpClient
         self.refusalFallback = refusalFallback
     }
@@ -126,7 +126,7 @@ extension LKAnthropicClient: LKAIServerSentEventChatStreaming {
         }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
-        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.setValue(apiKey.unredactedValue, forHTTPHeaderField: "x-api-key")
         urlRequest.setValue("2026-10-21", forHTTPHeaderField: "anthropic-version")
         urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
         if let betaHeaderValue = refusalFallback.betaHeaderValue {
