@@ -21,7 +21,7 @@ struct LKAIErrorTests {
         .permissionDenied,
         .rateLimited(retryAfter: .seconds(30)),
         .quotaExceeded,
-        .serviceUnavailable(statusCode: 529),
+        .serviceUnavailable(statusCode: 529, retryAfter: nil),
         .invalidRequest(message: "bad"),
         .refused(detail: "cyber"),
         .cancelled,
@@ -43,7 +43,8 @@ struct LKAIErrorTests {
         (.rateLimited(retryAfter: .seconds(30)), true),
         (.rateLimited(retryAfter: nil), true),
         (.quotaExceeded, false),
-        (.serviceUnavailable(statusCode: 529), true),
+        (.serviceUnavailable(statusCode: 529, retryAfter: nil), true),
+        (.serviceUnavailable(statusCode: 503, retryAfter: .seconds(5)), true),
         (.invalidRequest(message: "bad"), false),
         (.refused(detail: "cyber"), false),
         (.cancelled, false),
@@ -111,22 +112,37 @@ struct LKAIErrorTests {
         StatusCase(
             statusCode: 500,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 500)
+            expectedError: .serviceUnavailable(statusCode: 500, retryAfter: nil)
         ),
         StatusCase(
             statusCode: 503,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 503)
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: nil)
+        ),
+        StatusCase(
+            statusCode: 503,
+            retryAfter: "5",
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: .seconds(5))
+        ),
+        StatusCase(
+            statusCode: 503,
+            retryAfter: "-1",
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: nil)
         ),
         StatusCase(
             statusCode: 529,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 529)
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: nil)
+        ),
+        StatusCase(
+            statusCode: 529,
+            retryAfter: "Wed, 21 Oct 2026 07:28:00 GMT",
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: nil)
         ),
         StatusCase(
             statusCode: 599,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 599)
+            expectedError: .serviceUnavailable(statusCode: 599, retryAfter: nil)
         ),
     ])
     func init_狀態碼與retryAfter標頭_分類為範例表的錯誤(testCase: StatusCase) {
@@ -159,6 +175,67 @@ struct LKAIErrorTests {
             false
         }
         #expect(isInvalidResponse)
+    }
+
+    // spectra-scenario: chat-client / Report a stream error the provider does not recognize
+    // spectra-scenario: chat-client / Report a stream error the provider does not recognize / unrecognized stream errors
+    /// 驗證串流中對應不到的錯誤依範例表回報：有代碼是不可重試的無效回應，沒有代碼是可重試的 500
+    ///
+    /// - Parameter testCase: 一列範例：錯誤代碼與訊息、預期的錯誤，以及預期可否重試
+    /// - Note: 有代碼的列只比對是無效回應，而且說明文字含全部指定的文字，不比對整句
+    /// - Note: 沒有代碼的列不論有沒有訊息，結果都一樣
+    @Test(arguments: [
+        UnrecognizedStreamCase(
+            code: "new_unknown_code",
+            message: "Something went wrong.",
+            expectation: .invalidResponse(
+                containing: ["new_unknown_code", "Something went wrong."]
+            ),
+            expectedIsRetryable: false
+        ),
+        UnrecognizedStreamCase(
+            code: "new_unknown_code",
+            message: nil,
+            expectation: .invalidResponse(containing: ["new_unknown_code"]),
+            expectedIsRetryable: false
+        ),
+        UnrecognizedStreamCase(
+            code: nil,
+            message: "Something went wrong.",
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil)),
+            expectedIsRetryable: true
+        ),
+        UnrecognizedStreamCase(
+            code: nil,
+            message: nil,
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil)),
+            expectedIsRetryable: true
+        ),
+    ])
+    func unrecognizedStreamError_代碼與訊息的各種組合_依範例表回報錯誤(testCase: UnrecognizedStreamCase) {
+        // Given
+
+        // When
+        let error = LKAIError.unrecognizedStreamError(
+            code: testCase.code,
+            message: testCase.message
+        )
+
+        // Then
+        #expect(error.isRetryable == testCase.expectedIsRetryable)
+        switch testCase.expectation {
+        case .error(let expectedError):
+            #expect(error == expectedError)
+
+        case .invalidResponse(let fragments):
+            guard case .invalidResponse(let reason) = error else {
+                Issue.record("預期是無效回應，實際是 \(error)")
+                return
+            }
+            for fragment in fragments {
+                #expect(reason.contains(fragment), "說明文字 \"\(reason)\" 沒有含 \"\(fragment)\"")
+            }
+        }
     }
 
     // spectra-scenario: chat-client / Look up the description of each error kind
@@ -275,5 +352,35 @@ extension LKAIErrorTests {
 
         /// 預期分類出的錯誤
         let expectedError: LKAIError
+    }
+
+    /// 串流中對應不到的錯誤的一列範例：供應商給的代碼與訊息，以及預期的錯誤與可否重試
+    struct UnrecognizedStreamCase {
+
+        /// 供應商給的錯誤代碼，沒有代碼時為 nil
+        let code: String?
+
+        /// 供應商給的錯誤訊息，沒有訊息時為 nil
+        let message: String?
+
+        /// 預期的錯誤
+        let expectation: Expectation
+
+        /// 預期的 `isRetryable`
+        let expectedIsRetryable: Bool
+
+        /// 預期的錯誤：指定的錯誤，或只要求是無效回應且說明含指定的文字
+        enum Expectation {
+
+            /// 回報的錯誤必須等於指定的錯誤
+            ///
+            /// - Parameter error: 預期的錯誤
+            case error(LKAIError)
+
+            /// 回報的錯誤必須是無效回應，而且說明文字含全部指定的文字
+            ///
+            /// - Parameter containing: 說明文字必須含有的文字
+            case invalidResponse(containing: [String])
+        }
     }
 }

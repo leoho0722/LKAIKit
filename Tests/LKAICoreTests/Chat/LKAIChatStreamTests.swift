@@ -47,7 +47,7 @@ struct LKAIChatStreamTests {
     @Test(arguments: [
         .invalidAPIKey,
         .rateLimited(retryAfter: .seconds(30)),
-        .serviceUnavailable(statusCode: 529),
+        .serviceUnavailable(statusCode: 529, retryAfter: nil),
         .invalidResponse(reason: "bad data"),
     ] as [LKAIError])
     func init_來源送出文字後丟出對話錯誤_先交出文字再丟出同一個錯誤(sourceError: LKAIError) async throws {
@@ -183,7 +183,7 @@ struct LKAIChatStreamTests {
     @Test
     func initProducing_生產端交出事件後丟出錯誤_先交出事件再以該錯誤結束() async throws {
         // Given
-        let sourceError = LKAIError.serviceUnavailable(statusCode: 503)
+        let sourceError = LKAIError.serviceUnavailable(statusCode: 503, retryAfter: nil)
         let expectedEvents: [LKAIChatStreamEvent] = [.textDelta("Hel")]
         let stream = LKAIChatStream { yield throws(LKAIError) in
             yield(.textDelta("Hel"))

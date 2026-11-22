@@ -29,8 +29,13 @@ public enum LKAIError: Error, Equatable, Sendable {
 
     /// 供應商的服務暫時無法使用，例如過載或維護中
     ///
-    /// - Parameter statusCode: 供應商回報的 HTTP 狀態碼；串流中途發生的錯誤沒有 HTTP 狀態碼，由供應商依錯誤類型指定
-    case serviceUnavailable(statusCode: Int)
+    /// - Parameters:
+    ///   - statusCode: 供應商回報的 HTTP 狀態碼；串流中途發生的錯誤沒有 HTTP 狀態碼，由供應商依錯誤類型指定
+    ///   - retryAfter: 供應商要求等待的時間；沒有提供或無法解讀時為 nil，串流中途的錯誤一律為 nil
+    /// - Note: nil 只代表不知道要等多久，不代表可以立刻重試
+    /// - Note: 取狀態碼的寫法是 `case .serviceUnavailable(let statusCode, let retryAfter)`；
+    ///   pattern 只寫 `statusCode:` 一個標籤、漏掉 `retryAfter` 時，取到的值會悄悄變成整個 tuple，編譯器沒有警告
+    case serviceUnavailable(statusCode: Int, retryAfter: Duration?)
 
     /// 請求內容有問題，供應商無法處理
     ///
@@ -39,7 +44,9 @@ public enum LKAIError: Error, Equatable, Sendable {
 
     /// AI 拒絕回應這個請求
     ///
-    /// - Parameter detail: 供應商說明拒答的原因，各家格式不同（類別代碼、說明文字或列舉名），只適合記錄 log，不適合依內容判斷
+    /// - Parameter detail: 供應商給的拒答原因，各家格式不同，可能是類別代碼、錯誤代碼，或模型寫的說明文字
+    /// - Note: 只適合記錄 log，不適合依內容判斷
+    /// - Note: 模型寫的說明文字可能引用使用者的內容，記錄 log 時要比照使用者的內容處理
     case refused(detail: String?)
 
     /// 呼叫在完成前被取消
@@ -50,9 +57,10 @@ public enum LKAIError: Error, Equatable, Sendable {
     /// - Parameter underlying: 系統回報的原始網路錯誤，供除錯用
     case transport(underlying: URLError)
 
-    /// 供應商回傳的內容不符預期，無法解讀
+    /// 供應商回傳的內容不符預期，無法解讀；也包含串流中供應商回報、但本套件不認得的錯誤代碼
     ///
-    /// - Parameter reason: 無法解讀的原因，給開發者除錯用
+    /// - Parameter reason: 無法解讀的原因，給開發者除錯用；不認得的錯誤代碼時，帶供應商的代碼與訊息
+    /// - Note: 看到不認得的錯誤代碼時，不一定是套件或協定出錯，可能是供應商新增了錯誤，原因在 `reason` 裡
     case invalidResponse(reason: String)
 
     // MARK: - Init
@@ -64,7 +72,7 @@ public enum LKAIError: Error, Equatable, Sendable {
     ///   - retryAfter: `retry-after` 標頭的原始值，沒有標頭時為 nil
     /// - Note: 401、402、403 分別是金鑰無效、用量用完、沒有權限，429 是限流，其他 4xx 是請求有問題
     /// - Note: 5xx 是服務不可用，其餘（含 1xx、3xx 與 600 以上）是無法解讀的回應
-    /// - Note: 只有 429 會讀 `retryAfter`，且只接受純 ASCII 數字的秒數；帶正負號、空白或 HTTP 日期都視為沒有提供
+    /// - Note: 429 與 5xx 會讀 `retryAfter`，且只接受純 ASCII 數字的秒數；帶正負號、空白或 HTTP 日期都視為沒有提供
     package init(httpStatusCode: Int, retryAfter: String?) {
         switch httpStatusCode {
         case 401:
@@ -83,7 +91,10 @@ public enum LKAIError: Error, Equatable, Sendable {
             self = .invalidRequest(message: nil)
 
         case 500...599:
-            self = .serviceUnavailable(statusCode: httpStatusCode)
+            self = .serviceUnavailable(
+                statusCode: httpStatusCode,
+                retryAfter: Self.retryDelay(from: retryAfter)
+            )
 
         default:
             self = .invalidResponse(reason: "Unexpected HTTP status \(httpStatusCode)")
@@ -172,6 +183,29 @@ extension LKAIError {
             return nil
         }
         return chatError
+    }
+
+    /// 串流開始後，供應商回報的錯誤對應不到任何已知的錯誤種類時，統一轉成要交給 App 的錯誤
+    ///
+    /// - Parameters:
+    ///   - code: 供應商給的錯誤代碼；沒有任何代碼時為 nil
+    ///   - message: 供應商給的錯誤訊息，只放進說明幫助除錯；沒有時為 nil
+    /// - Returns: 有代碼時是 `.invalidResponse`，說明為
+    ///   `Unrecognized stream error code <code>: <message>`，沒有訊息時 `<message>` 為 `no message`；
+    ///   沒有代碼時是 `.serviceUnavailable(statusCode: 500, retryAfter: nil)`，不看 `message`
+    /// - Note: 這是 chat-client「Unrecognized stream errors」的共同規則，各供應商串流中對應不到的錯誤都呼叫它
+    /// - Note: 說明文字只在這裡組出，格式才不會因供應商而異
+    /// - Note: 有代碼但不認得的錯誤一律不可重試，因為新代碼多半是政策性阻擋這類重送也不會成功的錯誤，
+    ///   當成可重試會讓 App 自動重送被擋下的請求
+    /// - Note: 完全沒有代碼時沒有任何線索可判斷，當成服務暫時無法使用，可重試
+    /// - Note: 只用在串流；HTTP 錯誤回應有狀態碼可以判斷，供應商分類不了時改用預設的狀態碼分類
+    package static func unrecognizedStreamError(code: String?, message: String?) -> LKAIError {
+        guard let code else {
+            return .serviceUnavailable(statusCode: 500, retryAfter: nil)
+        }
+        return .invalidResponse(
+            reason: "Unrecognized stream error code \(code): \(message ?? "no message")"
+        )
     }
 
     /// 把 `retry-after` 標頭的原始值轉成等待時間

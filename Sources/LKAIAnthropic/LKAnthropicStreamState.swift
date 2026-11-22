@@ -59,12 +59,13 @@ extension LKAnthropicStreamState: LKAIServerSentEventMapping {
     /// - Parameter event: 剛解析出的 SSE 事件，事件種類以 `data` 裡的 `type` 為準，不看事件名稱
     /// - Returns: 有文字時為只含 `.textDelta` 的陣列；`message_stop` 時為只含 `.finished` 的陣列；其餘為空陣列
     /// - Throws: `data` 解碼失敗丟 `invalidResponse`；`error` 事件丟對應的錯誤；`message_stop` 的結束原因不正常時丟對應的錯誤
-    /// - Note: `error` 事件的類型不認得時，依規格以 500 處理，丟 `serviceUnavailable`；已交出的文字片段保留
+    /// - Note: `error` 事件沒有 `error.type` 或類型不認得時，依 chat-client 的共同規則，
+    ///   由 `LKAIError.unrecognizedStreamError(code:message:)` 回報；已交出的文字片段保留
     mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAIChatStreamEvent] {
         let streamEvent = try decode(event)
         if case .error(let body) = streamEvent {
             throw body.error.lkaiError(statusCode: nil, retryAfter: nil)
-                ?? .serviceUnavailable(statusCode: 500)
+                ?? .unrecognizedStreamError(code: body.error.type, message: body.error.message)
         }
         if case .messageStop = streamEvent {
             let completion = try makeCompletion()

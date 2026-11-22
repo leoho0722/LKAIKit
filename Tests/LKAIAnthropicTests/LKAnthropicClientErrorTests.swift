@@ -71,19 +71,37 @@ struct LKAnthropicClientErrorTests {
             statusCode: 529,
             extraHeaders: [:],
             body: #"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 529)
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: nil)
         ),
         ErrorResponseCase(
             statusCode: 500,
             extraHeaders: [:],
             body: #"{"type":"error","error":{"type":"api_error","message":"Internal server error"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 500)
+            expectedError: .serviceUnavailable(statusCode: 500, retryAfter: nil)
         ),
         ErrorResponseCase(
             statusCode: 504,
             extraHeaders: [:],
             body: #"{"type":"error","error":{"type":"timeout_error","message":"Request timed out"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 504)
+            expectedError: .serviceUnavailable(statusCode: 504, retryAfter: nil)
+        ),
+        ErrorResponseCase(
+            statusCode: 529,
+            extraHeaders: ["retry-after": "10"],
+            body: #"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: .seconds(10))
+        ),
+        ErrorResponseCase(
+            statusCode: 500,
+            extraHeaders: ["retry-after": "3"],
+            body: #"{"type":"error","error":{"type":"api_error","message":"Internal server error"}}"#,
+            expectedError: .serviceUnavailable(statusCode: 500, retryAfter: .seconds(3))
+        ),
+        ErrorResponseCase(
+            statusCode: 504,
+            extraHeaders: ["retry-after": "7"],
+            body: #"{"type":"error","error":{"type":"timeout_error","message":"Request timed out"}}"#,
+            expectedError: .serviceUnavailable(statusCode: 504, retryAfter: .seconds(7))
         ),
         ErrorResponseCase(
             statusCode: 409,
@@ -92,10 +110,16 @@ struct LKAnthropicClientErrorTests {
             expectedError: .invalidRequest(message: nil)
         ),
         ErrorResponseCase(
+            statusCode: 400,
+            extraHeaders: [:],
+            body: #"{"type":"error","error":{"message":"Bad request"}}"#,
+            expectedError: .invalidRequest(message: nil)
+        ),
+        ErrorResponseCase(
             statusCode: 502,
             extraHeaders: [:],
             body: "<html>Bad Gateway</html>",
-            expectedError: .serviceUnavailable(statusCode: 502)
+            expectedError: .serviceUnavailable(statusCode: 502, retryAfter: nil)
         ),
     ] as [ErrorResponseCase]
 
@@ -103,21 +127,31 @@ struct LKAnthropicClientErrorTests {
     private static let errorEventCases = [
         ErrorEventCase(
             data: #"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 529))
+            expectation: .error(.serviceUnavailable(statusCode: 529, retryAfter: nil))
         ),
         ErrorEventCase(
             data: #"{"type":"error","error":{"type":"api_error","message":"Internal server error"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
         ErrorEventCase(
             data: #"{"type":"error","error":{"type":"timeout_error","message":"Request timed out"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 504))
+            expectation: .error(.serviceUnavailable(statusCode: 504, retryAfter: nil))
         ),
         ErrorEventCase(
-            data: #"{"type":"error","error":{"type":"new_unknown_error","message":"Something new"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            data: #"{"type":"error","error":{"type":"new_unknown_error","message":"Something went wrong."}}"#,
+            expectation: .invalidResponse(
+                containing: ["new_unknown_error", "Something went wrong."]
+            )
         ),
-        ErrorEventCase(data: "not json", expectation: .invalidResponse),
+        ErrorEventCase(
+            data: #"{"type":"error","error":{"message":"Something went wrong."}}"#,
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
+        ),
+        ErrorEventCase(
+            data: #"{"type":"error"}"#,
+            expectation: .invalidResponse(containing: [])
+        ),
+        ErrorEventCase(data: "not json", expectation: .invalidResponse(containing: [])),
     ] as [ErrorEventCase]
 
     // spectra-scenario: anthropic-provider / Classify HTTP error responses
@@ -126,6 +160,7 @@ struct LKAnthropicClientErrorTests {
     ///
     /// - Parameter testCase: 一列範例：狀態碼、額外的標頭、回應內容與預期的錯誤
     /// - Note: 409 `conflict_error` 不在分類規則列出的 `error.type` 裡，依預設分類為沒有訊息的無效請求
+    /// - Note: `error` 物件沒有 `error.type` 的 400 也依預設分類，所以 `error.message` 不放進無效請求
     @Test(.timeLimit(.minutes(1)), arguments: LKAnthropicClientErrorTests.errorResponseCases)
     func invoke_HTTP錯誤回應_依error類型分類為範例表的錯誤(testCase: ErrorResponseCase) async throws {
         // Given
@@ -154,7 +189,8 @@ struct LKAnthropicClientErrorTests {
     /// 驗證串流中途的 `error` 事件依 `error.type` 分類：先交出已收到的文字，再以範例表預期的結果結束
     ///
     /// - Parameter testCase: 一列範例：`error` 事件的 data，以及預期的結果
-    /// - Note: 只有 data 不是 JSON 那一列只比對是無效回應，原因文字不比對
+    /// - Note: 不認得的 `error.type` 只比對是無效回應，而且說明文字同時含 `error.type` 與 `error.message`
+    /// - Note: data 不是 JSON，以及沒有 `error` 物件的列，只比對是無效回應，原因文字不比對
     @Test(.timeLimit(.minutes(1)), arguments: LKAnthropicClientErrorTests.errorEventCases)
     func stream_串流中途的error事件_先交出文字再以範例表的錯誤結束(testCase: ErrorEventCase) async throws {
         // Given
@@ -174,18 +210,7 @@ struct LKAnthropicClientErrorTests {
         // Then
         #expect(outcome.events == [.textDelta("Hel")])
         let error = try #require(outcome.error)
-        switch testCase.expectation {
-        case .error(let expectedError):
-            #expect(error == expectedError)
-
-        case .invalidResponse:
-            let isInvalidResponse = if case .invalidResponse = error {
-                true
-            } else {
-                false
-            }
-            #expect(isInvalidResponse)
-        }
+        #expect(matches(error, testCase.expectation), "Actual error: \(error)")
     }
 
     /// 驗證連線失敗時，串流與非串流呼叫都丟出 `transport`，並保留底層 `URLError` 的代碼
@@ -313,13 +338,41 @@ extension LKAnthropicClientErrorTests {
         let expectation: Expectation
     }
 
-    /// `error` 事件的預期結果：指定的錯誤，或只要求是無效回應
+    /// `error` 事件的預期結果：指定的錯誤，或只要求是無效回應且說明含指定的文字
     enum Expectation: Sendable {
 
         /// 丟出的錯誤必須等於指定的錯誤
+        ///
+        /// - Parameter error: 預期的錯誤
         case error(LKAIError)
 
-        /// 丟出的錯誤必須是無效回應，原因文字不比對
-        case invalidResponse
+        /// 丟出的錯誤必須是無效回應，而且說明文字含全部指定的文字
+        ///
+        /// - Parameter containing: 說明文字必須含有的文字；傳空陣列表示不比對說明文字
+        case invalidResponse(containing: [String])
+    }
+}
+
+// MARK: - Private Method
+
+private extension LKAnthropicClientErrorTests {
+
+    /// 判斷丟出的錯誤是否符合預期的結果
+    ///
+    /// - Parameters:
+    ///   - error: 實際丟出的錯誤
+    ///   - expectation: 預期的結果
+    /// - Returns: 符合時為 `true`；預期無效回應時，錯誤必須是無效回應，而且說明文字含全部指定的文字
+    func matches(_ error: LKAIError, _ expectation: Expectation) -> Bool {
+        switch expectation {
+        case .error(let expectedError):
+            return error == expectedError
+
+        case .invalidResponse(let fragments):
+            guard case .invalidResponse(let reason) = error else {
+                return false
+            }
+            return fragments.allSatisfy { reason.contains($0) }
+        }
     }
 }

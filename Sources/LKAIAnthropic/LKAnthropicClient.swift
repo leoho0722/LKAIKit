@@ -136,14 +136,15 @@ extension LKAnthropicClient: LKAIServerSentEventChatStreaming {
         return urlRequest
     }
 
-    /// 依 Anthropic 的 `error.type` 分類非 2xx 的回應；內容解析不了或類型不認得時回傳 nil，改用預設分類
+    /// 依 Anthropic 的 `error.type` 分類非 2xx 的回應；內容解析不了、沒有類型或類型不認得時回傳 nil，改用預設分類
     ///
     /// - Parameters:
     ///   - statusCode: `api_error`、`overloaded_error`、`timeout_error` 以它當 `serviceUnavailable` 的狀態碼
-    ///   - headers: 只讀 `retry-after`，用來算限流的等待時間
+    ///   - headers: 只讀 `retry-after`，用來算限流與三種服務不可用的錯誤的等待時間
     ///   - body: Anthropic 的錯誤 JSON，格式見 `LKAnthropicErrorBody`
-    /// - Returns: 對應的錯誤；內容解析不了或類型不認得時為 nil
-    /// - Note: `retry-after` 只有 `rate_limit_error` 會用到；花費上限用完時是 `quotaExceeded`，不帶等待時間
+    /// - Returns: 對應的錯誤；內容解析不了、沒有類型或類型不認得時為 nil
+    /// - Note: `retry-after` 只有 `rate_limit_error`、`api_error`、`overloaded_error` 與
+    ///   `timeout_error` 會用到；花費上限用完時是 `quotaExceeded`，不帶等待時間
     package func httpError(statusCode: Int, headers: [String: String], body: String) -> LKAIError? {
         LKAnthropicErrorBody(text: body)?.error.lkaiError(
             statusCode: statusCode,

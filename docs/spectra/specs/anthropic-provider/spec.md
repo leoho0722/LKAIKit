@@ -487,7 +487,7 @@ code:
 ---
 ### Requirement: Error mapping
 
-`LKAnthropicClient` SHALL classify an HTTP response whose status code is outside 200-299 by the `error.type` in its JSON body: `authentication_error` as invalid API key; `permission_error` as permission denied; `billing_error` as quota exceeded; `rate_limit_error` as quota exceeded when `error.details.error_code` is `enforced_spend_limit_reached`, and otherwise as rate limited with the `retry-after` header value in seconds as the retry delay; `invalid_request_error` as quota exceeded when `error.message` starts with "You have reached your specified", which is how the API reports a spend limit that the organization or workspace set for itself, and otherwise, like `not_found_error` and `request_too_large`, as invalid request carrying `error.message`; and `api_error`, `overloaded_error` and `timeout_error` as service unavailable with the response's HTTP status code. A body it cannot decode, or an `error.type` it does not know, SHALL fall back to the default HTTP status classification of the chat-client capability. An `error` event inside a stream SHALL be classified by the same `error.type` rules, using 500 as the status code for `api_error`, 529 for `overloaded_error`, 504 for `timeout_error`, and 500 for an `error.type` it does not know; an `error` event whose data it cannot decode SHALL be reported as an invalid-response error.
+`LKAnthropicClient` SHALL classify an HTTP response whose status code is outside 200-299 by the `error.type` in its JSON body: `authentication_error` as invalid API key; `permission_error` as permission denied; `billing_error` as quota exceeded; `rate_limit_error` as quota exceeded when `error.details.error_code` is `enforced_spend_limit_reached`, and otherwise as rate limited with the `retry-after` header value in seconds as the retry delay; `invalid_request_error` as quota exceeded when `error.message` starts with "You have reached your specified", which is how the API reports a spend limit that the organization or workspace set for itself, and otherwise, like `not_found_error` and `request_too_large`, as invalid request carrying `error.message`; and `api_error`, `overloaded_error` and `timeout_error` as service unavailable with the response's HTTP status code and the `retry-after` header value in seconds as the retry delay. A body it cannot decode, an `error` object without `error.type`, or an `error.type` it does not know, SHALL fall back to the default HTTP status classification of the chat-client capability. An `error` event inside a stream SHALL be classified by the same `error.type` rules, using 500 as the status code for `api_error`, 529 for `overloaded_error` and 504 for `timeout_error`, with no retry delay because a stream carries no headers. Following the unrecognized stream errors requirement of the chat-client capability, with `error.type` as the error code, an `error` event whose `error.type` it does not know SHALL be reported as an invalid-response error whose description contains the `error.type` and the `error.message`; an `error` event whose `error` object has no `error.type` SHALL be reported as service unavailable with status 500 and no retry delay; and an `error` event whose data it cannot decode, which includes data that is not JSON and data without an `error` object, SHALL be reported as an invalid-response error.
 
 #### Scenario: Classify HTTP error responses
 
@@ -507,11 +507,15 @@ code:
 | 400 | `invalid_request_error` | `error.message` is "max_tokens: too large" | invalid request, message "max_tokens: too large" |
 | 400 | `invalid_request_error` | `error.message` is "You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC." | quota exceeded |
 | 400 | `invalid_request_error` | `error.message` is "You have reached your specified workspace API usage limits. You will regain access on 2026-12-01 at 00:00 UTC." | quota exceeded |
-| 529 | `overloaded_error` | none | service unavailable, status 529 |
-| 500 | `api_error` | none | service unavailable, status 500 |
-| 504 | `timeout_error` | none | service unavailable, status 504 |
+| 529 | `overloaded_error` | none | service unavailable, status 529, no retry delay |
+| 529 | `overloaded_error` | header `retry-after: 10` | service unavailable, status 529, retry delay 10 seconds |
+| 500 | `api_error` | none | service unavailable, status 500, no retry delay |
+| 500 | `api_error` | header `retry-after: 3` | service unavailable, status 500, retry delay 3 seconds |
+| 504 | `timeout_error` | none | service unavailable, status 504, no retry delay |
+| 504 | `timeout_error` | header `retry-after: 7` | service unavailable, status 504, retry delay 7 seconds |
 | 409 | `conflict_error` | none | invalid request |
-| 502 | body is not JSON | none | service unavailable, status 502 |
+| 502 | body is not JSON | none | service unavailable, status 502, no retry delay |
+| 400 | `error` object without `type` | `error.message` is "Bad request" | invalid request without a message |
 
 #### Scenario: Error event in the middle of a stream
 
@@ -524,64 +528,34 @@ code:
 
 | `error` event data | Expected error |
 | ------------------ | -------------- |
-| `error.type` is `overloaded_error` | service unavailable, status 529 |
-| `error.type` is `api_error` | service unavailable, status 500 |
-| `error.type` is `timeout_error` | service unavailable, status 504 |
-| `error.type` is `new_unknown_error` | service unavailable, status 500 |
+| `error.type` is `overloaded_error` | service unavailable, status 529, no retry delay |
+| `error.type` is `api_error` | service unavailable, status 500, no retry delay |
+| `error.type` is `timeout_error` | service unavailable, status 504, no retry delay |
+| `error.type` is `new_unknown_error`, `error.message` is "Something went wrong." | invalid response whose description contains "new_unknown_error" and "Something went wrong." |
+| `error` object without `type`, `error.message` is "Something went wrong." | service unavailable, status 500, no retry delay |
+| `{"type":"error"}`, without an `error` object | invalid response |
 | data is not JSON | invalid response |
 
 
 <!-- @trace
-source: add-chat-abstraction-anthropic
+source: 03-revise-chat-client-contract
 updated: 2026-11-22
 code:
-  - Package.swift
   - Sources/LKAIAnthropic/LKAnthropicClient.swift
   - Sources/LKAIAnthropic/LKAnthropicErrorBody.swift
-  - Sources/LKAIAnthropic/LKAnthropicMessagesRequestBody.swift
-  - Sources/LKAIAnthropic/LKAnthropicRefusalFallback.swift
-  - Sources/LKAIAnthropic/LKAnthropicStreamEvent.swift
   - Sources/LKAIAnthropic/LKAnthropicStreamState.swift
-  - Sources/LKAICore/Chat/LKAIChatClientProtocol.swift
-  - Sources/LKAICore/Chat/LKAIChatCompletion.swift
-  - Sources/LKAICore/Chat/LKAIChatRequest.swift
-  - Sources/LKAICore/Chat/LKAIChatResponse.swift
-  - Sources/LKAICore/Chat/LKAIChatStream.swift
-  - Sources/LKAICore/Chat/LKAIChatStreamEvent.swift
   - Sources/LKAICore/Chat/LKAIError.swift
   - Sources/LKAICore/Chat/LKAIFinishReason.swift
-  - Sources/LKAICore/Chat/LKAIMessage.swift
-  - Sources/LKAICore/Chat/LKAIMessageRole.swift
-  - Sources/LKAICore/Chat/LKAIUsage.swift
-  - Sources/LKAICore/Networking/LKAIHTTPClient.swift
-  - Sources/LKAICore/Networking/LKAIHTTPLineSplitter.swift
-  - Sources/LKAICore/Networking/LKAIHTTPLines.swift
-  - Sources/LKAICore/Networking/LKAIHTTPResponse.swift
-  - Sources/LKAICore/Networking/LKAIServerSentEvent.swift
-  - Sources/LKAICore/Networking/LKAIServerSentEventParser.swift
-  - Sources/LKAICore/Resources/Localizable.xcstrings
-  - Sources/LKAIKit/Exports.swift
-  - Sources/LKAITestSupport/LKAIMockHTTPClient.swift
-  - Tests/LKAIAnthropicTests/LKAnthropicClientCancellationTests.swift
+  - Sources/LKAIOpenAI/LKOpenAIClient.swift
+  - Sources/LKAIOpenAI/LKOpenAIErrorBody.swift
+  - Sources/LKAIOpenAI/LKOpenAIStreamState.swift
   - Tests/LKAIAnthropicTests/LKAnthropicClientErrorTests.swift
-  - Tests/LKAIAnthropicTests/LKAnthropicClientLiveTests.swift
-  - Tests/LKAIAnthropicTests/LKAnthropicClientStreamTests.swift
-  - Tests/LKAIAnthropicTests/LKAnthropicClientTestSupport.swift
-  - Tests/LKAIAnthropicTests/LKAnthropicClientTests.swift
-  - Tests/LKAICoreTests
-  - Tests/LKAICoreTests/LKAIChatClientProtocolTests.swift
-  - Tests/LKAICoreTests/LKAIChatRequestTests.swift
-  - Tests/LKAICoreTests/LKAIChatStreamTests.swift
-  - Tests/LKAICoreTests/LKAIErrorTests.swift
-  - Tests/LKAICoreTests/LKAIHTTPClientTests.swift
-  - Tests/LKAICoreTests/LKAIHTTPLineSplitterTests.swift
-  - Tests/LKAICoreTests/LKAIServerSentEventParserTests.swift
-  - Tests/LKAICoreTests/Networking/LKAIHTTPClientTestSupport.swift
-  - Tests/LKAICoreTests/Networking/LKAIHTTPClientTests.swift
-  - Tests/LKAICoreTests/Networking/LKAIHTTPLinesTestSupport.swift
-  - Tests/LKAICoreTests/Networking/LKAIHTTPLinesTests.swift
-  - Tests/LKAICoreTests/Networking/LKAIHTTPResponseTests.swift
-  - Tests/LKAIKitTests/ExportsTests.swift
+  - Tests/LKAICoreTests/Chat/LKAIChatClientProtocolTests.swift
+  - Tests/LKAICoreTests/Chat/LKAIChatStreamTests.swift
+  - Tests/LKAICoreTests/Chat/LKAIErrorTests.swift
+  - Tests/LKAIOpenAITests/LKOpenAIClientErrorTests.swift
+  - Tests/LKAIOpenAITests/LKOpenAIClientStreamTests.swift
+  - docs/adding-a-provider.md
 -->
 
 ---

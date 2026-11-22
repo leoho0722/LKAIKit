@@ -88,10 +88,9 @@ extension LKOpenAIErrorBody {
 
         /// 串流中的 `error` 事件與 `response.failed` 依 `code` 對應成的錯誤
         ///
-        /// - Note: 串流中沒有 HTTP 標頭可讀，所以限流不帶等待時間
-        /// - Note: 沒有代碼時沒有任何線索可判斷，當成服務暫時無法使用，狀態碼 500
-        /// - Note: 不認得的代碼丟 `invalidResponse`，說明帶代碼與訊息，這和 Anthropic 把不認得的類型當成 500 不同
-        /// - Note: 官方文件列的錯誤代碼中，多數不是可重試的伺服器端問題，新代碼多半也不可重試，所以不猜成 500
+        /// - Note: 串流中沒有 HTTP 標頭可讀，所以限流與服務不可用都不帶等待時間
+        /// - Note: 沒有代碼與不認得的代碼，都依 chat-client「Unrecognized stream errors」的共同規則，
+        ///   由 `LKAIError.unrecognizedStreamError(code:message:)` 回報
         var streamError: LKAIError {
             if isPolicyViolation {
                 return .refused(detail: code)
@@ -100,25 +99,23 @@ extension LKOpenAIErrorBody {
                 return .quotaExceeded
             }
             guard let code else {
-                return .serviceUnavailable(statusCode: 500)
+                return .unrecognizedStreamError(code: nil, message: message)
             }
             switch code {
             case "rate_limit_exceeded", "slow_down":
                 return .rateLimited(retryAfter: nil)
 
             case "server_is_overloaded":
-                return .serviceUnavailable(statusCode: 503)
+                return .serviceUnavailable(statusCode: 503, retryAfter: nil)
 
             case "server_error", "vector_store_timeout":
-                return .serviceUnavailable(statusCode: 500)
+                return .serviceUnavailable(statusCode: 500, retryAfter: nil)
 
             case "invalid_prompt", "data_residency_mismatch":
                 return .invalidRequest(message: message)
 
             default:
-                return .invalidResponse(
-                    reason: "Unexpected error code \(code): \(message ?? "no message")"
-                )
+                return .unrecognizedStreamError(code: code, message: message)
             }
         }
 
