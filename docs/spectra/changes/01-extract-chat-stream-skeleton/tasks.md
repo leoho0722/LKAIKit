@@ -18,7 +18,7 @@
   - `LKAIError.streamFailure(for:)` 改為 `streamFailure(for:isCancelled:)`，`LKAIChatStream` 與 `LKAIHTTPLines` 的迭代器改為傳入 `Task.isCancelled`。
 
   驗證：`swift test` 全部通過且零警告，測試的期望值沒有修改。主對話依 design Implementation Contract 的反向檢查表，做 `onTermination` 與 `isCancelled` 兩項。
-- [ ] 1.2 [after: 1.1] 依 design「SSE 對話的共同流程以 LKAIServerSentEventChatStreaming 的 extension 提供」「每條串流的事件狀態與結束判斷由供應商的 mapper 持有」「snake_case JSON 的解碼設定收成 LKAISnakeCaseJSON」，完成以下改動：
+- [x] 1.2 [after: 1.1] 依 design「SSE 對話的共同流程以 LKAIServerSentEventChatStreaming 的 extension 提供」「每條串流的事件狀態與結束判斷由供應商的 mapper 持有」「snake_case JSON 的解碼設定收成 LKAISnakeCaseJSON」，完成以下改動：
   - 在 `Sources/LKAICore/Chat/` 新增 `LKAIServerSentEventChatStreaming`（含 `makeStream(for:)` 的六個步驟）與 `LKAIServerSentEventMapping`。
   - 在 `Sources/LKAICore/Networking/` 新增 `LKAISnakeCaseJSON`。
   - `LKAnthropicStreamState` 遵循 mapping：在 `handle(_:)` 內完成解碼、`error` 事件與 `message_stop`，回傳 `[LKAIChatStreamEvent]`；`apply(_:)` 與 `makeCompletion()` 改為 private。

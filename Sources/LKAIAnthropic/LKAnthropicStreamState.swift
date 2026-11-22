@@ -9,7 +9,7 @@ import LKAICore
 
 /// 讀取一次串流期間累積的狀態：實際回應的模型、結束原因與用量，`message_stop` 時由它組出結束事件的內容
 ///
-/// - Note: 只在 `LKAIAnthropic` 內使用；串流事件依序交給 `apply(_:)`，文字片段由它交還給呼叫端
+/// - Note: 只在 `LKAIAnthropic` 內使用；SSE 事件依序交給 `handle(_:)`，由它解碼並對應成要交出的對話事件
 /// - Note: 用量欄位是累計值，事件回報的值覆寫先前的值；null 或沒有出現的欄位保留先前的值
 /// - Note: 結束原因取最後一個不是 null 的 `stop_reason`，拒答的類別跟著它一起更新
 /// - Note: 實際回應的模型以最後一個 `fallback` 區塊的 `to.model` 為準，沒有時是 `message_start` 的 `model`
@@ -50,15 +50,55 @@ struct LKAnthropicStreamState {
     init() {}
 }
 
-// MARK: - Internal Method
+// MARK: - LKAIServerSentEventMapping
 
-extension LKAnthropicStreamState {
+extension LKAnthropicStreamState: LKAIServerSentEventMapping {
+
+    /// 處理一則 SSE 事件：解碼成 Anthropic 的串流事件，更新狀態，並回傳要交出的對話事件
+    ///
+    /// - Parameter event: 剛解析出的 SSE 事件，事件種類以 `data` 裡的 `type` 為準，不看事件名稱
+    /// - Returns: 有文字時為只含 `.textDelta` 的陣列；`message_stop` 時為只含 `.finished` 的陣列；其餘為空陣列
+    /// - Throws: `data` 解碼失敗丟 `invalidResponse`；`error` 事件丟對應的錯誤；`message_stop` 的結束原因不正常時丟對應的錯誤
+    /// - Note: `error` 事件的類型不認得時，依規格以 500 處理，丟 `serviceUnavailable`；已交出的文字片段保留
+    mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAIChatStreamEvent] {
+        let streamEvent = try decode(event)
+        if case .error(let body) = streamEvent {
+            throw body.error.lkaiError(statusCode: nil, retryAfter: nil)
+                ?? .serviceUnavailable(statusCode: 500)
+        }
+        if case .messageStop = streamEvent {
+            let completion = try makeCompletion()
+            return [.finished(completion)]
+        }
+        guard let text = apply(streamEvent) else {
+            return []
+        }
+        return [.textDelta(text)]
+    }
+}
+
+// MARK: - Private Method
+
+private extension LKAnthropicStreamState {
+
+    /// 把 SSE 事件的 `data` 解碼成 Anthropic 的串流事件
+    ///
+    /// - Parameter event: 解析好的 SSE 事件
+    /// - Returns: 解碼出的串流事件；不認得的類型是略過
+    /// - Throws: `data` 不是合法的 JSON，或認得的類型欄位格式不符時丟出 `invalidResponse`
+    func decode(_ event: LKAIServerSentEvent) throws(LKAIError) -> LKAnthropicStreamEvent {
+        do {
+            return try LKAnthropicStreamEvent(data: event.data)
+        } catch {
+            throw .invalidResponse(reason: "Malformed stream event: \(error)")
+        }
+    }
 
     /// 套用一個串流事件：更新回應的模型、結束原因與用量，並把要交給 App 的文字交還給呼叫端
     ///
     /// - Parameter event: 剛收到的串流事件
     /// - Returns: 這個事件帶來的一段文字；沒有文字時為 nil
-    /// - Note: `message_stop` 與 `error` 不在這裡處理，由呼叫端在收到時分別改呼叫 `makeCompletion()` 或丟出錯誤
+    /// - Note: `message_stop` 與 `error` 不在這裡處理，由 `handle(_:)` 在收到時分別改呼叫 `makeCompletion()` 或丟出錯誤
     mutating func apply(_ event: LKAnthropicStreamEvent) -> String? {
         switch event {
         case .messageStart(let model, let usage):
@@ -83,13 +123,13 @@ extension LKAnthropicStreamState {
             merge(usage)
             return nil
 
-        // message_stop 與 error 由 relayEvents 先處理，不會到這裡；列在這裡只是讓 switch 窮舉
+        // message_stop 與 error 由 handle(_:) 先處理，不會到這裡；列在這裡只是讓 switch 窮舉
         case .messageStop, .error, .ignored:
             return nil
         }
     }
 
-    /// 依累積的狀態組出結束事件的內容，`message_stop` 時呼叫
+    /// 依累積的狀態組出結束事件的內容，`handle(_:)` 收到 `message_stop` 時呼叫
     ///
     /// - Returns: 帶著結束原因、用量與實際回應的模型的結束資訊
     /// - Throws: 結束原因是 `refusal` 時丟出 `refused`，原因是拒答的類別；沒有結束原因或不認得時丟出 `invalidResponse`
@@ -101,11 +141,6 @@ extension LKAnthropicStreamState {
             respondingModel: respondingModel
         )
     }
-}
-
-// MARK: - Private Method
-
-private extension LKAnthropicStreamState {
 
     /// 把事件回報的用量併入累計值：有值的欄位覆寫，null 或沒有出現的欄位保留先前的值
     ///

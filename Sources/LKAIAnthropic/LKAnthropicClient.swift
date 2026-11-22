@@ -21,8 +21,8 @@ public struct LKAnthropicClient: Sendable {
     /// App 保管的 Anthropic API 金鑰，只放進請求標頭，不出現在任何描述裡
     private let apiKey: String
 
-    /// 實際送出請求的 HTTP client，測試時換成不連網的替身
-    private let httpClient: any LKAIHTTPClientProtocol
+    /// 實際送出請求的 HTTP client，測試時換成不連網的替身；共同流程從這裡取用
+    package let httpClient: any LKAIHTTPClientProtocol
 
     /// 拒答備援設定，預設為關閉
     private let refusalFallback: LKAnthropicRefusalFallback
@@ -98,51 +98,29 @@ extension LKAnthropicClient: CustomStringConvertible {
 
 extension LKAnthropicClient: LKAIChatClientProtocol {
 
-    /// 交由串流的背景 task 檢查請求、送出到 Messages API，並把回應的 SSE 事件對應成串流事件交出
+    /// 交給共同流程檢查請求、送出到 Messages API，並把回應的 SSE 事件對應成串流事件交出
     ///
     /// - Parameter request: 要送出的對話請求
     /// - Returns: 依序交出事件的串流；請求在呼叫這個方法時就送出，不必等到迭代
     /// - Note: 請求或備援設定不合法時，迭代串流會以 `invalidRequest` 失敗，而且不送出網路請求
     /// - Note: 釋放串流才會取消請求；只用 `break` 離開迴圈而仍持有串流時，請求會繼續進行並計費
     public func stream(_ request: LKAIChatRequest) -> LKAIChatStream {
-        LKAIChatStream { yield throws(LKAIError) in
-            try await run(request, yield: yield)
-        }
+        makeStream(for: request)
     }
 }
 
-// MARK: - Private Method
+// MARK: - LKAIServerSentEventChatStreaming
 
-private extension LKAnthropicClient {
+extension LKAnthropicClient: LKAIServerSentEventChatStreaming {
 
-    /// 依序檢查請求與備援設定、送出請求，再把回應的事件交給串流；任何一步失敗就丟出對應的 `LKAIError`
-    ///
-    /// - Parameters:
-    ///   - request: 要送出的對話請求
-    ///   - yield: 交出事件的 closure，對應好的事件從這裡交出
-    /// - Throws: 請求或備援設定不合法丟 `invalidRequest`；不是 2xx 的狀態碼依錯誤內容分類；事件讀取失敗丟對應的錯誤
-    /// - Note: 狀態碼不是 2xx 時先讀完錯誤內容，再依錯誤內容的 `error.type` 分類，解析不了時改用預設分類
-    func run(
-        _ request: LKAIChatRequest,
-        yield: (LKAIChatStreamEvent) -> Void
-    ) async throws(LKAIError) {
-        try request.validate()
-        try refusalFallback.validate()
-        let urlRequest = try makeURLRequest(for: request)
-        let response = try await httpClient.fetch(urlRequest)
-        if !(200...299).contains(response.statusCode) {
-            let error = try await httpError(for: response)
-            throw error
-        }
-        try await relayEvents(from: response.lines, yield: yield)
-    }
-
-    /// 組出送往 Messages API 的 POST 請求，帶金鑰、版本與內容類型標頭；開啟備援時另帶 beta 標頭
+    /// 檢查備援設定，再組出送往 Messages API 的 POST 請求，帶金鑰、版本與內容類型標頭；開啟備援時另帶 beta 標頭
     ///
     /// - Parameter request: 要送出的對話請求
-    /// - Returns: 可以交給 HTTP client 的請求
-    /// - Throws: 端點網址無法建立，或請求內容無法編碼時丟出 `invalidRequest`
-    func makeURLRequest(for request: LKAIChatRequest) throws(LKAIError) -> URLRequest {
+    /// - Returns: 帶 API 金鑰的請求，只給共同流程使用，不要記錄或轉交到其他地方
+    /// - Throws: 備援設定不合法、端點網址無法建立，或請求內容無法編碼時丟出 `invalidRequest`
+    /// - Note: 第一行先檢查備援設定，不合法時不組出請求，也就不會送出網路請求
+    package func makeURLRequest(for request: LKAIChatRequest) throws(LKAIError) -> URLRequest {
+        try refusalFallback.validate()
         guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
             throw .invalidRequest(message: "The Anthropic endpoint URL is invalid")
         }
@@ -158,6 +136,33 @@ private extension LKAnthropicClient {
         return urlRequest
     }
 
+    /// 依 Anthropic 的 `error.type` 分類非 2xx 的回應；內容解析不了或類型不認得時回傳 nil，改用預設分類
+    ///
+    /// - Parameters:
+    ///   - statusCode: 回應的 HTTP 狀態碼
+    ///   - headers: 回應標頭，key 一律是小寫
+    ///   - body: 已讀完的錯誤內容
+    /// - Returns: 對應的錯誤；內容解析不了或類型不認得時為 nil
+    /// - Note: 純函式，不讀取回應的內容，內容已由共同流程讀好傳進來
+    package func httpError(statusCode: Int, headers: [String: String], body: String) -> LKAIError? {
+        LKAnthropicErrorBody(text: body)?.error.lkaiError(
+            statusCode: statusCode,
+            retryAfter: headers["retry-after"]
+        )
+    }
+
+    /// 建立一份新的事件對應狀態，每條串流各用一份
+    ///
+    /// - Returns: 還沒有收到任何事件的 `LKAnthropicStreamState`
+    package func makeEventMapper() -> any LKAIServerSentEventMapping {
+        LKAnthropicStreamState()
+    }
+}
+
+// MARK: - Private Method
+
+private extension LKAnthropicClient {
+
     /// 把對話請求與備援設定編碼成 Messages API 的 JSON 內容
     ///
     /// - Parameter request: 要送出的對話請求
@@ -172,72 +177,6 @@ private extension LKAnthropicClient {
             return try JSONEncoder().encode(body)
         } catch {
             throw .invalidRequest(message: "The request body could not be encoded")
-        }
-    }
-
-    /// 讀完非 2xx 回應的錯誤內容，依 Anthropic 的 `error.type` 分類；內容解析不了或類型不認得時，改用預設分類
-    ///
-    /// - Parameter response: 狀態碼不是 2xx 的回應
-    /// - Returns: 要丟出的錯誤
-    /// - Throws: 讀取錯誤內容失敗時丟出，例如連線中斷
-    func httpError(for response: LKAIHTTPResponse) async throws(LKAIError) -> LKAIError {
-        let text = try await response.readErrorBody()
-        let retryAfter = response.headers["retry-after"]
-        let mapped = LKAnthropicErrorBody(text: text)?.error.lkaiError(
-            statusCode: response.statusCode,
-            retryAfter: retryAfter
-        )
-        return mapped ?? LKAIError(httpStatusCode: response.statusCode, retryAfter: retryAfter)
-    }
-
-    /// 逐行讀取回應，組成 SSE 事件、解碼並對應成串流事件，交給串流；收到 `message_stop` 就交出結束事件並停止讀取
-    ///
-    /// - Parameters:
-    ///   - lines: 回應內容逐行交出的序列
-    ///   - yield: 交出事件的 closure，文字片段與結束事件從這裡交出
-    /// - Throws: 事件解碼失敗、`error` 事件，或結束原因不正常時丟對應的錯誤；讀完沒有 `message_stop` 丟 `invalidResponse`
-    /// - Note: 結束事件之後不再讀取，呼叫端離開後回應被釋放，底層傳輸跟著取消
-    func relayEvents(
-        from lines: LKAIHTTPLines,
-        yield: (LKAIChatStreamEvent) -> Void
-    ) async throws(LKAIError) {
-        var parser = LKAIServerSentEventParser()
-        var state = LKAnthropicStreamState()
-        for try await line in lines {
-            guard let serverSentEvent = parser.parse(line: line) else {
-                continue
-            }
-            let event = try decodeEvent(from: serverSentEvent)
-            if case .error(let body) = event {
-                // 已交出的文字片段保留，然後丟出對應的錯誤；類型不認得時依規格以 500 處理
-                throw body.error.lkaiError(statusCode: nil, retryAfter: nil)
-                    ?? .serviceUnavailable(statusCode: 500)
-            }
-            if case .messageStop = event {
-                let completion = try state.makeCompletion()
-                yield(.finished(completion))
-                return
-            }
-            if let text = state.apply(event) {
-                yield(.textDelta(text))
-            }
-        }
-        parser.finish()
-        throw .invalidResponse(reason: "Stream ended before message_stop")
-    }
-
-    /// 把 SSE 事件的 `data` 解碼成 Anthropic 的串流事件
-    ///
-    /// - Parameter serverSentEvent: 解析好的 SSE 事件，事件種類以 `data` 裡的 `type` 為準，不看事件名稱
-    /// - Returns: 解碼出的串流事件；不認得的類型是略過
-    /// - Throws: `data` 不是合法的 JSON，或認得的類型欄位格式不符時丟出 `invalidResponse`
-    func decodeEvent(
-        from serverSentEvent: LKAIServerSentEvent
-    ) throws(LKAIError) -> LKAnthropicStreamEvent {
-        do {
-            return try LKAnthropicStreamEvent(data: serverSentEvent.data)
-        } catch {
-            throw .invalidResponse(reason: "Malformed stream event: \(error)")
         }
     }
 }
