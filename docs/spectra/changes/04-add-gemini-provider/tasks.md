@@ -207,7 +207,7 @@
 - 其餘不處理的項目寫在 design 的 Open Questions，由 5.3 寫進清單第 7 章。
 - 派工依 design「實作由 sonnet 在單一 worktree 依序進行」：5.1 到 5.5 由 sonnet 在 `.worktrees/sonnet`（分支 `wt/04-sonnet`）依序做，完成後第三次合併回功能分支，5.6 由主對話做。
 
-- [ ] 5.1 修正實作審查找到的三處說明與規範，行為不變（sonnet）：
+- [x] 5.1 修正實作審查找到的三處說明與規範，行為不變（sonnet）：
   - `LKGeminiClientTestSupport.finishedEvent(_:usage:respondingModel:)` 的 `///`：預設模型對應的是 `LKAIServerSentEvent.interactionCompleted(status:model:usage:errors:)` 預設的模型，不是 `validRequest` 的模型；比照 `LKOpenAIClientTestSupport` 的寫法。
   - `LKGeminiErrorBody.Detail.httpError(statusCode:)` 的 `///` 中「額度用完不讀 `retry-after`」的理由，改成 design 決策「HTTP 錯誤處理 Interactions 與 Google 通用兩種格式」的理由：`quota_exceeded` 要等每日額度重置、`payment_required` 要補餘額，重試沒有用。不再寫成 Gemini 文件的說法。
   - `LKAITestJSON` 的 `OptionalBoolean.init(from:)`：`try?` 的理由依 ios-dev-kit `coding-style.md` 寫在同一行，格式是「// 失敗可忽略，因為 …」。超過 100 字元時縮短理由。
@@ -215,14 +215,14 @@
   驗證：
   - 完整 `swift test` 通過且零警告，測試數不變。
   - 主對話審查 diff：只有 `///` 與註解改變。
-- [ ] 5.2 依 design 決策「與供應商無關的測試 helper 收進 LKAITestSupport」補上的 `sourceLocation`，讓 `LKAITestJSON.jsonObject(from:)` 解析失敗時，問題記在呼叫端那一行（sonnet）：
+- [x] 5.2 依 design 決策「與供應商無關的測試 helper 收進 LKAITestSupport」補上的 `sourceLocation`，讓 `LKAITestJSON.jsonObject(from:)` 解析失敗時，問題記在呼叫端那一行（sonnet）：
   - **先寫測試**：`Tests/LKAITestSupportTests/LKAITestJSONTests.swift` 加一個參數化測試，列出文字版與 `Data` 版，傳入最外層不是物件的 JSON（例如 `[1]`），以 `try withKnownIssue { … } matching: { $0.sourceLocation?.fileName == "LKAITestJSONTests.swift" }` 確認問題記在測試檔。
   - **實作**：兩個版本加上 `sourceLocation: SourceLocation = #_sourceLocation`，文字版轉傳給 `Data` 版，`Data` 版傳給 `#require`；`///` 補上參數說明。`jsonFragment(from:)` 不改，理由見 design。
 
   驗證：
   - 主對話觀察到新測試在實作前失敗（問題記在 `LKAITestJSON.swift`），實作後通過。
   - 完整 `swift test` 通過且零警告；`LKAITestSupportTests` 從 6 個變成 7 個。
-- [ ] 5.3 把實作審查的結論寫進 `docs/adding-a-provider.md`，讓下一家供應商照著做（sonnet）：
+- [x] 5.3 把實作審查的結論寫進 `docs/adding-a-provider.md`，讓下一家供應商照著做（sonnet）：
   - **第 3 章「架構與命名」**：
     - 加一條：參考實作是 `Sources/LKAIGemini/` 與 `Tests/LKAIGeminiTests/`，逐一列出每個檔案的角色（client、請求內容、串流事件、mapper、兩種錯誤格式；測試的請求、串流、錯誤、實際 API、事件建構函式、測試 helper）。錯誤分類用 `streamError` 與 `httpError(statusCode:)` 兩個入口。
     - 列出新增供應商要動的既有檔案：`Package.swift` 的三處（新 target、新測試 target、`LKAIKit` 的依賴）、`Sources/LKAIKit/Exports.swift`、`Tests/LKAIKitTests/ExportsTests.swift`。
@@ -233,7 +233,7 @@
   驗證：
   - 主對話審查內容：每一處都有 design 或程式碼的依據，提到的檔案與符號都存在。
   - `grep -n '第 6 章' docs/adding-a-provider.md` 仍只有第 2 章步驟 2 與第 7 章開頭兩處；`grep -n -E '預定|由 04' docs/adding-a-provider.md` 沒有結果。
-- [ ] 5.4 為 spec 新增的範例內容與情境補上測試，交付 gemini-provider「Stream text mapping」與「Responding model」新增的部分（sonnet）：
+- [x] 5.4 為 spec 新增的範例內容與情境補上測試，交付 gemini-provider「Stream text mapping」與「Responding model」新增的部分（sonnet）：
   - 範例「stream with lifecycle events and a thought step」的測試，在 `index` 2 的 `step.stop` 之後加上 `index` 5、`delta.type` 為 `text`、文字 "Orphan" 的 `step.delta`，期望值不變。
   - 範例「text in the start of a model output step」的測試，`step.content` 加上 `{"type":"image","data":"aGk="}` 項目，期望值不變。
   - 缺欄位範例表加上 `content` 不是陣列、`content` 項目沒有 `type` 的兩列，data 照抄 spec。
@@ -243,7 +243,7 @@
   - 這些都是已經實作的行為，在目前的實作上就會通過，依 TDD 的 Regression 由 5.6 的反向檢查 19 到 22 確認它們抓得到錯。
   - 完整 `swift test` 通過且零警告；`LKAIGemini` 從 19 個變成 20 個。
   - `spectra coverage 04-add-gemini-provider` 沒有缺漏。
-- [ ] 5.5 [after: 5.4] 依 design 決策「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」重構 `LKGeminiStreamEvent` 與 `LKGeminiStreamState`，行為不變（sonnet）：
+- [x] 5.5 [after: 5.4] 依 design 決策「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」重構 `LKGeminiStreamEvent` 與 `LKGeminiStreamState`，行為不變（sonnet）：
   - `step.start` 的事件帶「是不是 `model_output` 步驟」的布林值與要交出的文字；`LKGeminiStreamState` 改存 `model_output` 步驟的 `index` 集合，同一個 `index` 之後以別的類型開始時從集合移除。
   - `interaction.completed` 的 `failed` 解成獨立的事件，帶 `errors` 的第一筆；其他狀態照舊帶 `Interaction`。解碼的欄位與順序不變，`failed` 時仍解碼 `usage` 與 `model`。
   - 同步修改兩個型別的 `///`；design 的 Implementation Contract 已描述重構後的結構，不必修改。
@@ -251,10 +251,34 @@
   驗證：
   - 測試檔不改；完整 `swift test` 通過且零警告，測試數與 5.4 完成時相同。
   - `grep -n '"model_output"\|"failed"' Sources/LKAIGemini/LKGeminiStreamState.swift` 沒有結果。
-- [ ] 5.6 [after: 5.1, 5.2, 5.3, 5.4, 5.5] 第三次合併後的驗收（主對話）：
+- [x] 5.6 [after: 5.1, 5.2, 5.3, 5.4, 5.5] 第三次合併後的驗收（主對話）：
   - 依 design Implementation Contract 的「完成後的狀態」與「驗收」重新執行：`swift package clean` 後的建置與完整測試、iOS 模擬器建置、`spectra coverage`、各項 grep。
   - 反向檢查 1 到 23 全部重跑：1 到 18 的改壞方式配合 5.5 的新結構調整，19 到 23 是第 5 組新增的。
   - 以 Keychain 的金鑰重跑實際 API 測試（`LKGeminiClientLiveTests`），因為 5.5 改了 mapper 的結構。
   - 每一項的結果記錄在本任務下方。
 
   驗證：每一項都符合 Implementation Contract 的描述；測試數與 design 的估計相同，不同時記錄實際數字與原因。
+
+  驗收結果（2026-11-22，主對話，功能分支 `3d6123f`；之後 `Sources/`、`Tests/` 與 `Package.swift` 沒有改變）：
+
+  **建置與測試**：`swift package clean` 後，`swift build`、`swift build --build-tests` 與完整 `swift test` 都成功、零警告。XcodeBuildMCP 清除後對 iOS 模擬器（iPhone 17）建置 `LKAIKit` scheme 成功、零警告，log 確認 `Sources/LKAIGemini/` 的 6 個檔案都有編譯。
+
+  **測試數**（都與估計值相同）：`LKAITestSupportTests` 6 → 7；`LKAIGemini` 19 → 20（含 2 個實際 API 測試，沒有設定環境變數時列為略過）；`LKAICore` 68、`LKAIKit` 4、`LKAIAnthropicTests` 45、`LKAIOpenAITests` 23、`LKAIKitCLITests` 7 不變。「known issues」4 個：2 個是原有的，2 個是 5.2 的測試以 `withKnownIssue` 預期記錄的問題。
+
+  **實際 API 測試**：以 Keychain 的金鑰重跑 `LKGeminiClientLiveTests`（`gemini-3.5-flash-lite`），串流與非串流都通過；在同一個 shell 以 `grep -F` 比對，輸出沒有出現金鑰。
+
+  **spec 覆蓋與完成後的狀態**：`spectra coverage 04-add-gemini-provider` 為 annotated 26、excluded 0、missing 0。4.2 列的 grep 條件仍然成立；`LKGeminiStreamState.swift` 內沒有 `"model_output"` 與 `"failed"`，兩個判斷只在 `LKGeminiStreamEvent.swift` 各寫一次。
+
+  **二十三項反向檢查**（每項改壞一處、以 `swift test --no-parallel --filter 'LKAIGeminiTests|LKAIAPIKeyTests|LKAITestJSONTests'` 執行、再還原；做完 `git diff -- Sources` 沒有差異）。1 到 18 的結果與 4.2 相同，只有改壞的位置配合 5.5 的新結構調整：
+  - 第 1 項改成「非 `model_output` 的 `step.start` 也加入集合」。
+  - 第 2 項改成 guard 不看集合。
+  - 第 10 項改成 `.failed` 不看 `firstError`。
+  - 第 15、16 項改成解碼端的條件恆真。
+  - 第 18 項把 guard 拆成「不在集合就略過、在集合而沒有文字才失敗」。
+
+  第 5 組新增的 19 到 23：
+  19. 沒有記錄過的 `index` 也當成回答交出（改壞時另外記下開始過的 `index`，只略過開始成非 `model_output` 的）：範例「stream with lifecycle events and a thought step」失敗（`index` 5 的 "Orphan"）。5.4 之前這個改法讓 19 個測試全部通過。
+  20. `step.content` 的每個項目都要求字串 `text`：範例「text in the start of a model output step」失敗（`image` 項目）。`TextPart` 也用在 `delta`，所以只帶 `thought_signature` 的片段也失敗，lifecycle 範例與「Finish at the output token limit while still thinking」跟著失敗。
+  21. `step.content` 格式不符時以 `try?` 略過：缺欄位表中 `content` 不是陣列、項目沒有 `type` 的兩列失敗；同一個寫法也略過了「content 項目缺 `text`」，那一列跟著失敗。
+  22. `interaction.completed` 沒有 `model` 時改用 `interaction.created` 的模型（改壞時讓 `interaction.created` 帶出模型）：情境「Report no model when the completed interaction has none」失敗。
+  23. `LKAITestJSON` 的 `#require` 不傳 `sourceLocation`：`LKAITestSupportTests` 的 `sourceLocation` 測試兩列都失敗。
