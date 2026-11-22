@@ -36,7 +36,7 @@
 
 ## 2. LKAITestSupport
 
-- [ ] 2.1 依 design「替身第二次 fetch 記錄測試失敗，並新增 LKAITestSupportTests」，讓 `LKAIMockHTTPClient.fetch(_:)` 在累計第二次以上的請求時，於鎖外以 `Issue.record` 記錄問題。設定了 `failFetch` 時同樣記錄，原本回傳或丟出的結果不變。
+- [x] 2.1 依 design「替身第二次 fetch 記錄測試失敗，並新增 LKAITestSupportTests」，讓 `LKAIMockHTTPClient.fetch(_:)` 在累計第二次以上的請求時，於鎖外以 `Issue.record` 記錄問題。設定了 `failFetch` 時同樣記錄，原本回傳或丟出的結果不變。
   - 先在 `Package.swift` 新增測試 target `LKAITestSupportTests`，依賴 `LKAITestSupport` 與 `LKAICore`。
   - 再在 `Tests/LKAITestSupportTests/LKAIMockHTTPClientTests.swift` 寫兩個測試，然後才實作：
     - 第二次 `fetch` 記錄問題，以參數涵蓋「推送了逐行內容」與「設定了 `failFetch`」兩種設定：`withKnownIssue` 的 body 內以 `do`／`catch` 存下第二次 `fetch` 的錯誤，`matching:` 只接受 `.unconditional`，錯誤的 `#expect` 寫在 `withKnownIssue` 之外。
