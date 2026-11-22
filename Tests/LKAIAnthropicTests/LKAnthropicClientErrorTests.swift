@@ -162,7 +162,7 @@ struct LKAnthropicClientErrorTests {
             .messageStart(),
             .textBlockStart(),
             .textDelta("Hel"),
-            .init(name: "error", data: testCase.data),
+            .init(event: "error", data: testCase.data),
         ])
 
         // When
@@ -224,7 +224,7 @@ struct LKAnthropicClientErrorTests {
     func stream_送出文字後連線中斷_先交出文字再丟出transport且保留底層錯誤代碼() async throws {
         // Given
         let mock = LKAIMockHTTPClient()
-        mock.yield(lines: LKAnthropicClientTestSupport.lines(of: [
+        mock.yield(lines: LKAIServerSentEventTestSupport.lines(of: [
             .messageStart(),
             .textBlockStart(),
             .textDelta("Hel"),

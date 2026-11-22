@@ -17,9 +17,9 @@ struct LKAnthropicClientStreamTests {
     // MARK: - Properties
 
     /// 供應商沒有回報模型的串流事件：`message_start` 的訊息沒有 `model` 欄位，之後是一段文字與正常結束
-    private let noModelEvents: [LKAnthropicClientTestSupport.SSEEvent] = [
+    private let noModelEvents: [LKAIServerSentEvent] = [
         .init(
-            name: "message_start",
+            event: "message_start",
             data: #"{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1}}}"#
         ),
         .textBlockStart(),
@@ -106,7 +106,7 @@ struct LKAnthropicClientStreamTests {
             .thinkingDelta(),
             .signatureDelta(),
             .blockStop(),
-            .init(name: "future_event", data: #"{"type":"future_event"}"#),
+            .init(event: "future_event", data: #"{"type":"future_event"}"#),
             .textBlockStart(index: 1),
             .textDelta("Hi", index: 1),
             .blockStop(index: 1),
