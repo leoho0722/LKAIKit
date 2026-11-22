@@ -11,7 +11,7 @@
 
 ## 1. LKAICore 的共同流程
 
-- [ ] 1.1 依 design「串流的背景 task 只在 LKAIChatStream.init(producing:) 建立」與「streamFailure(for:isCancelled:) 一併判斷取消」，完成以下改動：
+- [x] 1.1 依 design「串流的背景 task 只在 LKAIChatStream.init(producing:) 建立」與「streamFailure(for:isCancelled:) 一併判斷取消」，完成以下改動：
   - `LKAIChatStream` 新增 `package init(producing:)`。生產端只拿到交出事件的 closure；建立唯一的 task，正常返回時 `finish()`、丟錯時 `finish(throwing:)`，只由 `onTermination` 取消，不存進屬性。
   - `LKAnthropicClient.stream(_:)` 改用它執行原本的 `run`：`run` 的參數由 continuation 改為交出事件的 closure，`relayEvents` 也一樣。
   - 偏離 ios-dev-kit `Task` 規則的 `- Note:` 移到這個 init，`stream(_:)` 只保留「釋放串流才會取消請求」那一則。

@@ -98,30 +98,16 @@ extension LKAnthropicClient: CustomStringConvertible {
 
 extension LKAnthropicClient: LKAIChatClientProtocol {
 
-    /// 在背景 task 內檢查請求、送出到 Messages API，並把回應的 SSE 事件對應成串流事件交出
+    /// 交由串流的背景 task 檢查請求、送出到 Messages API，並把回應的 SSE 事件對應成串流事件交出
     ///
     /// - Parameter request: 要送出的對話請求
     /// - Returns: 依序交出事件的串流；請求在呼叫這個方法時就送出，不必等到迭代
     /// - Note: 請求或備援設定不合法時，迭代串流會以 `invalidRequest` 失敗，而且不送出網路請求
-    /// - Note: 每次呼叫建立一個非結構化的 `Task` 執行請求，偏離 ios-dev-kit「`Task { }` 只在兩個地方建立」
-    /// - Note: 理由：函式庫沒有 View 或 ViewModel，要把非同步的生產端接到 `AsyncSequence` 只能這樣做
-    /// - Note: 以「每條串流一個 task、只由 `onTermination` 取消、不存進任何屬性」限制它的生命週期
     /// - Note: 釋放串流才會取消請求；只用 `break` 離開迴圈而仍持有串流時，請求會繼續進行並計費
     public func stream(_ request: LKAIChatRequest) -> LKAIChatStream {
-        let source = AsyncThrowingStream<LKAIChatStreamEvent, any Error> { continuation in
-            let streamingTask = Task {
-                do {
-                    try await run(request, continuation: continuation)
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in
-                streamingTask.cancel()
-            }
+        LKAIChatStream { yield throws(LKAIError) in
+            try await run(request, yield: yield)
         }
-        return LKAIChatStream(source)
     }
 }
 
@@ -133,12 +119,12 @@ private extension LKAnthropicClient {
     ///
     /// - Parameters:
     ///   - request: 要送出的對話請求
-    ///   - continuation: 串流的入口，對應好的事件從這裡交出
+    ///   - yield: 交出事件的 closure，對應好的事件從這裡交出
     /// - Throws: 請求或備援設定不合法丟 `invalidRequest`；不是 2xx 的狀態碼依錯誤內容分類；事件讀取失敗丟對應的錯誤
     /// - Note: 狀態碼不是 2xx 時先讀完錯誤內容，再依錯誤內容的 `error.type` 分類，解析不了時改用預設分類
     func run(
         _ request: LKAIChatRequest,
-        continuation: AsyncThrowingStream<LKAIChatStreamEvent, any Error>.Continuation
+        yield: (LKAIChatStreamEvent) -> Void
     ) async throws(LKAIError) {
         try request.validate()
         try refusalFallback.validate()
@@ -148,7 +134,7 @@ private extension LKAnthropicClient {
             let error = try await httpError(for: response)
             throw error
         }
-        try await relayEvents(from: response.lines, to: continuation)
+        try await relayEvents(from: response.lines, yield: yield)
     }
 
     /// 組出送往 Messages API 的 POST 請求，帶金鑰、版本與內容類型標頭；開啟備援時另帶 beta 標頭
@@ -208,12 +194,12 @@ private extension LKAnthropicClient {
     ///
     /// - Parameters:
     ///   - lines: 回應內容逐行交出的序列
-    ///   - continuation: 串流的入口，文字片段與結束事件從這裡交出
+    ///   - yield: 交出事件的 closure，文字片段與結束事件從這裡交出
     /// - Throws: 事件解碼失敗、`error` 事件，或結束原因不正常時丟對應的錯誤；讀完沒有 `message_stop` 丟 `invalidResponse`
     /// - Note: 結束事件之後不再讀取，呼叫端離開後回應被釋放，底層傳輸跟著取消
     func relayEvents(
         from lines: LKAIHTTPLines,
-        to continuation: AsyncThrowingStream<LKAIChatStreamEvent, any Error>.Continuation
+        yield: (LKAIChatStreamEvent) -> Void
     ) async throws(LKAIError) {
         var parser = LKAIServerSentEventParser()
         var state = LKAnthropicStreamState()
@@ -229,11 +215,11 @@ private extension LKAnthropicClient {
             }
             if case .messageStop = event {
                 let completion = try state.makeCompletion()
-                continuation.yield(.finished(completion))
+                yield(.finished(completion))
                 return
             }
             if let text = state.apply(event) {
-                continuation.yield(.textDelta(text))
+                yield(.textDelta(text))
             }
         }
         parser.finish()

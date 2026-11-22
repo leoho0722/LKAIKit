@@ -151,11 +151,17 @@ extension LKAIError {
 
     /// 把串流來源丟出的錯誤轉成要交給 App 的錯誤，`LKAIChatStream` 與 `LKAIHTTPLines` 共用同一套規則
     ///
-    /// - Parameter error: 串流來源丟出的錯誤
-    /// - Returns: 要交給 App 的錯誤；來源丟出 `CancellationError` 或 `.cancelled` 時為 nil，表示串流應正常結束
+    /// - Parameters:
+    ///   - error: 串流來源丟出的錯誤
+    ///   - isCancelled: 迭代的 task 是否已被取消，呼叫端傳入 `Task.isCancelled`
+    /// - Returns: 要交給 App 的錯誤；為 nil 表示串流應正常結束，包含 `isCancelled` 為 true 與取消類的錯誤
+    /// - Note: 來源丟出 `CancellationError` 或 `.cancelled` 時為 nil
     /// - Note: 其他 `LKAIError` 原樣交出，不是 `LKAIError` 的錯誤轉成 `.invalidResponse`
-    /// - Note: 迭代的 task 已被取消時一律正常結束，這個判斷取決於呼叫端所在的 task，所以由呼叫端先做
-    static func streamFailure(for error: any Error) -> LKAIError? {
+    /// - Note: `isCancelled` 取決於呼叫端所在的 task，所以由呼叫端傳入；為 true 時一律回傳 nil，最先判斷
+    static func streamFailure(for error: any Error, isCancelled: Bool) -> LKAIError? {
+        if isCancelled {
+            return nil
+        }
         if error is CancellationError {
             return nil
         }
