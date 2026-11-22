@@ -310,10 +310,13 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
   - 之後若某家的 SSE 沒有 `event:` 行，不必再改共用 helper。Gemini 是否如此尚未查證。
 - **Anthropic 改用它**：
   - `LKAnthropicClientTestSupport` 移除自己的 `SSEEvent` 與 `lines(of:)`。
-  - Anthropic 的事件建構函式改寫成 `extension LKAIServerSentEvent` 的 static 方法，放在原檔案。
+  - Anthropic 的事件建構函式改寫成 `extension LKAIServerSentEvent` 的 static 方法，獨立成檔 `Tests/LKAIAnthropicTests/LKAIServerSentEvent+AnthropicEvents.swift`。
   - `makeClient(events:)` 與各測試的呼叫處跟著修改。
   - 測試名稱、期望值與 spectra-scenario 標記都不變。
-- **OpenAI 也用它**：OpenAI 的事件建構函式寫在 `LKOpenAIClientTestSupport` 對 `LKAIServerSentEvent` 的 extension。兩個 test target 不互相 import，同名的建構函式不會衝突。
+- **OpenAI 也用它**：OpenAI 的事件建構函式寫在 `Tests/LKAIOpenAITests/LKAIServerSentEvent+OpenAIEvents.swift` 的 `extension LKAIServerSentEvent`。兩個 test target 不互相 import，同名的建構函式不會衝突。
+- **建構函式為什麼獨立成檔**（實作時發現，使用者在 2026-11-22 決定）：
+  - 原本寫「放在 TestSupport 的原檔案」，與 ios-dev-kit `formatting.md` 的「Extension 的使用時機」衝突：測試 target 專用、替非自己的型別加功能的 extension 要獨立成檔，檔名 `<Type>+<Feature>.swift`，不寫在其他型別的檔案尾端。
+  - 檔內只有一個功能，依同一條，不再依功能分區，改用 `// MARK: - Internal Method`、`// MARK: - Private Method` 這類固定區名。
 - **命名**：依 ios-dev-kit `file-templates.md` 的 TestSupport 規則，對應的型別是 `LKAIServerSentEvent`。
 - **測試**：`event` 為 nil 時不輸出 `event:` 行是新的分支，兩家目前的事件都走不到，所以在 `LKAITestSupportTests` 新增 `LKAIServerSentEventTestSupportTests` 涵蓋它。它會影響每家供應商的測試結論，符合 `01-extract-chat-stream-skeleton` 的決策「替身第二次 fetch 記錄測試失敗，並新增 LKAITestSupportTests」寫的收錄範圍。
 
@@ -321,6 +324,8 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 
 - **OpenAI 自己寫一份分框 helper**：兩家各一份，分框規則改動時要改兩處，否決。
 - **另設 `Event(name:data:)` 型別**：與正式型別重複，而且 `name` 不是 Optional，否決。
+- **建構函式寫成 TestSupport 的 static func，不擴充 `LKAIServerSentEvent`**：Anthropic 測試約 87 個呼叫處都要寫完整的型別名，失去 `.messageStart()` 這種簡短寫法，否決。
+- **extension 寫在 TestSupport 的檔案尾端**：違反上述 `formatting.md` 的規則，否決。
 
 ### 金鑰遮蔽由每家 client 各自實作三個遵循
 
@@ -406,6 +411,7 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 | `LKOpenAIResponsesRequestBody.swift`、`LKOpenAIStreamEvent.swift`、`LKOpenAIErrorBody.swift` | 比照 Anthropic 對應的檔案 |
 | `LKOpenAIStreamState.swift` | 比照 `LKAnthropicStreamState.swift`：遵循 `LKAIServerSentEventMapping`，private 方法依呼叫者在前、深度優先排列 |
 | `LKAIServerSentEventTestSupport.swift`、`LKOpenAIClientTestSupport.swift` | ios-dev-kit `tests/Tests.swift` 一節的 TestSupport 規則 |
+| `LKAIServerSentEvent+AnthropicEvents.swift`、`LKAIServerSentEvent+OpenAIEvents.swift` | ios-dev-kit `formatting.md` 的「Extension 的使用時機」：一個功能一檔，用固定區名 |
 | `LKOpenAIClient*Tests.swift` | `tests/Tests.swift` |
 
 **完成後的狀態**（grep 與 `dump-package` 確認）：
@@ -413,7 +419,7 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 - **`Task {`**：`Sources/LKAIOpenAI/` 內沒有，背景 task 仍只在 `LKAICore` 的兩處建立。
 - **`JSONDecoder()`**：`Sources/LKAIOpenAI/` 內沒有，解碼一律經 `LKAISnakeCaseJSON`。
 - **依賴方向**：`LKAIOpenAI` 只依賴 `LKAICore`；`LKAIKit` 依賴 `LKAICore`、`LKAIAnthropic`、`LKAIOpenAI`；products 仍只有 `LKAIKit` 與 `lkai`；`LKAITestSupport` 仍不在 product 內。
-- **Anthropic 的測試**：`LKAnthropicClientTestSupport` 不再有 `SSEEvent` 與 `lines(of:)`。
+- **Anthropic 的測試**：`LKAnthropicClientTestSupport` 不再有 `SSEEvent` 與 `lines(of:)`；事件建構函式在 `LKAIServerSentEvent+AnthropicEvents.swift`。
 - **`LKAIServerSentEventTestSupport`**：只有 `lines(of: [LKAIServerSentEvent])`，沒有另設的事件型別。
 - **`LKAIFinishReason`**：`.maxOutputTokens` 與 `.contextWindowExceeded` 的說明寫明 OpenAI 以 `.maxOutputTokens` 回報 context window 塞滿；型別與 case 不變。
 - **`docs/spectra/config.yaml`**：API 演進規則的指標等於決策「config.yaml 的指標加上本 change」引用的文字。
@@ -462,7 +468,7 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 - [`max_output_tokens` 小於 16 時，App 要到 API 回錯才知道] → 錯誤帶 OpenAI 的說明；之後若有多家都有最小值，再考慮在共用的檢查加規則。
 - [推理模型的推理 token 佔用 `max_output_tokens`] → App 需要設夠大的輸出上限；OpenAI 會以 `max_output_tokens` 的未完成原因回報，App 可以從 `maxOutputTokens` 的結束原因得知。
 - [拒答文字來自 delta 或 done] → 兩種來源都讀，只送其中一種也能回報拒答。兩種都沒有、拒答只出現在 `response.output` 時，`response.completed` 會被當成完成；文件的事件說明顯示拒答會以這兩種事件送出，所以目前不讀 `response.output`。
-- [SSE 分框 helper 搬移會改到 Anthropic 的四個測試檔] → 只改 helper 的型別與呼叫處，主對話以測試名稱、期望值與 spectra-scenario 標記不變把關。四個檔案是 `LKAnthropicClientTestSupport`、`LKAnthropicClientStreamTests`、`LKAnthropicClientErrorTests`、`LKAnthropicClientCancellationTests`（2026-11-22 grep）。
+- [SSE 分框 helper 搬移會改到 Anthropic 的四個測試檔，並新增一個建構函式的檔案] → 只改 helper 的型別與呼叫處，主對話以測試名稱、期望值與 spectra-scenario 標記不變把關。四個檔案是 `LKAnthropicClientTestSupport`、`LKAnthropicClientStreamTests`、`LKAnthropicClientErrorTests`、`LKAnthropicClientCancellationTests`（2026-11-22 grep）。
 
 ## Open Questions
 

@@ -19,7 +19,7 @@
 
 - [ ] 1.1 依 design「SSE 分框的測試 helper 搬進 LKAITestSupport」，讓兩家供應商的測試共用同一個 SSE 分框 helper，並為它沒有事件名稱的分支補上測試（haiku）：
   - 新增 `Sources/LKAITestSupport/LKAIServerSentEventTestSupport.swift`：沒有 case 的 `package enum`，只有 `package static func lines(of events: [LKAIServerSentEvent]) -> [String]`；`event` 為 nil 時不輸出 `event:` 那一行。
-  - `LKAnthropicClientTestSupport` 移除自己的 `SSEEvent` 與 `lines(of:)`；Anthropic 的事件建構函式改寫成 `extension LKAIServerSentEvent` 的 static 方法。
+  - `LKAnthropicClientTestSupport` 移除自己的 `SSEEvent` 與 `lines(of:)`；Anthropic 的事件建構函式改寫成 `extension LKAIServerSentEvent` 的 static 方法，獨立成檔 `Tests/LKAIAnthropicTests/LKAIServerSentEvent+AnthropicEvents.swift`。
   - `makeClient(events:)` 與 `LKAnthropicClientStreamTests`、`LKAnthropicClientErrorTests`、`LKAnthropicClientCancellationTests` 的呼叫處跟著修改。
   - `event` 為 nil 時不輸出 `event:` 行是新的分支，兩家目前的事件都走不到。新增 `Tests/LKAITestSupportTests/LKAIServerSentEventTestSupportTests.swift`，以參數涵蓋 `event` 有值與為 nil 兩種，先寫測試再實作。
 
@@ -48,6 +48,7 @@
   - 完整 `swift test` 通過且零警告；LKAIKit 為 3 個測試，其餘既有測試不變。
 - [ ] 2.2 [after: 1.1, 2.1] 交付 openai-provider 的「Stream text mapping」「Responding model」「Usage mapping」。依 design「OpenAI 串流事件的對應規則」「實際回應的模型與用量取自結束事件的 response 物件」，讓 `LKOpenAIStreamState` 交出 `response.output_text.delta` 的文字，並在 `response.completed` 交出帶模型與用量的完成事件；其他事件不交出事件，`data` 不是合法的 JSON 時丟出 invalid response（sonnet）。
   - `LKOpenAIStreamEvent` 以 `LKAISnakeCaseJSON` 解碼。
+  - 測試用的 OpenAI 事件建構函式寫在 `Tests/LKAIOpenAITests/LKAIServerSentEvent+OpenAIEvents.swift` 的 `extension LKAIServerSentEvent`。
   - 在 `LKOpenAIClientStreamTests` 新增以下測試：
     - spec「Stream text mapping」的兩個情境，含 stream with lifecycle and reasoning events 範例。
     - 「Responding model」的情境。
@@ -80,7 +81,7 @@
   - owner 的實際執行記在 4.2。
 
   驗證：主對話在沒有設定金鑰的環境執行 `swift test`，兩個測試顯示為略過，建置零警告。
-- [ ] 3.2 依 design「config.yaml 的指標加上本 change」，把 `docs/spectra/config.yaml` API 演進規則的指標換成 design 引用的文字（主對話）。
+- [x] 3.2 依 design「config.yaml 的指標加上本 change」，把 `docs/spectra/config.yaml` API 演進規則的指標換成 design 引用的文字（主對話）。
 
   驗證：`spectra instructions proposal --change "02-add-openai-provider" --json` 回傳的 context 含有新的指標。
 

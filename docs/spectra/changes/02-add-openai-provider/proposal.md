@@ -44,6 +44,8 @@ LKAIKit 要整合多家 AI 供應商，目前只有 Anthropic。第二家是 Ope
     - `Sources/LKAIOpenAI/LKOpenAIErrorBody.swift`
     - `Sources/LKAITestSupport/LKAIServerSentEventTestSupport.swift`
     - `Tests/LKAIOpenAITests/LKOpenAIClientTestSupport.swift`
+    - `Tests/LKAIOpenAITests/LKAIServerSentEvent+OpenAIEvents.swift`
+    - `Tests/LKAIAnthropicTests/LKAIServerSentEvent+AnthropicEvents.swift`
     - `Tests/LKAIOpenAITests/LKOpenAIClientTests.swift`
     - `Tests/LKAIOpenAITests/LKOpenAIClientStreamTests.swift`
     - `Tests/LKAIOpenAITests/LKOpenAIClientErrorTests.swift`
