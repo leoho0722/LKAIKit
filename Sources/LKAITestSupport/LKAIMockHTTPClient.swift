@@ -8,12 +8,14 @@
 import Foundation
 import LKAICore
 import Synchronization
+import Testing
 
 /// 測試用的假 HTTP client：記錄收到的請求，回出預先設定的狀態碼與標頭，逐行內容由測試推送並決定何時結束
 ///
 /// - Note: 只給本 package 的測試使用；`LKAITestSupport` 不屬於任何 product，不會進入函式庫的建置
 /// - Note: 以 `Mutex` 保護可變狀態，不用樣板的 `@unchecked Sendable`：client 的背景 task 與測試會同時存取它
 /// - Note: 逐行內容的來源只在 `fetch` 時交出一次，之後替身不再持有；第二次 `fetch` 丟出 `invalidResponse`
+/// - Note: 第二次以後的 `fetch` 另以 `Issue.record` 記錄測試失敗，設定了 `failFetch` 時也一樣
 /// - Note: 迭代的 task 被取消，或交出的回應被釋放時，來源以 `.cancelled` 呼叫 `onTermination`，`isCancelled` 變成 `true`
 package final class LKAIMockHTTPClient: Sendable {
 
@@ -79,6 +81,12 @@ extension LKAIMockHTTPClient {
         /// 還沒有交出的逐行內容的來源；`fetch` 時取出並設為 nil，交出後替身不再持有
         var pendingStream: AsyncThrowingStream<String, any Error>?
     }
+
+    /// 一次 `fetch` 在鎖內決定的結果：這是第幾次 `fetch`，以及要交給回應的來源或要丟出的錯誤
+    private typealias FetchOutcome = (
+        Int,
+        Result<AsyncThrowingStream<String, any Error>, LKAIError>
+    )
 }
 
 // MARK: - Computed Properties
@@ -152,18 +160,29 @@ extension LKAIMockHTTPClient: LKAIHTTPClientProtocol {
     /// - Returns: 帶著預先設定的狀態碼與標頭，逐行內容的來源交給回應，之後替身不再持有
     /// - Throws: 設定了 `failFetch(with:)` 時丟出其中的錯誤；來源已經交出過（第二次 `fetch`）時丟出 `invalidResponse`
     /// - Note: 第二次 `fetch` 丟錯而不是回傳空的逐行內容，讓誤用的測試立刻失敗
+    /// - Note: 第二次以後的 `fetch` 另以 `Issue.record` 記錄測試失敗，不論是否設定了 `failFetch`
+    /// - Note: 記錄放在鎖外，因為 `Issue.record` 會同步執行 `withKnownIssue` 的 `matching:`，
+    ///   若判斷式讀取 `requests`，會在鎖內再次取得同一把不可重入的 `Mutex` 而死結
     package func fetch(_ request: URLRequest) async throws(LKAIError) -> LKAIHTTPResponse {
-        let source = try state.withLock { mockState throws(LKAIError) in
+        let (fetchCount, outcome) = state.withLock { mockState -> FetchOutcome in
             mockState.requests.append(request)
+            let count = mockState.requests.count
             if let fetchError = mockState.fetchError {
-                throw fetchError
+                return (count, .failure(fetchError))
             }
             guard let pendingStream = mockState.pendingStream else {
-                throw .invalidResponse(reason: "The mock supports only one fetch with line content")
+                let reason = "The mock supports only one fetch with line content"
+                return (count, .failure(.invalidResponse(reason: reason)))
             }
             mockState.pendingStream = nil
-            return pendingStream
+            return (count, .success(pendingStream))
         }
+        if fetchCount > 1 {
+            Issue.record(
+                "LKAIMockHTTPClient fetch #\(fetchCount): each mock supports only one fetch"
+            )
+        }
+        let source = try outcome.get()
         return LKAIHTTPResponse(
             statusCode: statusCode,
             headers: headers,

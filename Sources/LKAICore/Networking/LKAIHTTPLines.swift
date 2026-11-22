@@ -57,8 +57,9 @@ extension LKAIHTTPLines {
             do {
                 return try await sourceIterator.next(isolation: actor)
             } catch {
-                // 取消後來源仍可能在空檔丟出錯誤，所以最先判斷取消，這些錯誤才不會漏出去
-                guard !Task.isCancelled, let failure = LKAIError.streamFailure(for: error) else {
+                // 取消後來源仍可能在空檔丟出錯誤，所以把 `Task.isCancelled` 一併交給判斷，這些錯誤才不會漏出去
+                let mapped = LKAIError.streamFailure(for: error, isCancelled: Task.isCancelled)
+                guard let failure = mapped else {
                     return nil
                 }
                 throw failure

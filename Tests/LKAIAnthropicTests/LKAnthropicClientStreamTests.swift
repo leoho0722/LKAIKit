@@ -6,6 +6,7 @@
 //
 
 import LKAICore
+import LKAITestSupport
 import Testing
 
 @testable import LKAIAnthropic
@@ -49,7 +50,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -82,7 +86,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -112,7 +119,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -148,7 +158,10 @@ struct LKAnthropicClientStreamTests {
         let expectedEvents = [LKAnthropicClientTestSupport.finishedEvent(expectedFinishReason)]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -184,7 +197,10 @@ struct LKAnthropicClientStreamTests {
         let expectedError = LKAIError.refused(detail: expectedDetail)
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events.isEmpty)
@@ -210,7 +226,10 @@ struct LKAnthropicClientStreamTests {
         ])
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events.isEmpty)
@@ -231,7 +250,10 @@ struct LKAnthropicClientStreamTests {
         let expectedEvents = [LKAnthropicClientTestSupport.finishedEvent(.completed)]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -257,7 +279,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -283,7 +308,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -310,7 +338,10 @@ struct LKAnthropicClientStreamTests {
         let expectedError = LKAIError.refused(detail: "cyber")
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -343,7 +374,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -377,7 +411,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -411,7 +448,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -434,7 +474,10 @@ struct LKAnthropicClientStreamTests {
         let expectedEvents = [LKAnthropicClientTestSupport.finishedEvent(.completed)]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -466,7 +509,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -492,7 +538,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -522,7 +571,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -558,7 +610,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -590,7 +645,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -615,7 +673,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -666,7 +727,10 @@ struct LKAnthropicClientStreamTests {
         ]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -704,7 +768,10 @@ struct LKAnthropicClientStreamTests {
         let expectedEvents: [LKAIChatStreamEvent] = [.textDelta("Hel")]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -718,7 +785,10 @@ struct LKAnthropicClientStreamTests {
         let client = LKAnthropicClientTestSupport.makeClient(events: [])
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events.isEmpty)

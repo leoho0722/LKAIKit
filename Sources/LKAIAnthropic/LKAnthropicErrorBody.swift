@@ -5,7 +5,6 @@
 //  Created by Leo Ho on 2026/11/21.
 //
 
-import Foundation
 import LKAICore
 
 /// Anthropic 的錯誤內容，HTTP 錯誤回應與串流中的 `error` 事件共用這個格式
@@ -25,10 +24,7 @@ struct LKAnthropicErrorBody: Decodable {
     ///
     /// - Parameter text: 錯誤回應的內容，一段 JSON 文字
     init?(text: String) {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let data = Data(text.utf8)
-        let decoded = try? decoder.decode(LKAnthropicErrorBody.self, from: data) // 失敗可忽略，因為會改用預設分類
+        let decoded = try? LKAISnakeCaseJSON.decode(Self.self, from: text) // 失敗可忽略，因為會改用預設分類
         guard let body = decoded else {
             return nil
         }

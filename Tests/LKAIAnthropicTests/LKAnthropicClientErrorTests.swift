@@ -166,7 +166,10 @@ struct LKAnthropicClientErrorTests {
         ])
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
 
         // Then
         #expect(outcome.events == [.textDelta("Hel")])
@@ -188,9 +191,9 @@ struct LKAnthropicClientErrorTests {
     /// 驗證連線失敗時，串流與非串流呼叫都丟出 `transport`，並保留底層 `URLError` 的代碼
     ///
     /// - Parameter mode: 呼叫方式，串流或非串流
-    @Test(.timeLimit(.minutes(1)), arguments: LKAnthropicClientTestSupport.CallMode.allCases)
+    @Test(.timeLimit(.minutes(1)), arguments: LKAIChatClientProtocolTestSupport.CallMode.allCases)
     func stream與invoke_連線失敗_丟出transport且保留底層錯誤代碼(
-        mode: LKAnthropicClientTestSupport.CallMode
+        mode: LKAIChatClientProtocolTestSupport.CallMode
     ) async throws {
         // Given
         let mock = LKAIMockHTTPClient()
@@ -198,7 +201,11 @@ struct LKAnthropicClientErrorTests {
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
 
         // When
-        let actualError = await LKAnthropicClientTestSupport.callError(on: client, mode: mode)
+        let actualError = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKAnthropicClientTestSupport.validRequest,
+            mode: mode
+        )
 
         // Then
         let error = try #require(actualError)
@@ -208,6 +215,71 @@ struct LKAnthropicClientErrorTests {
             nil
         }
         #expect(code == .notConnectedToInternet)
+    }
+
+    /// 驗證串流送出文字後連線中斷，先交出已收到的文字，再丟出 `transport`，並保留底層代碼
+    ///
+    /// - Note: 中斷的錯誤要用 `LKAIError.transport` 送出，裸的 `URLError` 會被降級成無效回應
+    @Test(.timeLimit(.minutes(1)))
+    func stream_送出文字後連線中斷_先交出文字再丟出transport且保留底層錯誤代碼() async throws {
+        // Given
+        let mock = LKAIMockHTTPClient()
+        mock.yield(lines: LKAnthropicClientTestSupport.lines(of: [
+            .messageStart(),
+            .textBlockStart(),
+            .textDelta("Hel"),
+        ]))
+        mock.finish(throwing: LKAIError.transport(underlying: URLError(.networkConnectionLost)))
+        let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
+
+        // When
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
+
+        // Then
+        #expect(outcome.events == [.textDelta("Hel")])
+        let error = try #require(outcome.error)
+        let code: URLError.Code? = if case .transport(let underlying) = error {
+            underlying.code
+        } else {
+            nil
+        }
+        #expect(code == .networkConnectionLost)
+    }
+
+    /// 驗證讀取非 2xx 回應的錯誤內容時連線中斷，兩種呼叫都丟出 `transport`，並保留底層代碼
+    ///
+    /// - Parameter mode: 呼叫方式，串流或非串流
+    @Test(.timeLimit(.minutes(1)), arguments: LKAIChatClientProtocolTestSupport.CallMode.allCases)
+    func stream與invoke_讀取錯誤內容時連線中斷_丟出transport且保留底層錯誤代碼(
+        mode: LKAIChatClientProtocolTestSupport.CallMode
+    ) async throws {
+        // Given
+        let mock = LKAIMockHTTPClient(
+            statusCode: 500,
+            headers: ["content-type": "application/json"]
+        )
+        mock.yield(#"{"type":"error","error":{"type":"api_error","#)
+        mock.finish(throwing: LKAIError.transport(underlying: URLError(.networkConnectionLost)))
+        let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
+
+        // When
+        let actualError = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKAnthropicClientTestSupport.validRequest,
+            mode: mode
+        )
+
+        // Then
+        let error = try #require(actualError)
+        let code: URLError.Code? = if case .transport(let underlying) = error {
+            underlying.code
+        } else {
+            nil
+        }
+        #expect(code == .networkConnectionLost)
     }
 }
 

@@ -5,7 +5,7 @@
 //  Created by Leo Ho on 2026/11/21.
 //
 
-import Foundation
+import LKAICore
 
 /// Anthropic Messages API 串流的一筆事件，只解出事件對應規則用得到的欄位
 ///
@@ -42,7 +42,7 @@ enum LKAnthropicStreamEvent {
     /// `message_stop`：訊息結束，這時才依結束原因交出結束事件或丟出錯誤
     case messageStop
 
-    /// `error`：串流中途的錯誤，整個事件就是錯誤內容；由 `LKAnthropicClient` 對應成錯誤丟出，不交給串流狀態
+    /// `error`：串流中途的錯誤，整個事件就是錯誤內容；由 `LKAnthropicStreamState.handle(_:)` 對應成錯誤丟出
     ///
     /// - Parameter body: 錯誤內容，即事件的 JSON
     case error(LKAnthropicErrorBody)
@@ -56,11 +56,9 @@ enum LKAnthropicStreamEvent {
     ///
     /// - Parameter data: SSE 事件的 `data`，一段 JSON 文字
     /// - Throws: 不是合法的 JSON，或認得的事件類型欄位格式不符時丟出 `DecodingError`
-    /// - Note: 解碼時套用 `convertFromSnakeCase`，讓巢狀型別的欄位名稱直接對應 API 的 snake_case 鍵
+    /// - Note: 由 `LKAISnakeCaseJSON` 解碼，讓巢狀型別的欄位名稱直接對應 API 的 snake_case 鍵
     init(data: String) throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        self = try decoder.decode(LKAnthropicStreamEvent.self, from: Data(data.utf8))
+        self = try LKAISnakeCaseJSON.decode(LKAnthropicStreamEvent.self, from: data)
     }
 }
 

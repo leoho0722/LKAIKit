@@ -16,7 +16,7 @@ public protocol LKAIChatClientProtocol: Sendable {
     /// - Parameter request: 要送出的對話請求
     /// - Returns: 依序交出事件的串流；請求在呼叫這個方法時就送出，不必等到迭代
     /// - Note: 釋放串流（不論是否迭代過）會取消底層請求；只用 `break` 離開迴圈而仍持有串流時，請求會繼續進行並計費
-    /// - Note: 請求不合法時，迭代串流會以 `invalidRequest` 失敗，而且不送出網路請求；由各供應商實作這項檢查
+    /// - Note: 請求不合法時，迭代串流會以 `invalidRequest` 失敗，而且不送出網路請求；本 package 的供應商由共同流程統一檢查
     func stream(_ request: LKAIChatRequest) -> LKAIChatStream
 
     /// 等整段回答生成完成後，回傳完整的文字與結束時的資訊

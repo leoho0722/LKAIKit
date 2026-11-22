@@ -27,7 +27,10 @@ struct LKAnthropicClientCancellationTests {
         let expectedEvents: [LKAIChatStreamEvent] = [.textDelta("Hel")]
         let (receivedSignals, receivedSignal) = AsyncStream<Void>.makeStream()
         let iterationTask = Task {
-            await LKAnthropicClientTestSupport.collectOutcome(from: client) { _ in
+            await LKAIChatClientProtocolTestSupport.collectOutcome(
+                from: client,
+                request: LKAnthropicClientTestSupport.validRequest
+            ) { _ in
                 receivedSignal.yield()
             }
         }
@@ -38,7 +41,7 @@ struct LKAnthropicClientCancellationTests {
         }
         iterationTask.cancel()
         let outcome = await iterationTask.value
-        try await waitUntil { mock.isCancelled }
+        try await LKAITestWaiting.waitUntil { mock.isCancelled }
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -56,8 +59,11 @@ struct LKAnthropicClientCancellationTests {
         let expectedEvent = LKAIChatStreamEvent.textDelta("Hel")
 
         // When
-        let firstEvent = try await receiveFirstEvent(of: client)
-        try await waitUntil { mock.isCancelled }
+        let firstEvent = try await LKAIChatClientProtocolTestSupport.receiveFirstEvent(
+            of: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
+        try await LKAITestWaiting.waitUntil { mock.isCancelled }
 
         // Then
         #expect(firstEvent == expectedEvent)
@@ -75,11 +81,15 @@ struct LKAnthropicClientCancellationTests {
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
         let expectedError = LKAIError.cancelled
         let invokeTask = Task {
-            await invokeError(on: client)
+            await LKAIChatClientProtocolTestSupport.callError(
+                on: client,
+                request: LKAnthropicClientTestSupport.validRequest,
+                mode: .invoke
+            )
         }
 
         // When
-        try await waitUntil { mock.requests.count == 1 }
+        try await LKAITestWaiting.waitUntil { mock.requests.count == 1 }
         invokeTask.cancel()
         let actualError = await invokeTask.value
 
@@ -99,8 +109,11 @@ struct LKAnthropicClientCancellationTests {
         let expectedEvents = [LKAIChatStreamEvent.textDelta("Hel"), expectedFinishedEvent]
 
         // When
-        let outcome = await LKAnthropicClientTestSupport.collectOutcome(from: client)
-        try await waitUntil { mock.isCancelled }
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKAnthropicClientTestSupport.validRequest
+        )
+        try await LKAITestWaiting.waitUntil { mock.isCancelled }
 
         // Then
         #expect(outcome.events == expectedEvents)
@@ -124,49 +137,6 @@ private extension LKAnthropicClientCancellationTests {
             .textDelta("Hel"),
         ]))
         return mock
-    }
-
-    /// 最多等 2 秒，每 10 毫秒檢查一次條件，條件成立就立刻返回；取消是非同步的，所以要等替身偵測到
-    ///
-    /// - Parameter condition: 要等它成立的條件
-    /// - Throws: 測試的 task 在等待中被取消時丟出
-    /// - Note: 條件一直沒有成立時，等滿就返回，由呼叫端接著的斷言失敗
-    func waitUntil(_ condition: () -> Bool) async throws {
-        for _ in 0..<200 {
-            if condition() {
-                return
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-    }
-
-    /// 取得串流的第一個事件就離開迴圈，函式返回時串流跟著釋放
-    ///
-    /// - Parameter client: 要呼叫的 client
-    /// - Returns: 串流的第一個事件；串流沒有任何事件就結束時為 nil
-    /// - Throws: 串流在第一個事件之前失敗時丟出
-    func receiveFirstEvent(
-        of client: LKAnthropicClient
-    ) async throws(LKAIError) -> LKAIChatStreamEvent? {
-        let stream = client.stream(LKAnthropicClientTestSupport.validRequest)
-        for try await event in stream {
-            return event
-        }
-        return nil
-    }
-
-    /// 以非串流呼叫 client 並記下丟出的錯誤
-    ///
-    /// - Parameter client: 要呼叫的 client
-    /// - Returns: 呼叫丟出的錯誤；順利得到結果時為 nil
-    func invokeError(on client: LKAnthropicClient) async -> LKAIError? {
-        var actualError: LKAIError?
-        do {
-            _ = try await client.invoke(LKAnthropicClientTestSupport.validRequest)
-        } catch {
-            actualError = error
-        }
-        return actualError
     }
 
     /// 建立一個推送完整事件後不結束的替身：`makePendingMock()` 的內容之後，再送出結束原因與 `message_stop`

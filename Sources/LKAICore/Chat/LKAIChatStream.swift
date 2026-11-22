@@ -29,6 +29,34 @@ public struct LKAIChatStream: Sendable {
     public init(_ source: AsyncThrowingStream<LKAIChatStreamEvent, any Error>) {
         self.source = source
     }
+
+    /// 以生產端建立串流，由這個 init 建立唯一的背景 task 執行生產端，並接好結束與取消
+    ///
+    /// - Parameter produce: 生產端，從 `yield` 依序交出事件；正常返回時串流正常結束，丟出錯誤時串流以該錯誤失敗
+    /// - Note: 建立一個非結構化的 `Task` 執行生產端，偏離 ios-dev-kit「`Task { }` 只在兩個地方建立」
+    /// - Note: 理由：函式庫沒有 View 或 ViewModel，要把非同步的生產端接到 `AsyncSequence` 只能這樣做
+    /// - Note: 以「每條串流一個 task、只由 `onTermination` 取消、不存進任何屬性」限制它的生命週期
+    /// - Note: 生產端只拿到交出事件的 closure，無法自行 `finish`，也無法改寫 `onTermination`
+    package init(
+        producing produce: @escaping @Sendable (
+            _ yield: (LKAIChatStreamEvent) -> Void
+        ) async throws(LKAIError) -> Void
+    ) {
+        let source = AsyncThrowingStream<LKAIChatStreamEvent, any Error> { continuation in
+            let producingTask = Task {
+                do throws(LKAIError) {
+                    try await produce { continuation.yield($0) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                producingTask.cancel()
+            }
+        }
+        self.init(source)
+    }
 }
 
 // MARK: - Nested Types
@@ -59,8 +87,9 @@ extension LKAIChatStream {
             do {
                 return try await sourceIterator.next(isolation: actor)
             } catch {
-                // 取消後來源仍可能在空檔丟出錯誤，所以最先判斷取消，這些錯誤才不會漏給 App
-                guard !Task.isCancelled, let failure = LKAIError.streamFailure(for: error) else {
+                // 取消後來源仍可能在空檔丟出錯誤，所以把 `Task.isCancelled` 一併交給判斷，這些錯誤才不會漏給 App
+                let mapped = LKAIError.streamFailure(for: error, isCancelled: Task.isCancelled)
+                guard let failure = mapped else {
                     return nil
                 }
                 throw failure
