@@ -74,20 +74,26 @@ struct LKAITestJSONTests {
     ///
     /// - Parameter variant: 要呼叫的版本，文字版或 `Data` 版
     /// - Note: 傳入最外層是陣列的 `[1]`，helper 內的 `#require` 會記下問題並丟出錯誤
-    /// - Note: `withKnownIssue` 只把記在 `LKAITestJSONTests.swift` 的問題當成已知問題；
-    ///   問題記在別的檔案時，它不放過，而且會另外回報沒有等到預期的問題
+    /// - Note: `withKnownIssue` 只把 `#require` 記下的預期失敗，而且記在 `LKAITestJSONTests.swift`
+    ///   的問題當成已知問題；問題記在別的檔案時，它不放過，而且會另外回報沒有等到預期的問題
+    /// - Note: 限定問題的種類，是因為 helper 若改成直接丟一般錯誤，`withKnownIssue` 會把它記成
+    ///   「捕捉到錯誤」的問題，位置是這個檔案裡的 `withKnownIssue` 呼叫，只比對檔名會放過它
     @Test(arguments: JSONObjectVariant.allCases)
     func jsonObject_最外層不是物件_問題記在呼叫端的測試檔(variant: JSONObjectVariant) throws {
         // Given
         let invalidJSON = "[1]"
 
         // When
+
         // Then
         // `withKnownIssue` 一次執行動作並比對問題記在哪個檔案，所以兩段寫在同一個呼叫
         try withKnownIssue {
             _ = try variant.parse(invalidJSON)
         } matching: { issue in
-            issue.sourceLocation?.fileName == "LKAITestJSONTests.swift"
+            guard case .expectationFailed = issue.kind else {
+                return false
+            }
+            return issue.sourceLocation?.fileName == "LKAITestJSONTests.swift"
         }
     }
 }
