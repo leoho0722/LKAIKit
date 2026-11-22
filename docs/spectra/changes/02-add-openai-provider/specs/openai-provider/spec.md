@@ -86,7 +86,7 @@ The openai-provider capability defines how `LKOpenAIClient` fulfils the chat-cli
 ---
 ### Requirement: Finish and refusal mapping
 
-`LKOpenAIClient` SHALL end the stream at the first `response.completed`, `response.incomplete`, `response.failed`, or `error` event, and SHALL NOT act on any event after it. The refusal text of a stream SHALL be the `delta` values of its `response.refusal.delta` events joined in arrival order, or, when the stream has no such event, the `refusal` values of its `response.refusal.done` events joined in arrival order. When the refusal text is not empty, a `response.completed` or `response.incomplete` event SHALL fail the call with a refused error whose detail is the refusal text. Otherwise, `response.completed` SHALL deliver a finished event whose finish reason is completed, and `response.incomplete` SHALL be mapped by `response.incomplete_details.reason`: `max_output_tokens` to a finished event whose finish reason is max output tokens, `content_filter` to a refused error whose detail is `content_filter`, and any other or missing reason to an invalid-response error. Because the Responses API reports generation that fills the model's context window with the same reason `max_output_tokens`, the client SHALL NOT report the finish reason context window exceeded. Text deltas delivered before the end of the stream SHALL stay delivered.
+`LKOpenAIClient` SHALL end the stream at the first `response.completed`, `response.incomplete`, `response.failed`, or `error` event, and SHALL NOT act on any event after it. The refusal text of a stream SHALL be the `delta` values of its `response.refusal.delta` events joined in arrival order, or, when that joined text is empty, the `refusal` values of its `response.refusal.done` events joined in arrival order. When the refusal text is not empty, a `response.completed` or `response.incomplete` event SHALL fail the call with a refused error whose detail is the refusal text. Otherwise, `response.completed` SHALL deliver a finished event whose finish reason is completed, and `response.incomplete` SHALL be mapped by `response.incomplete_details.reason`: `max_output_tokens` to a finished event whose finish reason is max output tokens, `content_filter` to a refused error whose detail is `content_filter`, and any other or missing reason to an invalid-response error. Because the Responses API reports generation that fills the model's context window with the same reason `max_output_tokens`, the client SHALL NOT report the finish reason context window exceeded. Text deltas delivered before the end of the stream SHALL stay delivered.
 
 #### Scenario: Map terminal events
 
@@ -102,6 +102,7 @@ The openai-provider capability defines how `LKOpenAIClient` fulfils the chat-cli
 | `response.completed` | none | finished event, finish reason completed |
 | `response.completed` | `response.refusal.delta` "I'm sorry," and " I can't help with that." | refused error, detail "I'm sorry, I can't help with that." |
 | `response.completed` | `response.refusal.done` with refusal "I can't help with that." and no delta | refused error, detail "I can't help with that." |
+| `response.completed` | `response.refusal.delta` "" and `response.refusal.done` with refusal "I can't help with that." | refused error, detail "I can't help with that." |
 | `response.incomplete` with reason `max_output_tokens` | none | finished event, finish reason max output tokens |
 | `response.incomplete` with reason `content_filter` | none | refused error, detail "content_filter" |
 | `response.incomplete` with reason `max_messages` | none | invalid-response error |
@@ -166,6 +167,7 @@ An `error` event, and the `response.error` of a `response.failed` event, SHALL b
 | Status | `error` object | Other response data | Expected error |
 | ------ | -------------- | ------------------- | -------------- |
 | 401 | `{"message":"Incorrect API key provided.","type":"invalid_request_error","code":"invalid_api_key"}` | none | invalid API key |
+| 402 | `{"message":"Payment required.","type":"invalid_request_error","code":null}` | none | quota exceeded |
 | 403 | `{"message":"Country, region, or territory not supported","type":"request_forbidden","code":"unsupported_country_region_territory"}` | none | permission denied |
 | 403 | `{"message":"This request was stopped by misalignment monitoring.","type":"invalid_request_error","code":"misalignment_policy_violation"}` | none | refused, detail "misalignment_policy_violation" |
 | 400 | `{"message":"This request was flagged as potentially suspicious.","type":"invalid_request_error","code":"cyber_policy"}` | none | refused, detail "cyber_policy" |
@@ -206,6 +208,7 @@ An `error` event, and the `response.error` of a `response.failed` event, SHALL b
 | `bio_policy` | "Request blocked." | refused, detail "bio_policy" |
 | `misalignment_policy_violation` | "Request stopped." | refused, detail "misalignment_policy_violation" |
 | `invalid_prompt` | "Invalid prompt." | invalid request, message "Invalid prompt." |
+| `data_residency_mismatch` | "Data residency mismatch." | invalid request, message "Data residency mismatch." |
 | `new_unknown_code` | "Something went wrong." | invalid response whose description contains "new_unknown_code" and "Something went wrong." |
 | null | "Something went wrong." | service unavailable, status 500 |
 

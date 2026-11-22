@@ -144,7 +144,7 @@
 
   - **第 1 次（2026-11-22，功能分支 `58207f9`，主對話依 owner 的指示執行上面的指令）**：未通過。
     - 兩個實際 API 測試都有執行，都以 `.invalidAPIKey` 失敗；其餘 21 個測試通過，輸出沒有任何 `sk-` 開頭的字串。
-    - Keychain 的值格式正常：`sk-proj-` 開頭、128 個字元、沒有空白或換行。
+    - Keychain 的值格式正常：`sk-proj-` 開頭、128 個字元、沒有空白、CR 或 LF。
     - 以同樣的請求直接呼叫 API（金鑰經由 stdin 傳給 curl，輸出遮蔽金鑰），OpenAI 回 HTTP 401，`code` 為 `invalid_api_key`，訊息為「Incorrect API key provided」。
     - 結論：OpenAI 不認得 Keychain 裡的金鑰，等 owner 換上有效的金鑰後再執行一次。
   - **第 2 次（2026-11-22，功能分支 `58207f9`，owner 表示已換金鑰後執行）**：未通過，兩個實際 API 測試同樣以 `.invalidAPIKey` 失敗，輸出沒有 `sk-` 開頭的字串。
@@ -158,3 +158,44 @@
     - owner 改用剪貼簿以 `-w "$(pbpaste)"` 存入；Keychain 這一筆是 05:36 UTC 建立，長度 164 個字元，沒有空白或不可見字元，證實前三次是被截斷。
     - `stream_要求只回一個詞_以完成結束且文字不為空` 與 `invoke_要求只回一個詞_結果以完成結束且文字不為空` 都有執行而且通過，其餘 21 個測試照常通過；輸出沒有 `sk-` 開頭的字串。
     - 兩個測試都以完成結束，表示輸出上限 4096 足夠，沒有在推理途中用完；測試不輸出用量，所以 `reasoning_tokens` 的實際值沒有量測。
+
+## 5. 實作審查的修正
+
+四份審查（`/spectra-verify`、`/spectra-review`、fable、opus）都沒有會造成錯誤行為的問題。以下是查證成立的項目：
+
+- 5.1 只改排版與說明文字，不改行為。
+- 5.2 依使用者在 2026-11-22 的決定，修改拒答文字的規則，並補齊範例表沒有涵蓋的分支。
+- 其餘建議已寫進 design：
+  - 金鑰的存放、反向檢查表、`error` 事件 `type` 的用語、`config.yaml` 的指標。
+  - Open Questions：測試 helper 的重複、503 的 `Retry-After`、`LKAIError.refused` 的隱私說明、格式不符的 `error` 事件、兩家不認得的串流錯誤、指標的層數。
+- 派工依 design「平行實作沿用兩個 git worktree」：5.1、5.2 由 sonnet 依序做，5.3、5.4 由主對話做。
+
+- [ ] 5.1 依 ios-dev-kit `formatting.md`，修正實作審查找到的排版，行為不變（sonnet）：
+  - 新增與修改的檔案中超過 100 字元的 `///` 改寫成多行；修改前的 `Sources/`、`Tests/` 沒有任何一行非標記註解超過 100（opus 量測）。
+  - `LKOpenAIStreamState` 的 private computed property `refusalText` 移到 Private Method 區最前面：「區內排序」規定 Private Method 區先放 property 再放方法。
+  - `LKOpenAIErrorBody.Detail.isQuotaExhausted` 的多 pattern `case` 改成每行排滿、續行比 `case` 多縮 8 格。
+  - `LKOpenAIErrorBody` 中「串流的 `error` 事件沒有種類欄位」的說明，依 design「錯誤依 error.code 與 error.type 分類」改成「它的 `type` 是事件種類，固定為 `error`，不是錯誤類型」。
+
+  驗證：
+  - 完整 `swift test` 通過且零警告，測試數不變。
+  - 以腳本確認 `Sources/` 與 `Tests/` 內沒有超過 100 字元的非標記註解。
+- [ ] 5.2 [after: 5.1] 依 design「OpenAI 串流事件的對應規則」修改後的拒答規則，交付 openai-provider 的「Finish and refusal mapping」與「Error mapping」新增的範例列（sonnet）：
+  - `LKOpenAIStreamState` 的拒答文字改成：delta 依序串接；串接後為空時，改用 done 依序串接。累積的狀態可改成兩個 `String`。
+  - 結束事件範例表加上 delta 為空字串的那一列。
+  - HTTP 錯誤範例表加上 402 那一列，串流 `error` 事件範例表加上 `data_residency_mismatch` 那一列。
+  - 拒答 delta 與 done 並存的測試，done 改用與 delta 串接結果不同的文字，期望值維持 delta 串接的結果。
+
+  驗證：
+  - 主對話先觀察到 delta 為空字串的那一列在實作前失敗，實作後通過。
+  - 402 與 `data_residency_mismatch` 兩列，以及修改後的並存測試，描述的是已經實作的行為，在目前的實作上就會通過。依 TDD 的 Regression，由 5.4 的反向檢查把關。
+  - 完整 `swift test` 通過且零警告。
+- [ ] 5.3 依 design「config.yaml 的指標加上本 change」修改後的文字，把 `docs/spectra/config.yaml` API 演進規則的指標換成 design 引用的新文字（主對話）。
+
+  驗證：`spectra instructions proposal --change "02-add-openai-provider" --json` 回傳的 context 含有新的指標，與 design 引用的文字逐字相同。
+- [ ] 5.4 [after: 5.1, 5.2, 5.3] 修正後的驗收（主對話）：
+  - 依 design Implementation Contract 的「驗收」重新執行建置、測試、spec 標記、`spectra coverage` 與 iOS 建置。
+  - 執行反向檢查表新增的四項（拒答文字改回「有任何 delta 事件就只用 delta」、改成「有 done 就用 done」、不排除 402、`data_residency_mismatch` 改走不認得的代碼）。
+  - 重跑 4.1 中與拒答文字有關的兩項（`response.refusal.delta` 當成文字交出、拒答文字只讀 delta）。
+  - 每一項的執行結果記錄在本任務下方。
+
+  驗證：每一項結果都符合 Implementation Contract 的描述，測試數與 4.1 相同。

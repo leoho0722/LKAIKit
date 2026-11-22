@@ -184,9 +184,10 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 | `error` | 依 `code` 丟錯，規則同上 |
 | 其他所有種類，包括不認得的 | 不交出事件 |
 
-- **拒答文字**：有任何 `response.refusal.delta` 時，以 delta 依序串接；一則 delta 都沒有時，改用 `response.refusal.done` 的 `refusal` 依序串接。
+- **拒答文字**：`response.refusal.delta` 的 `delta` 依序串接；串接後為空時（沒有 delta，或 delta 都是空字串），改用 `response.refusal.done` 的 `refusal` 依序串接。
   - 文件沒有寫兩者的順序，也沒有保證至少有一則 delta（規劃審查時 opus 指出），所以兩種來源都要讀。
   - 只讀 delta 時，若 API 只送 done，拒答會被當成文字為空的完成，App 收不到任何錯誤。
+  - 原本寫「有任何 delta 事件就只用 delta」。delta 都是空字串、done 帶完整文字時，同樣會被當成完成（實作審查時 fable 指出）。使用者在 2026-11-22 決定改成以串接後是否為空判斷；文件沒有寫過這種形狀，屬於防禦。
 - **解碼**：`data` 不是合法的 JSON，或認得的種類欄位格式不符時，丟 `.invalidResponse`，與 Anthropic 的 `Malformed stream event` 相同。丟錯之後的事件都不交出。
 - **未知欄位**：解碼型別只宣告用得到的欄位，`obfuscation`、`logprobs` 這類欄位自動略過。
 - **共同流程**：交出 `.finished` 或丟錯後立即停止讀取，沒有結束事件就丟 `.invalidResponse`。這兩點由共同流程處理，mapper 不必處理。
@@ -195,6 +196,7 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 
 - **把拒答文字當成一般文字交出**：App 會把拒答當成回答顯示，而 chat-client 的 Refusal 需求要求以拒答錯誤回報，否決。
 - **只讀 delta**：理由見上方，否決。
+- **有任何 delta 事件就只用 delta**（實作時的寫法）：delta 都是空字串時會漏報拒答，理由見上方，否決。
 - **在結束事件時，從 `response.output[].content[]` 的 `refusal` 片段取得**（fable 提出）：也可行，但要多解兩層巢狀欄位；`response.refusal.done` 已帶完整文字，所以否決。
 
 ### 拒答文字作為 refused 的 detail，content_filter 以固定字串表示
@@ -229,7 +231,7 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
   - 組織因 `cyber_policy` 被暫停存取的情況，也一樣回報 `refused`：重點是不可重試，而且兩條路徑一致。
 - **額度與帳務的代碼**：`insufficient_quota`、`billing_hard_limit_reached`、`credit_balance_exhausted`、`organization_spend_limit_exceeded`、`project_spend_limit_exceeded`、`organization_usage_limit_exceeded`。對應 `.quotaExceeded`，不可重試。
   - 共用的判斷函式只看 `code`。
-  - 「`error.type` 為 `insufficient_quota`」只在 HTTP 規則判斷，因為串流的 `error` 事件沒有 `type` 欄位。
+  - 「`error.type` 為 `insufficient_quota`」只在 HTTP 規則判斷。串流 `error` 事件的 `type` 是事件種類，固定為 `error`，不是錯誤類型。
 
 **HTTP 錯誤**（`httpError(statusCode:headers:body:)`，純函式），依序套用第一條符合的規則：
 
@@ -356,7 +358,11 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 - **輸出上限**：4096。`gpt-6-luna` 是推理模型，推理 token 也算在 `max_output_tokens` 內。文件提醒達到上限時可能還沒有任何可見輸出，所以取和 Anthropic 實際 API 測試相同的值。
   - 這是估計值，沒有量測：一個詞的回答在預設 effort `medium` 下用不到這麼多。
   - 以 owner 實跑時 `usage` 的 `reasoning_tokens` 確認。
+  - 4.2 實跑時兩個測試都以完成結束，表示 4096 足夠；測試不輸出用量，`reasoning_tokens` 的實際值沒有量測。
 - **金鑰的存放**：owner 照 Anthropic 的做法，把金鑰放進 Keychain 的 service `lkai-openai-api-key`，執行時再以 `security find-generic-password` 讀進環境變數。
+  - 存入時不要用 `security add-generic-password ... -w` 不帶值的密碼提示：macOS `getpass(3)` 最多收 128 個字元，超過的部分直接丟掉、不報錯。
+  - OpenAI 的 `sk-proj-` 金鑰是 164 個字元（4.2 量測），被截斷後 API 回 `invalid_api_key`，4.2 前三次失敗就是這個原因。
+  - 改以剪貼簿傳入：`-w "$(pbpaste)"`，存完以長度確認不是 128。
 
 ### 型別依 ios-dev-kit 樣板建立，測試 target 依受測 target 增加
 
@@ -372,10 +378,14 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 
 - 01 的 Open Questions 中，有三項本 change 已決定：共同流程分支的測試位置、SSE 分框的測試 helper、金鑰遮蔽。
 - 三家對照表的 OpenAI 一欄，本 change 的 Context 有更新的查證。
+- 第一份 design 的 Open Questions 中，輸入超過 context window 的 400 錯誤、只 `import LKAIKit` 的使用端檢查兩項，本 change 也處理了（見 Context）；後者原文寫「或下一家供應商的 change 再決定」，不點名的話 Gemini 可能再問一次（實作審查時 fable 指出）。
 
 所以比照 `01-extract-chat-stream-skeleton` 的決策「config.yaml 的指標改為同時指向本 change」，把那一條改為：
 
-> 新增供應商的 change 開始前，先讀 add-chat-abstraction-anthropic、01-extract-chat-stream-skeleton 與 02-add-openai-provider 封存後的 design：逐列核對第一份 Context 的三家對照表（OpenAI 一欄以 02 的 Context 為準），並處理三者 Open Questions 留給下一家供應商的項目。以 SSE 串流回答的供應商一律遵循 `LKAIServerSentEventChatStreaming`，不自行建立 `Task`。第一份的「生產端 task 的擁有權」、「`LKAITestSupport` 不設測試 target」與 Open Questions 的抽出共同流程一項，以 01 為準；01 的 Open Questions 中共同流程分支的測試位置、SSE 分框的測試 helper、金鑰遮蔽三項，以 02 為準。
+> 新增供應商的 change 開始前，先讀 add-chat-abstraction-anthropic、01-extract-chat-stream-skeleton 與 02-add-openai-provider 封存後的 design：逐列核對第一份 Context 的三家對照表（OpenAI 一欄以 02 的 Context 為準），並處理三者 Open Questions 留給下一家供應商的項目。以 SSE 串流回答的供應商一律遵循 `LKAIServerSentEventChatStreaming`，不自行建立 `Task`。第一份的「生產端 task 的擁有權」、「`LKAITestSupport` 不設測試 target」與 Open Questions 的抽出共同流程一項，以 01 為準；第一份 Open Questions 的輸入超過 context window 的錯誤、只 `import LKAIKit` 的使用端檢查兩項，以及 01 的 Open Questions 中共同流程分支的測試位置、SSE 分框的測試 helper、金鑰遮蔽三項，以 02 為準。
+
+- 3.2 先寫入了不含第一份兩項的版本；實作審查後由 5.3 改成上面的文字。
+- 每多一家供應商，這條就多一層「以某份為準」。Gemini 的 change 時評估改成一份持續更新的清單，見 Open Questions。
 
 考慮過的替代方案：修改封存的 design。封存的內容記錄當時的決定，不回頭改，否決。
 
@@ -430,6 +440,7 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
   - LKAIAnthropic 仍是 45 個，名稱與期望值不變。
   - LKAIKit 為 3 個，LKAITestSupportTests 為 3 個。
   - LKAIOpenAI 的測試數以實際為準，估計約 19 個，含 2 個沒有金鑰時略過的實際 API 測試。這是依 spec 的情境數估計的，以驗收時的 `swift test` 輸出確認。
+  - 4.1 量測為 23 個。多出的 4 個是實作時補的分支測試：非串流的回應模型、沒有 `model`、拒答 delta 與 done 並存、以 `max_output_tokens` 未完成時帶用量。5.2 只在既有的參數化測試加列，測試數不變。
 - **spectra-scenario 標記**：
   - 修改前已有的 93 行（2026-11-22 於 `fcb2c47` 以 `git grep` 計數）仍逐行存在。
   - 新增的行都是 `spectra-scenario: openai-provider / ...`。
@@ -455,6 +466,15 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 | 拒答文字只讀 delta | 結束事件範例表只有 `response.refusal.done` 的那一列 |
 | `public init` 的 `shouldStoreResponses` 預設為 true | 以 URL session 建立、不帶保存設定的情境 |
 | `description` 含金鑰 | 金鑰保密的測試 |
+| HTTP 規則 3 把 401 也算進帶訊息的 4xx | HTTP 401 錯誤描述不含金鑰的測試、HTTP 錯誤範例表的 401 列 |
+| 拒答文字改回「有任何 delta 事件就只用 delta」 | 結束事件範例表 delta 為空字串的那一列 |
+| 拒答文字改成「有 done 就用 done」 | 拒答 delta 與 done 並存的測試 |
+| HTTP 規則 3 不排除 402 | HTTP 錯誤範例表的 402 列 |
+| 串流的 `data_residency_mismatch` 改走不認得的代碼 | 串流 `error` 事件範例表的 `data_residency_mismatch` 列 |
+
+- 前十三項在 4.1 執行。後五項是實作時與實作審查後加的：401 一項在 4.1 加做，其餘四項在 5.4 執行。
+- 金鑰保密的 401 測試在 2.1 的骨架上就會通過（請求還沒送出就丟錯），由上表的 401 一項確認它有效。
+- 拒答 delta 與 done 並存的測試，done 的文字與 delta 串接的結果不同，才分得出以 delta 為準（實作審查時 opus 指出：兩者相同時，改成以 done 為準也會通過）。
 
 - 格式錯誤的事件資料的測試在 2.1 的骨架上就會通過：事件對應全部回傳空陣列時，共同流程讀完會丟 `.invalidResponse`，也沒有交出文字。所以它看不到 RED，改由上表的反向檢查把關。
 
@@ -480,3 +500,24 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 - chat-client 的「Context window limit」需求要不要加上「供應商有回報時」的條件：OpenAI 分不出 context window 塞滿與輸出上限，見決策「Responses API 沒有 context window 的結束原因」。要改 chat-client spec，依 `config.yaml` 另開 change，可以和 Gemini 的查證一起決定。
 - 金鑰遮蔽的另一條路（fable 提出，未實測）：在 `LKAICore` 加一個 `package` 的金鑰包裝型別，它自己的 `description`、`debugDescription`、`customMirror` 都遮蔽，client 以它存金鑰，漏寫遵循也印不出金鑰。會動到 `LKAnthropicClient`，Gemini 的 change 時評估。
 - `makeURLRequest(for:)` 的網址檢查與 `encodeBody(for:)` 在 Anthropic 與 OpenAI 各寫一份：兩家可以接受；Gemini 時若要統一加標頭或改編碼設定，再收進 `LKAICore`。
+
+以下是實作審查（2026-11-22）留下的項目：
+
+- 測試端與供應商無關的 helper 兩家各一份，Gemini 會是第三份：
+  - 事件建構函式檔的 `optionalField(_:_:)`。
+  - 兩家 `<Provider>ClientTests` 的 `jsonObject(from:)`、`jsonFragment(from:)`。
+  - 兩家 `<Provider>ClientStreamTests` 的 `isInvalidResponse(_:)`。
+  - Gemini 的 change 開始時搬進 `LKAITestSupport`。`makeClient(events:)`、`finishedEvent` 綁定 client 型別與預設模型，留在各自的 TestSupport。
+- 503 的 `Retry-After`：OpenAI 的 503 `server_is_overloaded` 會帶 `Retry-After`，但 `serviceUnavailable(statusCode:)` 沒有欄位可放，目前丟掉。
+  - App 要依它重試時，得改 associated value（App 的 pattern match 會壞），或另加一個 case。
+  - 在第一個 release tag 前另開修改 chat-client 的 change 處理，成本最低。
+- `LKAIError.refused(detail:)` 的說明沒有提到 detail 可能是模型寫的文字、可能引用使用者的內容，這則提醒目前只寫在 `LKOpenAIClient`。
+  - App 以 `any LKAIChatClientProtocol` 處理錯誤時讀不到。
+  - 使用者決定等 Gemini 帶來第三種 detail 格式時，再一起改 `LKAIError` 的說明。
+- 串流 `error` 事件的欄位都是 Optional，任何形狀都解得出來。
+  - 沒有 `code` 也沒有 `message` 時（例如 WebSocket 的巢狀格式出現在 SSE），目前當成可重試的 500，和「不認得的代碼不當成 500」的原則相反。
+  - OpenAI 文件寫明 SSE 的 `error` 事件是平的，這目前只是假設；使用者決定有實例時再改 spec。
+- 不認得的串流錯誤在兩家結果不同：Anthropic 是可重試的 500，OpenAI 是不可重試的 `.invalidResponse`，理由見決策「錯誤依 error.code 與 error.type 分類」。
+  - Gemini 要依自己的文件選一邊。
+  - 要不要在 chat-client 定共同規則，和 Gemini 的查證一起決定。
+- `config.yaml` 的新增供應商指標每多一家就多一層「以某份為準」。Gemini 的 change 時評估改成一份持續更新的新增供應商清單，封存的 design 只當歷史。
