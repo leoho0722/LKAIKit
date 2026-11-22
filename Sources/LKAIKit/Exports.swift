@@ -10,3 +10,4 @@
 
 @_exported import LKAIAnthropic
 @_exported import LKAICore
+@_exported import LKAIOpenAI

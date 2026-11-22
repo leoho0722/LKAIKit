@@ -24,7 +24,12 @@ let package = Package(
             name: "LKAIAnthropicTests",
             dependencies: ["LKAIAnthropic", "LKAICore", "LKAITestSupport"]
         ),
-        .target(name: "LKAIKit", dependencies: ["LKAICore", "LKAIAnthropic"]),
+        .target(name: "LKAIOpenAI", dependencies: ["LKAICore"]),
+        .testTarget(
+            name: "LKAIOpenAITests",
+            dependencies: ["LKAIOpenAI", "LKAICore", "LKAITestSupport"]
+        ),
+        .target(name: "LKAIKit", dependencies: ["LKAICore", "LKAIAnthropic", "LKAIOpenAI"]),
         .testTarget(name: "LKAIKitTests", dependencies: ["LKAIKit"]),
         .executableTarget(
             name: "LKAIKitCLI",

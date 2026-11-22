@@ -46,4 +46,21 @@ struct ExportsTests {
         // Then
         #expect(client is LKAnthropicClient)
     }
+
+    // spectra-scenario: openai-provider / Create the client through the umbrella module
+    /// 驗證只 `import LKAIKit` 就能建立 `LKOpenAIClient`，並存成 `any LKAIChatClientProtocol` 使用
+    @Test
+    func init_透過LKAIKit建立LKOpenAIClient_可存成共用介面() {
+        // Given
+        let session = URLSession(configuration: .ephemeral)
+
+        // When
+        let client: any LKAIChatClientProtocol = LKOpenAIClient(
+            apiKey: "test-key",
+            urlSession: session
+        )
+
+        // Then
+        #expect(client is LKOpenAIClient)
+    }
 }
