@@ -42,7 +42,7 @@
 **共用型別與 API 演進**
 
 - 不為自己的格式修改 `LKAICore` 的共用公開型別；需要修改時另開 change 修改 chat-client spec。只改說明文字可以。（`docs/spectra/config.yaml` 的 API 演進規則；`02-add-openai-provider` Non-Goals）
-- 公開 enum 標 `@nonexhaustive`；公開 struct 新增欄位時 `init` 的新參數給預設值；公開 enum 的 case 不增減 associated value，第一個 release tag 之後要加資料時改用 struct。（`config.yaml` 的 API 演進規則；第一份「公開 enum 標為 @nonexhaustive，公開 struct 新增欄位時 init 參數給預設值」；`03-revise-chat-client-contract`「服務不可用的錯誤帶上等待時間，不給預設值」）
+- 公開 enum 標 `@nonexhaustive`；公開 struct 新增欄位時 `init` 的新參數給預設值；公開 enum 的 case 增減 associated value，會破壞 App 建立與比對這個 case 的寫法（給新的 associated value 預設值只保住建立的寫法），第一個 release tag 之後要加資料時改用 struct。（`config.yaml` 的 API 演進規則；第一份「公開 enum 標為 @nonexhaustive，公開 struct 新增欄位時 init 參數給預設值」；`03-revise-chat-client-contract`「服務不可用的錯誤帶上等待時間，不給預設值」）
 - token 用量依 `LKAIUsage` 的統一口徑：`inputTokens` 包含讀自快取的部分，`outputTokens` 包含思考或推理的部分。供應商的欄位口徑不同時，在 client 內換算。（第一份「token 用量以統一口徑放進共用型別」）
 - 實際產生回應的模型取自供應商的回報，不用請求的模型代替；沒有回報時為 nil。（第一份「實際回應的模型放進共用結果」）
 
@@ -114,7 +114,9 @@
 | 01 Open Questions 的「金鑰遮蔽」 | `02-add-openai-provider`「金鑰遮蔽由每家 client 各自實作三個遵循」 |
 | 第一份的決策「Anthropic 串流事件的對應規則」中，`error` 事件「不認得的 `error.type` 視為伺服器端錯誤，對應 500」 | `03-revise-chat-client-contract`「不認得的串流錯誤以 unrecognizedStreamError 統一回報」：改成 `.invalidResponse` |
 | 同一個決策中「事件內容無法解碼時丟出 `.invalidResponse`」 | 同上：有 `error` 物件但沒有 `error.type` 時改成 500 |
+| 01 的決策「每條串流的事件狀態與結束判斷由供應商的 mapper 持有」中，`error` 事件「不認得的類型丟出 `.serviceUnavailable(statusCode: 500)`」 | `03-revise-chat-client-contract`「不認得的串流錯誤以 unrecognizedStreamError 統一回報」：改成 `.invalidResponse` |
 | 第一份的決策「錯誤以 LKAIError 統一分類並標示可否重試」列的 `serviceUnavailable(statusCode: Int)` | `03-revise-chat-client-contract`「服務不可用的錯誤帶上等待時間，不給預設值」：`serviceUnavailable(statusCode:retryAfter:)` |
+| 02 的決策「錯誤依 error.code 與 error.type 分類」中「Anthropic 把不認得的 `error.type` 當成 500，是因為它文件列的串流錯誤都是伺服器端問題」 | `03-revise-chat-client-contract`「不認得的串流錯誤以 unrecognizedStreamError 統一回報」：Anthropic 也改成 `.invalidResponse` |
 | 02 的決策「錯誤依 error.code 與 error.type 分類」中「null 為什麼仍當成 500：……沿用 Anthropic 的處理」 | `03-revise-chat-client-contract`：改以 chat-client「Unrecognized stream errors」的共同規則為依據 |
 | 02 的決策「Responses API 沒有 context window 的結束原因」中「`LKOpenAIClient` 做不到這條需求」 | `03-revise-chat-client-contract`：修改後的「Context window limit」需求只要求分開回報的供應商回報 `.contextWindowExceeded`，OpenAI 符合 |
 | 01 的決策「config.yaml 的指標改為同時指向本 change」、02 的決策「config.yaml 的指標加上本 change」 | `03-revise-chat-client-contract`「新增供應商的清單取代 config.yaml 的層層指標」：`config.yaml` 只指向本清單 |
@@ -140,13 +142,15 @@
 - **實際 API 測試**：用 `gemini-3.5-flash-lite`，只在設定 `LKAI_GEMINI_API_KEY` 時執行；只檢查回應的模型不是空字串，因為實測看到會換成別的模型。金鑰已存在 Keychain 的 `lkai-gemini-api-key`。
 - **第一組任務**：
   - 與供應商無關的測試 helper 搬進 `LKAITestSupport`：`optionalField(_:_:)`、`jsonObject(from:)`、`jsonFragment(from:)`、`isInvalidResponse(_:)`，以及 Anthropic 與 OpenAI 錯誤測試都有的 `Expectation`（`.error`、`.invalidResponse(containing:)`）與 `matches(_:_:)`。
+  - `LKOpenAIClientStreamTests` 的 `ErrorExpectation`（`.error` 與不帶值的 `.invalidResponse`）是同一個概念，併進搬過去的 `Expectation`，改用 `.invalidResponse(containing: [])`；`isInvalidResponse(_:)` 也改用它表達，或只留成薄包裝，讓「是無效回應」只有一種寫法。
+  - 搬過去的形狀：`Expectation` 做成 `LKAI…TestSupport` 命名空間下的巢狀型別（比照 `LKAIChatClientProtocolTestSupport.StreamOutcome`），`matches(_:_:)` 改成該型別的方法，因為 `config.yaml` 不允許 `package` 層級的頂層函式。現在兩家的 `Expectation` 是 suite 的巢狀型別，才沒有和 `Testing` 模組公開的 `Expectation` 衝突；搬過去後也不要用這個名稱宣告頂層型別。
   - `LKAICoreTests` 的 `LKAIErrorTests` 也有一份同形狀的 `UnrecognizedStreamCase.Expectation`；`LKAICoreTests` 不依賴 `LKAITestSupport`（`01-extract-chat-stream-skeleton` 任務 4.3），要不要一併處理由 04 決定。
   - `LKAICore` 加一個 `package` 的金鑰包裝型別，它的 `description`、`debugDescription`、`customMirror` 都只給出遮蔽後的內容；三家 client 以它保存金鑰，只有組請求時讀原始值。三家原本的三個遵循保留。這會修改 02 的決策「金鑰遮蔽由每家 client 各自實作三個遵循」，使用者已同意，由 04 的 design 記錄。以 Swift 6.4.2 實測，client 完全不寫三個遵循時，包裝型別也能讓三種描述與 `dump(_:)` 都不含金鑰。
 - **不做的事**：`makeURLRequest(for:)` 與 `encodeBody(for:)` 不收進 `LKAICore`。02 設的條件是「Gemini 要統一加標頭或改編碼設定時再收」，Gemini 都不需要。
 - **還沒實測、04 要確認的項目**：
   - 串流中途的 `error` 事件格式。
   - 被安全過濾擋下時的狀態碼與代碼。
-  - 503 是否帶 `Retry-After`。
+  - 429 與 503 的等待時間放在哪裡：`Retry-After` 標頭，或回應內容（例如 Google 通用格式 `error.details` 中的等待時間）。共同流程的預設分類只讀標頭；放在回應內容時，要由 Gemini 的 `httpError(statusCode:headers:body:)` 自己讀出來。
   - 輸入超過 context window 時 `v1` 回的狀態碼：如果是 500，預設分類會把它當成可重試，要評估是否在 Gemini 的錯誤對應中處理。
 
 ## 7. Open Questions 的對帳

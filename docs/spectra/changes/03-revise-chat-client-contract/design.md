@@ -32,6 +32,7 @@
   - 文件寫明模型產生的 `thought` 步驟「MUST」照原樣送回，但實測只送純文字的 `model_output` 也成功，答案正確。
   - `max_output_tokens` 為 0 時回 400 `invalid_request`，訊息為「max_output_tokens must be positive」。
   - `store` 預設為 true，付費方案保存 55 天（文件）。
+  - 取樣參數（文件，text-generation）：Gemini 4 與 Gemini 3.6 以上的模型忽略自訂的 `temperature`、`top_p`、`top_k`，並回傳 deprecation 警告的標頭；文件寫之後的版本會改回 400。
 - **串流**（實測）：
   - 依序為：
     1. `interaction.created`，帶 `model`。
@@ -53,7 +54,7 @@
 - **錯誤**：
   - **文件**：
     - 格式是 `{"error":{"code","message"}}`，`code` 是 snake_case。
-    - 429 分成 `rate_limit_exceeded`、`quota_exceeded`、`too_many_requests`；402 是 `payment_required`；503 是 `service_unavailable`。
+    - 429 分成 `rate_limit_exceeded`、`quota_exceeded`、`too_many_requests`；402 是 `payment_required`；500 是 `api_error`；503 是 `service_unavailable`（api-errors 的 Standard API error codes 表）。
     - 文件寫「Any error code not listed above falls back to the `snake_case` version of the HTTP status」。
     - 被安全過濾擋下時回 HTTP 400，`code` 為 `safety`、`jailbreak`、`prohibited_content` 或 `blocklist`；串流中則以 `error` 事件送出，格式是 `{"event_type":"error","error":{"code","message"}}`。
   - **實測**：
@@ -372,4 +373,3 @@
 - [Gemini 的查證只有一天、9 次請求，文件與實際回應有四處不同] → 寫進清單時標明日期與方式；`04-add-gemini-provider` 開始時依清單的「開始前要做的事」重新核對。
 - [Anthropic 的 529 是否帶 `retry-after` 沒有查證] → 有帶就讀，沒帶就是 nil，兩種都正確。
 - [清單是手寫的文件，沒有測試檢查它和程式碼一致] → `config.yaml` 的指標寫明更新時機；本 change 的 4.1 核對一次，之後的 change 審查時一併檢查。
-

@@ -88,12 +88,9 @@ extension LKOpenAIErrorBody {
 
         /// 串流中的 `error` 事件與 `response.failed` 依 `code` 對應成的錯誤
         ///
-        /// - Note: 串流中沒有 HTTP 標頭可讀，所以限流不帶等待時間
-        /// - Note: 沒有代碼時沒有任何線索可判斷，當成服務暫時無法使用，狀態碼 500
-        /// - Note: 不認得的代碼丟 `invalidResponse`，說明帶代碼與訊息
+        /// - Note: 串流中沒有 HTTP 標頭可讀，所以限流與服務不可用都不帶等待時間
         /// - Note: 沒有代碼與不認得的代碼，都依 chat-client「Unrecognized stream errors」的共同規則，
         ///   由 `LKAIError.unrecognizedStreamError(code:message:)` 回報
-        /// - Note: 官方文件列的錯誤代碼中，多數不是可重試的伺服器端問題，新代碼多半也不可重試，所以不猜成 500
         var streamError: LKAIError {
             if isPolicyViolation {
                 return .refused(detail: code)
