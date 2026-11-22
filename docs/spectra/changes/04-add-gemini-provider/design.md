@@ -182,7 +182,7 @@ LKAIKit 目前有 Anthropic（`LKAIAnthropic`）與 OpenAI（`LKAIOpenAI`）兩�
 - 兩份 `Expectation` 合併時，採用 Anthropic 那份的說明（`containing` 寫明傳空陣列表示不比對說明文字）。
 - `LKOpenAIClientStreamTests.ErrorExpectation` 改用 `LKAIErrorTestSupport.Expectation`，不帶值的 `.invalidResponse` 改成 `.invalidResponse(containing: [])`。「是無效回應」從此只有一種寫法。
 - 搬移是行為不變的修改：兩家測試的名稱、期望值與測試數不變。`LKAITestSupportTests` 為 `matches`、`optionalField` 與 `booleanField` 加上測試，因為它們從此由三家共用，而且 `booleanField` 的結果會影響測試的結論（`1` 與 `true` 要分得出來）；`jsonObject` 與 `jsonFragment` 只轉呼叫 `JSONSerialization`，不另外寫測試，每個請求內容的測試都會用到它們。
-- **`jsonObject(from:)` 的 `#require` 傳入呼叫端的 `sourceLocation`**（實作審查時 fable 指出，使用者在 2026-11-22 同意放進第 5 組）：文字與 `Data` 兩個版本加上 `sourceLocation: SourceLocation = #_sourceLocation` 參數，文字版轉傳給 `Data` 版，`Data` 版傳給 `#require`。理由是 helper 從各家的 private 方法搬進共用 target 後，解析失敗的問題會記在 `LKAITestJSON.swift`，看不出是哪個測試的哪一行。2026-11-22 以 Swift 6.4.2 在 scratchpad 實測：沒有傳時，問題記在 helper 的檔案；傳了之後記在呼叫端那一行。同一次實測也確認，`try withKnownIssue { … } matching: { $0.sourceLocation?.fileName == "<測試檔名>" }` 能檢查問題記在哪個檔案，`#require` 丟出的錯誤不會多記一個問題，所以這個行為可以寫測試。不在範圍內的有三個：`jsonFragment(from:)` 的 `#require(value as? NSObject)` 在合法 JSON 下不會失敗，因為 `JSONSerialization` 交出的值都是 `NSObject`；`booleanField(_:in:)` 不用 `#require`；`LKAIMockHTTPClient` 的 `Issue.record` 是從共同流程呼叫，沒有可以指回的測試行。
+- **`jsonObject(from:)` 的 `#require` 傳入呼叫端的 `sourceLocation`**（實作審查時 fable 指出，使用者在 2026-11-22 同意放進第 5 組）：文字與 `Data` 兩個版本加上 `sourceLocation: SourceLocation = #_sourceLocation` 參數，文字版轉傳給 `Data` 版，`Data` 版傳給 `#require`。理由是 helper 從各家的 private 方法搬進共用 target 後，解析失敗的問題會記在 `LKAITestJSON.swift`，看不出是哪個測試的哪一行。2026-11-22 以 Swift 6.4.2 在 scratchpad 實測：沒有傳時，問題記在 helper 的檔案；傳了之後記在呼叫端那一行。同一次實測也確認，`try withKnownIssue { … } matching: { $0.sourceLocation?.fileName == "<測試檔名>" }` 能檢查問題記在哪個檔案，`#require` 丟出的錯誤不會多記一個問題，所以這個行為可以寫測試。比對條件要先限定問題的種類是 `.expectationFailed`，再比對檔名：只比對檔名時，helper 改成直接丟一般錯誤，`withKnownIssue` 會把它記成「捕捉到錯誤」的問題，位置是測試檔裡的 `withKnownIssue` 呼叫，測試照樣通過（第二輪實作審查時 opus 指出，主對話 2026-11-22 以 Swift 6.4.2 在 scratchpad 實測：只比對檔名時通過，加上種類的條件後失敗）。不在範圍內的有三個：`jsonFragment(from:)` 的 `#require(value as? NSObject)` 在合法 JSON 下不會失敗，因為 `JSONSerialization` 交出的值都是 `NSObject`；`booleanField(_:in:)` 不用 `#require`；`LKAIMockHTTPClient` 的 `Issue.record` 是從共同流程呼叫，沒有可以指回的測試行。
 - `LKAIErrorTests.UnrecognizedStreamCase.Expectation` 不動：`LKAICoreTests` 不依賴 `LKAITestSupport` 是 01 的決策「Anthropic 的測試走不到的共同行為在 LKAICoreTests 直接測試」的一部分，為了一個型別加上依賴，會讓 `LKAICore` 的測試依賴建立在 `LKAICore` 之上的 target。
 
 ### 事件的巢狀欄位只在用得到時才解碼，手寫的鍵用 camelCase
@@ -237,7 +237,7 @@ LKAIKit 目前有 Anthropic（`LKAIAnthropic`）與 OpenAI（`LKAIOpenAI`）兩�
 | 型別 | 位置 | 形狀 |
 | --- | --- | --- |
 | `LKAIAPIKey` | `Sources/LKAICore/Networking/LKAIAPIKey.swift`（新檔） | `package struct LKAIAPIKey: Sendable`，`package init(_ unredactedValue: String)`、`package let unredactedValue: String`；遵循 `CustomStringConvertible`、`CustomDebugStringConvertible`、`CustomReflectable`，描述是 `LKAIAPIKey(redacted)`，`customMirror` 沒有子項目 |
-| `LKAITestJSON` | `Sources/LKAITestSupport/LKAITestJSON.swift`（新檔） | `package enum`，`static func jsonObject(from text: String) throws -> NSDictionary`、`static func jsonObject(from data: Data) throws -> NSDictionary`、`static func jsonFragment(from text: String) throws -> NSObject`、`static func optionalField(_ name: String, _ json: String?) -> String`、`static func booleanField(_ name: String, in data: Data) throws -> Bool`（欄位不存在或不是 JSON 布林時丟出）。前四個方法的行為與兩家現在的 private 版本相同；`booleanField(_:in:)` 是新的形狀（收 `Data`、依欄位名稱取值），取代兩家的 `decodeBooleanFlags(of:)` 與 `decodeStreamFlag(of:)`，判斷的嚴格程度相同 |
+| `LKAITestJSON` | `Sources/LKAITestSupport/LKAITestJSON.swift`（新檔） | `package enum`，`static func jsonObject(from text: String, sourceLocation: SourceLocation = #_sourceLocation) throws -> NSDictionary`、`static func jsonObject(from data: Data, sourceLocation: SourceLocation = #_sourceLocation) throws -> NSDictionary`（`sourceLocation` 是 5.2 加的）、`static func jsonFragment(from text: String) throws -> NSObject`、`static func optionalField(_ name: String, _ json: String?) -> String`、`static func booleanField(_ name: String, in data: Data) throws -> Bool`（欄位不存在或不是 JSON 布林時丟出）。前四個方法的行為與兩家現在的 private 版本相同；`booleanField(_:in:)` 是新的形狀（收 `Data`、依欄位名稱取值），取代兩家的 `decodeBooleanFlags(of:)` 與 `decodeStreamFlag(of:)`，判斷的嚴格程度相同 |
 | `LKAIErrorTestSupport` | `Sources/LKAITestSupport/LKAIErrorTestSupport.swift`（新檔） | `package enum`，巢狀 `enum Expectation: Sendable { case error(LKAIError); case invalidResponse(containing: [String]) }` 與 `func matches(_ error: LKAIError?) -> Bool`；`static func isInvalidResponse(_ error: LKAIError?) -> Bool` |
 | `LKGeminiClient` | `Sources/LKAIGemini/` | `public struct LKGeminiClient: Sendable`：`public init(apiKey: String, urlSession: URLSession, shouldStoreResponses: Bool = false)`、`package init(apiKey: String, httpClient: any LKAIHTTPClientProtocol, shouldStoreResponses: Bool = false)`；遵循 `LKAIChatClientProtocol`、`LKAIServerSentEventChatStreaming` 與三個描述 protocol。`description` 為 `LKGeminiClient(shouldStoreResponses: <值>)` |
 | 請求內容、串流事件、mapper、錯誤格式 | `Sources/LKAIGemini/` | `LKGeminiInteractionsRequestBody`（`Encodable`）、`LKGeminiStreamEvent`（依 `event_type` 解碼）、`LKGeminiStreamState`（遵循 `LKAIServerSentEventMapping`，持有 `model_output` 步驟的 `index` 集合；5.5 之前是 `index` 到步驟類型的對照，見決策「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」）、`LKGeminiErrorBody`（Interactions 格式）、`LKGeminiGoogleErrorBody`（Google 通用格式）。名稱依 ios-dev-kit 樣板與 `LK<供應商>` 前綴，實作時可調整，但要在任務回報中寫明 |
@@ -301,6 +301,7 @@ LKAIKit 目前有 Anthropic（`LKAIAnthropic`）與 OpenAI（`LKAIOpenAI`）兩�
   - `LKAITestSupportTests` 3 → 6，多 `matches`、`optionalField` 與 `booleanField`。
   - `LKAIKit` 3 → 4。
   - 新增 `LKAIGemini` 約 19 個，含 2 個實際 API 測試。
+  - 第 6 組只改測試的比對條件與文件，測試數不變。
   - 第 5 組之後：`LKAITestSupportTests` 6 → 7，多 `sourceLocation` 的測試；`LKAIGemini` 19 → 20，多「Report no model when the completed interaction has none」。
 - `spectra coverage 04-add-gemini-provider` 顯示 `gemini-provider` 的每個情境與範例都有測試，範例表的每一列都有測試案例。
 - XcodeBuildMCP 對 iOS 模擬器建置 `LKAIKit` scheme 零警告。
@@ -328,7 +329,8 @@ LKAIKit 目前有 Anthropic（`LKAIAnthropic`）與 OpenAI（`LKAIOpenAI`）兩�
   21. `step.content` 格式不符時略過而不失敗（例如以 `try?` 解碼）：缺欄位範例表中 `content` 不是陣列、項目沒有 `type` 的兩列。
   22. `interaction.completed` 沒有 `model` 時改用 `interaction.created` 的模型：情境「Report no model when the completed interaction has none」。
   23. `LKAITestJSON` 的 `#require` 不傳 `sourceLocation`：`LKAITestSupportTests` 的 `sourceLocation` 測試。
-- 第 5 組之後執行反向檢查時，1、2、10、12、15、16、18 的改壞方式配合決策「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」的新結構調整，要改壞的行為不變。
+  24. `jsonObject(from:)` 的 `Data` 版在最外層不是物件時直接丟一般錯誤、不經 `#require`：同一個 `sourceLocation` 測試（第二輪實作審查時 opus 指出；6.1 之前，只比對檔名的比對條件會把這個錯誤當成已知問題而通過）。
+- 第 5 組之後執行反向檢查時，1、2、10、15、16、18 的改壞方式配合決策「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」的新結構調整，要改壞的行為不變。
 
 **範圍**：
 
@@ -362,7 +364,7 @@ App 端不需要遷移：公開 API 只新增 `LKGeminiClient`，既有的型別
 
 以下是實作審查（2026-11-22）留下、這次不處理的項目，由 5.3 寫進清單第 7 章：
 
-- 三家的 `StreamState.decode(_:)` 完全相同，`encodeBody(for:)` 只差請求內容的型別（fable 指出）：下一家供應商的第一組任務時評估，候選方案是在 `LKAISnakeCaseJSON` 加上以 `.convertToSnakeCase` 編碼的入口，請求內容的 raw value 可以一起拿掉；這也是 02 設的條件「改編碼設定」。三家的請求內容目前都沒有 dictionary 欄位（fable 確認），`.convertToSnakeCase` 不會轉到資料的鍵。
+- 三家的 `StreamState.decode(_:)` 完全相同，`encodeBody(for:)` 只差請求內容的型別（fable 指出）：下一家供應商的第一組任務時評估，候選方案是在 `LKAISnakeCaseJSON` 加上以 `.convertToSnakeCase` 編碼的入口，請求內容的 raw value 可以一起拿掉；這也是 02 設的條件「改編碼設定」。三家的請求內容沒有以資料當鍵的 dictionary；Anthropic 的 `Fallbacks.encode(to:)` 會編碼鍵固定為 `model` 的 dictionary（第二輪實作審查時 fable 更正第一輪的說法，主對話讀碼確認），評估 `.convertToSnakeCase` 時，以 anthropic-provider 的 fallbacks 測試確認這個鍵沒有被改。
 - 多輪對話沒有把思考步驟送回（fable 指出）：文件寫思考步驟「MUST」照原樣送回，實測只送文字也成功，而 `LKAIMessage` 只有角色與文字，帶不了思考簽章。多輪對話出現 400，或開始支援工具呼叫時再處理；那時要擴充 `LKAIMessage`，屬於修改 chat-client spec 的 change。
 - 三家測試的 `makeClient(events:)` 只差 client 型別（fable 指出）：可在 `LKAITestSupport` 加一個「推送事件後結束」的替身工廠，由下一家供應商的 change 處理。
 - 供應商在 4xx 的 `message`，或不認得的串流代碼的 `message` 中回顯金鑰時，`.invalidRequest` 與 `.invalidResponse` 的描述會含金鑰（`/spectra-verify` 與 `/spectra-review` 指出）：spec「API key secrecy」的「any error it reports」嚴格來說涵蓋這種情況。實測的金鑰錯誤都是 401 或 Google 通用格式，不保留 `message`；OpenAI 是同樣的寫法。要處理時，一起修改三家的 spec 寫法或錯誤描述。
