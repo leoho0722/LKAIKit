@@ -14,8 +14,8 @@ import LKAICore
 /// - Note: `response.failed` 沒有 `response.error` 時，當成服務暫時無法使用，狀態碼 500
 /// - Note: 結束資訊只取自結束事件的 `response` 物件，其他事件不帶用量與模型
 /// - Note: OpenAI 回報的輸入與輸出總數本來就包含快取與推理，所以直接使用，不再相加
-/// - Note: 拒答文字有任何 `response.refusal.delta` 時，以 delta 依序串接
-/// - Note: 一則 delta 都沒有時，拒答文字改用 `response.refusal.done` 依序串接
+/// - Note: 拒答文字是 `response.refusal.delta` 的 `delta` 依序串接的結果
+/// - Note: delta 串接後為空時，不論是沒有 delta 或 delta 都是空字串，拒答文字改用 `response.refusal.done` 依序串接
 /// - Note: 拒答文字不為空時，結束事件不論是 `response.completed` 或 `response.incomplete` 都丟出拒答錯誤，原因是拒答文字
 /// - Note: OpenAI 不回報 context window 塞滿，生成途中塞滿時回報的原因是 `max_output_tokens`
 /// - Note: 結束事件的結束原因因此不會是 `.contextWindowExceeded`
@@ -23,11 +23,11 @@ struct LKOpenAIStreamState {
 
     // MARK: - Properties
 
-    /// 依收到的順序記下的 `response.refusal.delta` 的 `delta`；一則都沒有收到時為空陣列
-    private var refusalDeltas: [String] = []
+    /// 依收到的順序串接的 `response.refusal.delta` 的 `delta`；還沒有收到，或收到的都是空字串時為空字串
+    private var refusalDeltaText = ""
 
-    /// 依收到的順序記下的 `response.refusal.done` 的 `refusal`；一則都沒有收到時為空陣列
-    private var refusalDones: [String] = []
+    /// 依收到的順序串接的 `response.refusal.done` 的 `refusal`；還沒有收到，或收到的都是空字串時為空字串
+    private var refusalDoneText = ""
 
     // MARK: - Init
 
@@ -54,11 +54,11 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
             return [.textDelta(text)]
 
         case .refusalDelta(let text):
-            refusalDeltas.append(text)
+            refusalDeltaText += text
             return []
 
         case .refusalDone(let text):
-            refusalDones.append(text)
+            refusalDoneText += text
             return []
 
         case .completed(let response):
@@ -85,14 +85,14 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
 
 private extension LKOpenAIStreamState {
 
-    /// 目前收到的拒答文字：有任何 `response.refusal.delta` 時是 delta 依序串接，否則是 `response.refusal.done` 依序串接
+    /// 目前收到的拒答文字：`response.refusal.delta` 依序串接，串接後為空時改用 `response.refusal.done` 依序串接
     ///
-    /// - Note: 以陣列記錄，「有沒有收到 delta」才不會和「delta 是空字串」混在一起
+    /// - Note: 沒有收到 delta，與 delta 都是空字串的情況相同，都改用 done，不區分兩者
     var refusalText: String {
-        if refusalDeltas.isEmpty {
-            return refusalDones.joined()
+        if refusalDeltaText.isEmpty {
+            return refusalDoneText
         }
-        return refusalDeltas.joined()
+        return refusalDeltaText
     }
 
     /// 把 SSE 事件的 `data` 解碼成 OpenAI 的串流事件

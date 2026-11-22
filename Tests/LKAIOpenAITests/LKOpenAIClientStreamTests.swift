@@ -257,6 +257,12 @@ struct LKOpenAIClientStreamTests {
                 expectedError: .error(.refused(detail: "I can't help with that."))
             ),
             TerminalEventCase(
+                refusalEvents: [.refusalDelta(""), .refusalDone("I can't help with that.")],
+                terminalEvent: .responseCompleted(),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.refused(detail: "I can't help with that."))
+            ),
+            TerminalEventCase(
                 refusalEvents: [],
                 terminalEvent: .responseIncomplete(reason: "max_output_tokens"),
                 expectedEvents: [
@@ -339,11 +345,12 @@ struct LKOpenAIClientStreamTests {
         #expect(error == .refused(detail: "I can't help with that."))
     }
 
-    /// 驗證拒答同時有 delta 與 done 時，拒答文字以 delta 串接為準，不把 done 的完整文字再接一次
+    /// 驗證拒答同時有 delta 與 done 時，拒答文字以 delta 串接為準，不接上也不改用 done 的文字
     ///
     /// - Note: 對應 openai-provider 的「Finish and refusal mapping」需求中拒答文字的規則
-    /// - Note: 有 `response.refusal.delta` 時只用 delta，沒有時才用 `response.refusal.done`
-    /// - Note: 這是實際串流最常見的形狀：幾則 delta 之後接一則帶完整文字的 done；兩種來源都串接時，原因文字會重複一次
+    /// - Note: delta 依序串接後不為空時只用 delta；串接後為空時，才改用 `response.refusal.done`
+    /// - Note: 這是實際串流最常見的形狀：幾則 delta 之後接一則 done
+    /// - Note: done 刻意用與 delta 串接結果不同的文字，兩種來源都被串接，或改以 done 為準時，原因文字就會與期望值不同
     @Test(.timeLimit(.minutes(1)))
     func stream_拒答同時有delta與done_原因以delta串接為準() async {
         // Given
@@ -351,7 +358,7 @@ struct LKOpenAIClientStreamTests {
             .outputTextDelta("Hel"),
             .refusalDelta("I'm sorry,"),
             .refusalDelta(" I can't help with that."),
-            .refusalDone("I'm sorry, I can't help with that."),
+            .refusalDone("Final refusal."),
             .responseCompleted(),
         ])
         let expectedError = LKAIError.refused(detail: "I'm sorry, I can't help with that.")

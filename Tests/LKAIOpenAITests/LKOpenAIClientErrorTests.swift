@@ -25,6 +25,12 @@ struct LKOpenAIClientErrorTests {
             expectedError: .invalidAPIKey
         ),
         ErrorResponseCase(
+            statusCode: 402,
+            extraHeaders: [:],
+            body: #"{"error":{"message":"Payment required.","type":"invalid_request_error","code":null}}"#,
+            expectedError: .quotaExceeded
+        ),
+        ErrorResponseCase(
             statusCode: 403,
             extraHeaders: [:],
             body: #"{"error":{"message":"Country, region, or territory not supported","type":"request_forbidden","code":"unsupported_country_region_territory"}}"#,
@@ -189,6 +195,11 @@ struct LKOpenAIClientErrorTests {
             expectation: .error(.invalidRequest(message: "Invalid prompt."))
         ),
         ErrorEventCase(
+            code: "data_residency_mismatch",
+            message: "Data residency mismatch.",
+            expectation: .error(.invalidRequest(message: "Data residency mismatch."))
+        ),
+        ErrorEventCase(
             code: "new_unknown_code",
             message: "Something went wrong.",
             expectation: .invalidResponse(containing: ["new_unknown_code", "Something went wrong."])
@@ -235,7 +246,7 @@ struct LKOpenAIClientErrorTests {
     /// - Parameter testCase: 一列範例：狀態碼、額外的標頭、回應內容與預期的錯誤
     /// - Note: 政策性阻擋與額度的代碼優先於狀態碼，所以 403 與 429 也可能分類成拒答或額度用完
     /// - Note: 額度用完的回應即使帶 `retry-after` 標頭，也不是限流，不帶等待時間
-    /// - Note: 401、403 與 429 限流、5xx 以及內容不是 JSON 的回應，走 chat-client 的預設狀態碼分類
+    /// - Note: 401、402、403 與 429 限流、5xx 以及內容不是 JSON 的回應，走 chat-client 的預設狀態碼分類
     @Test(.timeLimit(.minutes(1)), arguments: LKOpenAIClientErrorTests.errorResponseCases)
     func invoke_HTTP錯誤回應_依錯誤內容與狀態碼分類為範例表的錯誤(testCase: ErrorResponseCase) async throws {
         // Given
