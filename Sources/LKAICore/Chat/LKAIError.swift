@@ -44,7 +44,9 @@ public enum LKAIError: Error, Equatable, Sendable {
 
     /// AI 拒絕回應這個請求
     ///
-    /// - Parameter detail: 供應商說明拒答的原因，各家格式不同（類別代碼、說明文字或列舉名），只適合記錄 log，不適合依內容判斷
+    /// - Parameter detail: 供應商給的拒答原因，各家格式不同，可能是類別代碼、錯誤代碼，或模型寫的說明文字
+    /// - Note: 只適合記錄 log，不適合依內容判斷
+    /// - Note: 模型寫的說明文字可能引用使用者的內容，記錄 log 時要比照使用者的內容處理
     case refused(detail: String?)
 
     /// 呼叫在完成前被取消
@@ -55,9 +57,10 @@ public enum LKAIError: Error, Equatable, Sendable {
     /// - Parameter underlying: 系統回報的原始網路錯誤，供除錯用
     case transport(underlying: URLError)
 
-    /// 供應商回傳的內容不符預期，無法解讀
+    /// 供應商回傳的內容不符預期，無法解讀；也包含串流中供應商回報、但本套件不認得的錯誤代碼
     ///
-    /// - Parameter reason: 無法解讀的原因，給開發者除錯用
+    /// - Parameter reason: 無法解讀的原因，給開發者除錯用；不認得的錯誤代碼時，帶供應商的代碼與訊息
+    /// - Note: 看到不認得的錯誤代碼時，不一定是套件或協定出錯，可能是供應商新增了錯誤，原因在 `reason` 裡
     case invalidResponse(reason: String)
 
     // MARK: - Init

@@ -17,14 +17,16 @@ public enum LKAIFinishReason: CaseIterable, Sendable {
     /// 輸出的長度用完了呼叫端設定的上限，回答被截斷
     ///
     /// - Note: 一般調高輸出上限可以解決
-    /// - Note: OpenAI 在生成途中塞滿 context window 時也回報這個原因，分不出兩者，所以在 OpenAI 上調高輸出上限不一定有用
+    /// - Note: 有些供應商在生成途中塞滿 context window 時也回報這個原因，例如 OpenAI；
+    ///   在這些供應商上調高輸出上限不一定有用
     case maxOutputTokens
 
     /// 輸入加輸出塞滿了模型一次能處理的上限（context window），回答被截斷
     ///
     /// - Note: 調高輸出上限沒用，要縮短對話內容，或換一個上限更大的模型
-    /// - Note: 目前只有 Anthropic 會回報這個狀態
-    /// - Note: OpenAI 不回報這個狀態，生成途中塞滿 context window 時以 `.maxOutputTokens` 出現
-    /// - Note: 其他供應商由各自的 change 查證；沒有對應狀態時，可能以 `.maxOutputTokens` 或 `.invalidRequest` 出現
+    /// - Note: 只有把兩種原因分開回報的供應商才會回報，目前只有 Anthropic；
+    ///   其他供應商在生成途中塞滿時以 `.maxOutputTokens` 出現
+    /// - Note: 輸入在生成前就超過上限時，供應商以錯誤拒絕請求，通常是 `.invalidRequest`，
+    ///   不是這個結束原因
     case contextWindowExceeded
 }

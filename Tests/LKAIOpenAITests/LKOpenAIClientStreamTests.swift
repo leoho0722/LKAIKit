@@ -224,6 +224,7 @@ struct LKOpenAIClientStreamTests {
 
     // spectra-scenario: openai-provider / Map terminal events
     // spectra-scenario: openai-provider / Map terminal events / terminal events
+    // spectra-scenario: chat-client / Provider reports a full context window as the output token limit
     /// 驗證第一個結束事件決定結果：文字 "Hel" 之後，依拒答事件與結束事件交出完成事件或丟出錯誤，之後再來的 `response.completed` 不處理
     ///
     /// - Parameter testCase: 一列範例：結束事件之前的拒答事件、第一個結束事件，以及預期的事件與錯誤
