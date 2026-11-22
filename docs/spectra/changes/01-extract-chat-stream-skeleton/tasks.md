@@ -121,7 +121,7 @@
   - 存第二次 `fetch` 錯誤的變數改名為 `actualError`。
 
   驗證：`swift test` 全部通過且零警告，`LKAITestSupportTests` 仍是 2 個測試。
-- [ ] 4.3 在 `LKAICoreTests` 補四個既有行為的回歸測試（haiku）：
+- [x] 4.3 在 `LKAICoreTests` 補四個既有行為的回歸測試（haiku）：
   - `LKAIChatStreamTests` 新增 `init(producing:)` 的三個測試：
     - 正常返回時依序交出事件後正常結束。
     - 丟錯時先交出事件，再以同一個錯誤結束。
