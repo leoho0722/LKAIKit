@@ -134,10 +134,28 @@
   - 四個測試在目前的實作上通過。
   - 主對話做反向檢查表的兩項：`init(producing:)` 丟錯時改呼叫 `finish()`，以及 `makeStream(for:)` 交出 `.finished` 後不返回。
   - 完整 `swift test` 通過且零警告，LKAICore 為 66 個測試。
-- [ ] 4.4 [after: 4.1, 4.2, 4.3] 修正後的驗收（主對話）：
+- [x] 4.4 [after: 4.1, 4.2, 4.3] 修正後的驗收（主對話）：
   - `swift package clean` 後建置與完整 `swift test` 零警告，共 122 個測試。
   - `Tests/` 內的 `spectra-scenario:` 行排序後與修改前逐行相同。
   - 4.3 的兩項反向檢查。
   - 每一項的執行結果記錄在本任務下方。
 
   驗證：每一項結果都符合 design Implementation Contract 的描述。
+
+  執行結果（2026-11-22，功能分支 `788053d`，主對話執行）：
+
+  - **建置與測試**：`swift package clean` 後 `swift build`、`swift build --build-tests` 與 `swift test` 都零警告。
+    - Swift Testing 共 122 個通過：LKAICore 66、LKAIAnthropic 45、LKAIKitCLI 7、LKAIKit 2、LKAITestSupportTests 2。
+    - 2 個實際 API 測試因沒有金鑰而略過。
+  - **spectra-scenario 標記**：`Tests/` 內共 93 行，排序後與修改前逐行相同。
+  - **4.3 的回歸測試**：四個測試在當時的實作上直接通過。
+  - **反向檢查**：在 `wt/haiku` 上暫時改壞、觀察到預期的測試失敗後還原。
+    - `init(producing:)` 丟錯時改呼叫 `finish()`：`initProducing_生產端交出事件後丟出錯誤_先交出事件再以該錯誤結束` 失敗，錯誤為 nil。
+    - `makeStream(for:)` 交出 `.finished` 後不返回：`makeStream_一則事件回傳文字結束與文字_交出到結束事件為止且不再讀取` 失敗，多交出文字、多了錯誤，mapper 被呼叫不只一次。
+    - 另外加做一項，拿掉 `init(producing:)` 的 `onTermination` 取消：`initProducing_收到第一個事件後釋放串流_生產端的task被取消` 約 2.7 秒後失敗，沒有卡住。
+  - **XcodeBuildMCP（iPhone 17 模擬器）**：這一項不在 4.4 的要求內，另外加做。
+    - `LKAIKit-Package` 建置測試的錯誤只有 `LKAICommandTests.swift` 既有的 `Process` 兩則。
+    - 兩個新的測試檔都有編譯。
+    - 編譯器沒有警告；紀錄裡的 3 則 `warning:` 是 `appintentsmetadataprocessor` 的「沒有依賴 AppIntents」訊息，與程式碼無關。
+    - 驗收後 session 的 scheme 已改回 `LKAIKit`。
+  - **實作過程的修正**：haiku 第一版的丟錯測試沒有明寫 `throws(LKAIError)`，建置時出現型別錯誤。修正後，三處都改為 trailing closure，說明也一併修正。
