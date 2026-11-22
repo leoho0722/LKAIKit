@@ -39,6 +39,23 @@
 - 供應商 target 的頂層型別以 `LK<供應商>` 開頭，例如 `LKOpenAIClient`；型別依 ios-dev-kit 樣板建立，測試 target 依受測 target 增加，例如 `LKAIOpenAITests`。（`add-swift-package-foundation`「非供應商型別以 LKAI 開頭，供應商型別以 LK 加供應商名開頭」；`02-add-openai-provider`「型別依 ios-dev-kit 樣板建立，測試 target 依受測 target 增加」）
 - 非本 package 的型別遵循本 package 的 `public` protocol，只能寫在 `LKAICore`。（第一份「外部型別遵循本 package 的 public protocol 只能寫在 LKAICore」）
 - 端點固定為供應商的官方網址；不提供思考深度、推理設定與取樣參數，一律用 API 的預設值。（第一份 Non-Goals）
+- 新增供應商時照著 Gemini 的實作做。參考實作是 `Sources/LKAIGemini/` 與 `Tests/LKAIGeminiTests/`，新供應商的檔案與它一一對應，檔名把 `Gemini` 換成供應商名。（`04-add-gemini-provider` 的實作審查）
+  - `Sources/LKAIGemini/` 每個檔案的角色：
+    - `LKGeminiClient.swift`：client，包含兩個 `init`、三個描述遵循、`stream(_:)`、`makeURLRequest(for:)`、`httpError(statusCode:headers:body:)` 與 `makeEventMapper()`。
+    - `LKGeminiInteractionsRequestBody.swift`：請求內容，以 `JSONEncoder()` 編碼。
+    - `LKGeminiStreamEvent.swift`：串流事件的解碼，依事件種類欄位分派，經 `LKAISnakeCaseJSON` 解碼。
+    - `LKGeminiStreamState.swift`：mapper，遵循 `LKAIServerSentEventMapping`，持有每條串流的狀態，把事件對應成對話事件、結束資訊或錯誤。
+    - `LKGeminiErrorBody.swift`：Interactions 格式的錯誤內容；它的 `Detail` 是 HTTP 錯誤、串流的 `error` 事件與 `failed` 的 `errors` 共用的型別。
+    - `LKGeminiGoogleErrorBody.swift`：Google 通用格式的錯誤內容。
+  - 錯誤分類只有兩個入口：串流中的錯誤用 `streamError`，HTTP 錯誤用 `httpError(statusCode:)`，都在 `LKGeminiErrorBody.Detail`；`LKOpenAIErrorBody.Detail` 是同樣的名稱與分工。
+  - `Tests/LKAIGeminiTests/` 每個檔案的角色：
+    - `LKGeminiClientTests.swift`：請求內容、回應保存設定、`Mirror` 與金鑰遮蔽。
+    - `LKGeminiClientStreamTests.swift`：串流的文字、結束、實際回應的模型與用量。
+    - `LKGeminiClientErrorTests.swift`：HTTP 錯誤與串流 `error` 事件的範例表。
+    - `LKGeminiClientLiveTests.swift`：實際 API 測試。
+    - `LKAIServerSentEvent+GeminiEvents.swift`：事件建構函式，組出替身要推送的 SSE 事件。
+    - `LKGeminiClientTestSupport.swift`：測試共用的請求、建立 client 的 helper 與預期的結束事件。
+  - 新增供應商要動的既有檔案：`Package.swift` 的三處（新 target、新測試 target、`LKAIKit` 的依賴）、`Sources/LKAIKit/Exports.swift`（重新匯出新 target）、`Tests/LKAIKitTests/ExportsTests.swift`（只 `import LKAIKit` 就能建立新 client 的測試）。
 
 **串流的共同流程**
 
@@ -70,7 +87,7 @@
 - API 金鑰不出現在 `description`、`debugDescription`、`dump(_:)` 與回報的錯誤裡；client 實作三個遵循（`CustomStringConvertible`、`CustomDebugStringConvertible`、`CustomReflectable`，只放設定、不放金鑰），由測試逐一檢查。（第一份「LKAnthropicClient 以 API 金鑰與 URLSession 建立，金鑰不出現在診斷輸出」；`02-add-openai-provider`「金鑰遮蔽由每家 client 各自實作三個遵循」）
 - 金鑰以 `LKAICore` 的 `LKAIAPIKey` 保存，不用 `String`：它的 `description`、`debugDescription` 都是 `LKAIAPIKey(redacted)`，`customMirror` 沒有子項目，client 漏寫某個遵循或之後加上金鑰欄位時，金鑰仍只會顯示成遮蔽文字。只有 `makeURLRequest(for:)` 讀原始值 `unredactedValue`，公開的 `init(apiKey: String, …)` 在 init 內包裝。（`04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」）
   - 新增供應商的 change 完成前要做兩個 grep 檢查：`grep -rn 'unredactedValue' Sources | grep -v '///'` 只出現在 `LKAIAPIKey.swift` 與各家的 `makeURLRequest(for:)`；`grep -rn 'let apiKey: String' Sources` 沒有結果。沒用 `LKAIAPIKey` 保存金鑰的供應商，金鑰遮蔽的測試照樣通過，因為三個遵循本身就遮得住，只有這兩個檢查抓得到。（`04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」）
-- 有伺服器端保存的供應商預設不保存，由 App 在建立 client 時選擇開啟。（`02-add-openai-provider`「回應保存由 App 在建立 client 時選擇，預設不保存」）
+- 有伺服器端保存的供應商預設不保存，由 App 在建立 client 時選擇開啟，參數名一律是 `shouldStoreResponses`，讓 App 換供應商時寫法一致。（`02-add-openai-provider`「回應保存由 App 在建立 client 時選擇，預設不保存」；`04-add-gemini-provider`「回應保存預設關閉，由 App 建立 client 時開啟」）
 
 **測試**
 
@@ -164,7 +181,7 @@
 | 02 | `OpenAI-Organization`、`OpenAI-Project` 標頭 | 留給之後 | 等使用端需要多個組織或專案時再加 |
 | 02 | chat-client「Context window limit」要不要加上「供應商有回報時」的條件 | 已解決 | 03 修改 chat-client 的「Context window limit」 |
 | 02 | 金鑰遮蔽改用 `LKAICore` 的 `package` 包裝型別 | 已解決 | `04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」 |
-| 02 | `makeURLRequest(for:)` 的網址檢查與 `encodeBody(for:)` 各寫一份 | 已解決：不收 | 02 設的條件「要統一加標頭或改編碼設定時再收」沒有成立：Gemini 兩者都不需要，所以 `makeURLRequest(for:)` 與 `encodeBody(for:)` 不收進 `LKAICore`，現在三家各一份（`04-add-gemini-provider` Non-Goals）；重新評估的條件仍是要統一加標頭或改編碼設定時 |
+| 02 | `makeURLRequest(for:)` 的網址檢查與 `encodeBody(for:)` 各寫一份 | 已解決：不收 | 02 設的條件「要統一加標頭或改編碼設定時再收」沒有成立：Gemini 兩者都不需要，所以 `makeURLRequest(for:)` 與 `encodeBody(for:)` 不收進 `LKAICore`，現在三家各一份（`04-add-gemini-provider` Non-Goals）。實作審查另外指出（fable）：三家的 `StreamState.decode(_:)` 完全相同，`encodeBody(for:)` 只差請求內容的型別。重新評估的時機：要統一加標頭或改編碼設定時，以及下一家供應商的第一組任務；候選方案是在 `LKAISnakeCaseJSON` 加上以 `.convertToSnakeCase` 編碼的入口，請求內容的 raw value 可以一起拿掉，這也是 02 設的條件「改編碼設定」。三家的請求內容目前都沒有 dictionary 欄位（fable 確認），`.convertToSnakeCase` 不會轉到資料的鍵 |
 | 02 | 與供應商無關的測試 helper 兩家各一份，Gemini 會是第三份 | 已解決 | `04-add-gemini-provider`「與供應商無關的測試 helper 收進 LKAITestSupport」：`LKAITestJSON` 與 `LKAIErrorTestSupport` |
 | 02 | 503 的 `Retry-After` 沒有欄位可放 | 已解決 | 03「服務不可用的錯誤帶上等待時間，不給預設值」 |
 | 02 | `LKAIError.refused(detail:)` 的說明沒有提到 detail 可能是模型寫的文字 | 已解決 | 03「refused 的 detail 說明補上隱私提醒」 |
@@ -175,3 +192,7 @@
 | 04 | 串流中途的 `error` 事件與 `failed` 的 `errors`（或 `error`），實際格式是否和文件相同 | 留給之後 | 遇到實例時核對 |
 | 04 | 「401、402、403、429 以外的 4xx 帶訊息」的規則在 `LKOpenAIErrorBody` 與 Gemini 的 `LKGeminiErrorBody` 各有一份 | 留給之後 | 它其實是「預設分類對哪些狀態碼有更精確的結果」：預設的 4xx 分類要改（例如讓 408 可重試），或第三家也寫這條時，收成 `LKAICore` 的一個 `package` 函式，並同時修改兩家的 spec |
 | 04 | `LKOpenAIStreamEvent` 的 `Response` 不論事件種類，都會解碼 `error` 與 `incomplete_details` | 留給之後 | `response.completed` 帶形狀不同的 `error` 時，已完成的回答會以 `.invalidResponse` 結束，和 Gemini 以條件式解碼避開的情況同類；OpenAI 的文件寫明成功時 `error` 是 null，證據比 Gemini 強，所以不在 `04-add-gemini-provider` 的範圍；出現實例時，比照 Gemini 改成只在用得到時才解碼（第 3 章） |
+| 04 | 多輪對話沒有把思考步驟送回（fable 指出） | 留給之後 | 文件寫思考步驟「MUST」照原樣送回，實測只送文字也成功，而 `LKAIMessage` 只有角色與文字，帶不了思考簽章。多輪對話出現 400，或開始支援工具呼叫時再處理；那時要擴充 `LKAIMessage`，屬於修改 chat-client spec 的 change |
+| 04 | 三家測試的 `makeClient(events:)` 只差 client 型別（fable 指出） | 留給之後 | 可在 `LKAITestSupport` 加一個「推送事件後結束」的替身工廠，由下一家供應商的 change 處理 |
+| 04 | 供應商在 4xx 的 `message`，或不認得的串流代碼的 `message` 中回顯金鑰時，`.invalidRequest` 與 `.invalidResponse` 的描述會含金鑰（`/spectra-verify` 與 `/spectra-review` 指出） | 留給之後 | spec「API key secrecy」的「any error it reports」嚴格來說涵蓋這種情況。實測的金鑰錯誤都是 401 或 Google 通用格式，不保留 `message`；OpenAI 是同樣的寫法。要處理時，一起修改三家的 spec 寫法或錯誤描述 |
+| 04 | `failed` 時仍解碼 `usage` 與 `model`（`/spectra-review` 指出） | 留給之後 | 見 `04-add-gemini-provider`「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」。之後動到 `Interaction` 的解碼時，評估改成只在用得到時才解碼，並在 spec 寫明 `failed` 帶著格式不符的 `usage` 時的結果 |
