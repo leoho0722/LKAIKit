@@ -94,41 +94,6 @@ private extension LKAnthropicStreamState {
         }
     }
 
-    /// 套用一個串流事件：更新回應的模型、結束原因與用量，並把要交給 App 的文字交還給呼叫端
-    ///
-    /// - Parameter event: 剛收到的串流事件
-    /// - Returns: 這個事件帶來的一段文字；沒有文字時為 nil
-    /// - Note: `message_stop` 與 `error` 不在這裡處理，由 `handle(_:)` 在收到時分別改呼叫 `makeCompletion()` 或丟出錯誤
-    mutating func apply(_ event: LKAnthropicStreamEvent) -> String? {
-        switch event {
-        case .messageStart(let model, let usage):
-            if let model {
-                respondingModel = model
-            }
-            merge(usage)
-            return nil
-
-        case .fallback(let toModel):
-            respondingModel = toModel
-            return nil
-
-        case .textDelta(let text):
-            return text
-
-        case .messageDelta(let stopReason, let refusalCategory, let usage):
-            if let stopReason {
-                self.stopReason = stopReason
-                self.refusalCategory = refusalCategory
-            }
-            merge(usage)
-            return nil
-
-        // message_stop 與 error 由 handle(_:) 先處理，不會到這裡；列在這裡只是讓 switch 窮舉
-        case .messageStop, .error, .ignored:
-            return nil
-        }
-    }
-
     /// 依累積的狀態組出結束事件的內容，`handle(_:)` 收到 `message_stop` 時呼叫
     ///
     /// - Returns: 帶著結束原因、用量與實際回應的模型的結束資訊
@@ -140,20 +105,6 @@ private extension LKAnthropicStreamState {
             usage: makeUsage(),
             respondingModel: respondingModel
         )
-    }
-
-    /// 把事件回報的用量併入累計值：有值的欄位覆寫，null 或沒有出現的欄位保留先前的值
-    ///
-    /// - Parameter usage: 事件回報的用量；事件沒有用量時為 nil
-    mutating func merge(_ usage: LKAnthropicStreamEvent.Usage?) {
-        guard let usage else {
-            return
-        }
-        inputTokens = usage.inputTokens ?? inputTokens
-        cacheCreationInputTokens = usage.cacheCreationInputTokens ?? cacheCreationInputTokens
-        cacheReadInputTokens = usage.cacheReadInputTokens ?? cacheReadInputTokens
-        outputTokens = usage.outputTokens ?? outputTokens
-        thinkingTokens = usage.outputTokensDetails?.thinkingTokens ?? thinkingTokens
     }
 
     /// 把 Anthropic 的 `stop_reason` 對應成結束原因
@@ -198,5 +149,54 @@ private extension LKAnthropicStreamState {
             cachedInputTokens: cacheReadInputTokens,
             reasoningOutputTokens: thinkingTokens
         )
+    }
+
+    /// 套用一個串流事件：更新回應的模型、結束原因與用量，並把要交給 App 的文字交還給呼叫端
+    ///
+    /// - Parameter event: 剛收到的串流事件
+    /// - Returns: 這個事件帶來的一段文字；沒有文字時為 nil
+    /// - Note: `message_stop` 與 `error` 不在這裡處理，由 `handle(_:)` 在收到時分別改呼叫 `makeCompletion()` 或丟出錯誤
+    mutating func apply(_ event: LKAnthropicStreamEvent) -> String? {
+        switch event {
+        case .messageStart(let model, let usage):
+            if let model {
+                respondingModel = model
+            }
+            merge(usage)
+            return nil
+
+        case .fallback(let toModel):
+            respondingModel = toModel
+            return nil
+
+        case .textDelta(let text):
+            return text
+
+        case .messageDelta(let stopReason, let refusalCategory, let usage):
+            if let stopReason {
+                self.stopReason = stopReason
+                self.refusalCategory = refusalCategory
+            }
+            merge(usage)
+            return nil
+
+        // message_stop 與 error 由 handle(_:) 先處理，不會到這裡；列在這裡只是讓 switch 窮舉
+        case .messageStop, .error, .ignored:
+            return nil
+        }
+    }
+
+    /// 把事件回報的用量併入累計值：有值的欄位覆寫，null 或沒有出現的欄位保留先前的值
+    ///
+    /// - Parameter usage: 事件回報的用量；事件沒有用量時為 nil
+    mutating func merge(_ usage: LKAnthropicStreamEvent.Usage?) {
+        guard let usage else {
+            return
+        }
+        inputTokens = usage.inputTokens ?? inputTokens
+        cacheCreationInputTokens = usage.cacheCreationInputTokens ?? cacheCreationInputTokens
+        cacheReadInputTokens = usage.cacheReadInputTokens ?? cacheReadInputTokens
+        outputTokens = usage.outputTokens ?? outputTokens
+        thinkingTokens = usage.outputTokensDetails?.thinkingTokens ?? thinkingTokens
     }
 }

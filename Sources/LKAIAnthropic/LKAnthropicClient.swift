@@ -116,7 +116,7 @@ extension LKAnthropicClient: LKAIServerSentEventChatStreaming {
     /// 檢查備援設定，再組出送往 Messages API 的 POST 請求，帶金鑰、版本與內容類型標頭；開啟備援時另帶 beta 標頭
     ///
     /// - Parameter request: 要送出的對話請求
-    /// - Returns: 帶 API 金鑰的請求，只給共同流程使用，不要記錄或轉交到其他地方
+    /// - Returns: POST 請求，內容是 JSON；標頭帶 `x-api-key` 與 `anthropic-version`
     /// - Throws: 備援設定不合法、端點網址無法建立，或請求內容無法編碼時丟出 `invalidRequest`
     /// - Note: 第一行先檢查備援設定，不合法時不組出請求，也就不會送出網路請求
     package func makeURLRequest(for request: LKAIChatRequest) throws(LKAIError) -> URLRequest {
@@ -139,11 +139,11 @@ extension LKAnthropicClient: LKAIServerSentEventChatStreaming {
     /// 依 Anthropic 的 `error.type` 分類非 2xx 的回應；內容解析不了或類型不認得時回傳 nil，改用預設分類
     ///
     /// - Parameters:
-    ///   - statusCode: 回應的 HTTP 狀態碼
-    ///   - headers: 回應標頭，key 一律是小寫
-    ///   - body: 已讀完的錯誤內容
+    ///   - statusCode: `api_error`、`overloaded_error`、`timeout_error` 以它當 `serviceUnavailable` 的狀態碼
+    ///   - headers: 只讀 `retry-after`，用來算限流的等待時間
+    ///   - body: Anthropic 的錯誤 JSON，格式見 `LKAnthropicErrorBody`
     /// - Returns: 對應的錯誤；內容解析不了或類型不認得時為 nil
-    /// - Note: 純函式，不讀取回應的內容，內容已由共同流程讀好傳進來
+    /// - Note: `retry-after` 只有 `rate_limit_error` 會用到；花費上限用完時是 `quotaExceeded`，不帶等待時間
     package func httpError(statusCode: Int, headers: [String: String], body: String) -> LKAIError? {
         LKAnthropicErrorBody(text: body)?.error.lkaiError(
             statusCode: statusCode,
@@ -151,7 +151,7 @@ extension LKAnthropicClient: LKAIServerSentEventChatStreaming {
         )
     }
 
-    /// 建立一份新的事件對應狀態，每條串流各用一份
+    /// 建立 `LKAnthropicStreamState`，由它累積這條串流的模型、結束原因與用量，`message_stop` 時組出結束事件
     ///
     /// - Returns: 還沒有收到任何事件的 `LKAnthropicStreamState`
     package func makeEventMapper() -> any LKAIServerSentEventMapping {

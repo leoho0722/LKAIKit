@@ -24,8 +24,7 @@ struct LKAnthropicErrorBody: Decodable {
     ///
     /// - Parameter text: 錯誤回應的內容，一段 JSON 文字
     init?(text: String) {
-        // 失敗可忽略，因為會改用預設分類
-        let decoded = try? LKAISnakeCaseJSON.decode(LKAnthropicErrorBody.self, from: text)
+        let decoded = try? LKAISnakeCaseJSON.decode(Self.self, from: text) // 失敗可忽略，因為會改用預設分類
         guard let body = decoded else {
             return nil
         }

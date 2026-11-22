@@ -106,7 +106,7 @@
 - 4.3 的測試名稱見 design Implementation Contract 的分支對照表。
 - 派工依 design「平行實作沿用兩個 git worktree」的第 4 組：4.1 由 sonnet 做，4.2、4.3 由 haiku 做，4.4 由主對話做。
 
-- [ ] 4.1 修正說明與方法的排列，不改行為（sonnet）：
+- [x] 4.1 修正說明與方法的排列，不改行為（sonnet）：
   - `LKAIChatClientProtocol.stream(_:)` 的 `- Note:` 不再寫「由各供應商實作這項檢查」，改成本 package 的供應商由共同流程檢查。
   - `LKAnthropicStreamState` 的 Private Method 依 ios-dev-kit「呼叫者在前、深度優先」排列：`decode`、`makeCompletion`、`makeFinishReason`、`makeUsage`、`apply`、`merge`。
   - `LKAnthropicClient` 遵循 `LKAIServerSentEventChatStreaming` 的三個成員，說明改寫成 Anthropic 的做法，不照抄 protocol 的句子：
