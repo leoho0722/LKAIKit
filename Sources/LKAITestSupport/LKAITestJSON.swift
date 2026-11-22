@@ -38,21 +38,33 @@ extension LKAITestJSON {
 
     /// 把 JSON 文字解析成 JSON 物件，比對時不受鍵的順序影響
     ///
-    /// - Parameter text: JSON 文字，最外層必須是物件
+    /// - Parameters:
+    ///   - text: JSON 文字，最外層必須是物件
+    ///   - sourceLocation: 最外層不是物件時，測試問題記在哪一行；預設是呼叫端那一行，不必傳
     /// - Returns: 解析出的 JSON 物件
     /// - Throws: 文字不是合法的 JSON，或最外層不是物件時丟出
-    package static func jsonObject(from text: String) throws -> NSDictionary {
-        try jsonObject(from: Data(text.utf8))
+    /// - Note: 最外層不是物件時，問題記在呼叫端的測試檔，不是這個檔案，看得出是哪個測試失敗
+    package static func jsonObject(
+        from text: String,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) throws -> NSDictionary {
+        try jsonObject(from: Data(text.utf8), sourceLocation: sourceLocation)
     }
 
     /// 把 JSON 資料解析成 JSON 物件，比對時不受鍵的順序影響
     ///
-    /// - Parameter data: JSON 資料，最外層必須是物件
+    /// - Parameters:
+    ///   - data: JSON 資料，最外層必須是物件
+    ///   - sourceLocation: 最外層不是物件時，測試問題記在哪一行；預設是呼叫端那一行，不必傳
     /// - Returns: 解析出的 JSON 物件
     /// - Throws: 資料不是合法的 JSON，或最外層不是物件時丟出
-    package static func jsonObject(from data: Data) throws -> NSDictionary {
+    /// - Note: 最外層不是物件時，問題記在呼叫端的測試檔，不是這個檔案，看得出是哪個測試失敗
+    package static func jsonObject(
+        from data: Data,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) throws -> NSDictionary {
         let value = try JSONSerialization.jsonObject(with: data)
-        return try #require(value as? NSDictionary)
+        return try #require(value as? NSDictionary, sourceLocation: sourceLocation)
     }
 
     /// 把 JSON 文字解析成 JSON 值，最外層可以是字串或陣列
