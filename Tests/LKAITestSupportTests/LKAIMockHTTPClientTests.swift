@@ -32,15 +32,15 @@ struct LKAIMockHTTPClientTests {
         }
         let url = try #require(URL(string: "https://example.com/v1/messages"))
         let request = URLRequest(url: url)
-        _ = try? await mock.fetch(request)
-        var secondFetchError: LKAIError?
+        _ = try? await mock.fetch(request) // 失敗可忽略，因為 failFetch 的第一次 fetch 會丟錯
+        var actualError: LKAIError?
 
         // When
         await withKnownIssue {
             do throws(LKAIError) {
                 _ = try await mock.fetch(request)
             } catch {
-                secondFetchError = error
+                actualError = error
             }
         } matching: { issue in
             if case .unconditional = issue.kind {
@@ -51,7 +51,7 @@ struct LKAIMockHTTPClientTests {
 
         // Then
         #expect(mock.requests.count == 2)
-        let error = try #require(secondFetchError)
+        let error = try #require(actualError)
         switch setup {
         case .lineContent:
             let isInvalidResponse = if case .invalidResponse = error {

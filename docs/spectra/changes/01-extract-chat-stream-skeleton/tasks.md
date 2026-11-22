@@ -116,7 +116,7 @@
   - `LKAnthropicErrorBody.init?(text:)` 的 `try?`，把「失敗可忽略」的理由寫回同一行。
 
   驗證：`swift test` 全部通過且零警告；diff 只有說明文字與方法位置的變動。
-- [ ] 4.2 `LKAIMockHTTPClientTests` 依 ios-dev-kit 修正寫法，不改行為（haiku）：
+- [x] 4.2 `LKAIMockHTTPClientTests` 依 ios-dev-kit 修正寫法，不改行為（haiku）：
   - 第一次 `fetch` 的 `try?` 在同一行補上失敗可忽略的理由。
   - 存第二次 `fetch` 錯誤的變數改名為 `actualError`。
 
