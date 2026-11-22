@@ -68,18 +68,17 @@ extension LKOpenAIErrorBody {
 
         /// 是否為額度或帳務用完，也就是 `code` 是額度與帳務的代碼
         ///
-        /// - Note: 只看 `code`，HTTP 與串流兩條路徑共用；`error.type` 為 `insufficient_quota` 只在 HTTP 規則判斷，因為串流的 `error` 事件沒有種類欄位
+        /// - Note: 只看 `code`，HTTP 與串流兩條路徑共用
+        /// - Note: `error.type` 為 `insufficient_quota` 只在 HTTP 規則判斷，串流不判斷
+        /// - Note: 串流 `error` 事件的 `type` 是事件種類，固定為 `error`，不是錯誤類型
         var isQuotaExhausted: Bool {
             guard let code else {
                 return false
             }
             return switch code {
-            case "insufficient_quota",
-                "billing_hard_limit_reached",
-                "credit_balance_exhausted",
-                "organization_spend_limit_exceeded",
-                "project_spend_limit_exceeded",
-                "organization_usage_limit_exceeded":
+            case "insufficient_quota", "billing_hard_limit_reached", "credit_balance_exhausted",
+                    "organization_spend_limit_exceeded", "project_spend_limit_exceeded",
+                    "organization_usage_limit_exceeded":
                 true
 
             default:

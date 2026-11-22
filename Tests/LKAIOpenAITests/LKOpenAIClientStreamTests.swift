@@ -50,7 +50,8 @@ struct LKOpenAIClientStreamTests {
     // spectra-scenario: openai-provider / Fail on malformed event data
     /// 驗證第一則事件的資料損壞時，串流以無效回應錯誤失敗，不交出後面的文字與完成事件
     ///
-    /// - Parameter malformedEvent: 損壞的第一則事件：資料不是合法的 JSON、`response.output_text.delta` 沒有 `delta`、`response.completed` 沒有 `response`
+    /// - Parameter malformedEvent: 損壞的第一則事件：資料不是合法的 JSON、
+    ///   `response.output_text.delta` 沒有 `delta`、`response.completed` 沒有 `response`
     /// - Note: 損壞的事件後面接正常的文字與完成事件，略過損壞事件的實作會交出它們，測試就會失敗
     /// - Note: 只比對是不是無效回應，不比對原因文字，規格沒有規定它
     @Test(
@@ -340,7 +341,8 @@ struct LKOpenAIClientStreamTests {
 
     /// 驗證拒答同時有 delta 與 done 時，拒答文字以 delta 串接為準，不把 done 的完整文字再接一次
     ///
-    /// - Note: 對應 openai-provider 的「Finish and refusal mapping」需求中拒答文字的規則：有 `response.refusal.delta` 時只用 delta，沒有時才用 `response.refusal.done`
+    /// - Note: 對應 openai-provider 的「Finish and refusal mapping」需求中拒答文字的規則
+    /// - Note: 有 `response.refusal.delta` 時只用 delta，沒有時才用 `response.refusal.done`
     /// - Note: 這是實際串流最常見的形狀：幾則 delta 之後接一則帶完整文字的 done；兩種來源都串接時，原因文字會重複一次
     @Test(.timeLimit(.minutes(1)))
     func stream_拒答同時有delta與done_原因以delta串接為準() async {

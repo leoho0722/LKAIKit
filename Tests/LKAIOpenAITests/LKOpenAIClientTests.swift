@@ -20,7 +20,8 @@ struct LKOpenAIClientTests {
     ///
     /// - Parameter mode: 呼叫方式，串流或非串流
     /// - Note: 內容以 JSON 值比對，不在意鍵的順序
-    /// - Note: `NSDictionary` 比對會把 `1` 當成 `true`，所以 `stream` 與 `store` 另外用 `JSONDecoder` 確認是 JSON 布林
+    /// - Note: `NSDictionary` 比對會把 `1` 當成 `true`，
+    ///   所以 `stream` 與 `store` 另外用 `JSONDecoder` 確認是 JSON 布林
     @Test(.timeLimit(.minutes(1)), arguments: LKAIChatClientProtocolTestSupport.CallMode.allCases)
     func stream與invoke_有系統指示的請求_送出符合ResponsesAPI的POST請求(
         mode: LKAIChatClientProtocolTestSupport.CallMode
@@ -220,7 +221,8 @@ struct LKOpenAIClientTests {
     }
 
     // spectra-scenario: openai-provider / Describe a configured client
-    /// 驗證 HTTP 401 回應造成的錯誤，即使 OpenAI 的錯誤訊息帶著金鑰，用 `String(describing:)` 與 `String(reflecting:)` 產生的文字都不含金鑰
+    /// 驗證 HTTP 401 回應造成的錯誤，即使 OpenAI 的錯誤訊息帶著金鑰，
+    /// 用 `String(describing:)` 與 `String(reflecting:)` 產生的文字都不含金鑰
     ///
     /// - Parameter mode: 呼叫方式，串流或非串流
     /// - Note: 只檢查描述不含金鑰，不比對是哪一種錯誤，錯誤的分類由供應商的錯誤對應決定

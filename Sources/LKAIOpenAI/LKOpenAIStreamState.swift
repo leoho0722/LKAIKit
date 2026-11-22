@@ -14,9 +14,11 @@ import LKAICore
 /// - Note: `response.failed` 沒有 `response.error` 時，當成服務暫時無法使用，狀態碼 500
 /// - Note: 結束資訊只取自結束事件的 `response` 物件，其他事件不帶用量與模型
 /// - Note: OpenAI 回報的輸入與輸出總數本來就包含快取與推理，所以直接使用，不再相加
-/// - Note: 拒答文字有任何 `response.refusal.delta` 時，以 delta 依序串接；一則 delta 都沒有時，改用 `response.refusal.done` 依序串接
+/// - Note: 拒答文字有任何 `response.refusal.delta` 時，以 delta 依序串接
+/// - Note: 一則 delta 都沒有時，拒答文字改用 `response.refusal.done` 依序串接
 /// - Note: 拒答文字不為空時，結束事件不論是 `response.completed` 或 `response.incomplete` 都丟出拒答錯誤，原因是拒答文字
-/// - Note: OpenAI 不回報 context window 塞滿，生成途中塞滿時也是 `max_output_tokens`，所以不會交出 `.contextWindowExceeded`
+/// - Note: OpenAI 不回報 context window 塞滿，生成途中塞滿時回報的原因是 `max_output_tokens`
+/// - Note: 結束事件的結束原因因此不會是 `.contextWindowExceeded`
 struct LKOpenAIStreamState {
 
     // MARK: - Properties
@@ -41,7 +43,10 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
     ///
     /// - Parameter event: 剛解析出的 SSE 事件，事件種類以 `data` 裡的 `type` 為準，不看事件名稱
     /// - Returns: 有文字時為只含 `.textDelta` 的陣列；正常結束時為只含 `.finished` 的陣列；其餘為空陣列
-    /// - Throws: `data` 解碼失敗丟 `invalidResponse`；結束事件時拒答文字不為空，或 `response.incomplete` 的原因是 `content_filter` 丟 `refused`；`response.incomplete` 的原因不認得或沒有原因丟 `invalidResponse`；`error` 事件與 `response.failed` 丟 `code` 對應的錯誤，不認得的代碼丟 `invalidResponse`
+    /// - Throws: `data` 解碼失敗丟 `invalidResponse`；
+    ///   結束事件時拒答文字不為空，或 `response.incomplete` 的原因是 `content_filter` 丟 `refused`；
+    ///   `response.incomplete` 的原因不認得或沒有原因丟 `invalidResponse`；
+    ///   `error` 事件與 `response.failed` 丟 `code` 對應的錯誤，不認得的代碼丟 `invalidResponse`
     /// - Note: 拒答事件只累積文字，不交出事件；已交出的文字片段保留
     mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAIChatStreamEvent] {
         switch try decode(event) {
@@ -80,6 +85,16 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
 
 private extension LKOpenAIStreamState {
 
+    /// 目前收到的拒答文字：有任何 `response.refusal.delta` 時是 delta 依序串接，否則是 `response.refusal.done` 依序串接
+    ///
+    /// - Note: 以陣列記錄，「有沒有收到 delta」才不會和「delta 是空字串」混在一起
+    var refusalText: String {
+        if refusalDeltas.isEmpty {
+            return refusalDones.joined()
+        }
+        return refusalDeltas.joined()
+    }
+
     /// 把 SSE 事件的 `data` 解碼成 OpenAI 的串流事件
     ///
     /// - Parameter event: 解析好的 SSE 事件
@@ -113,16 +128,6 @@ private extension LKOpenAIStreamState {
         if !text.isEmpty {
             throw .refused(detail: text)
         }
-    }
-
-    /// 目前收到的拒答文字：有任何 `response.refusal.delta` 時是 delta 依序串接，否則是 `response.refusal.done` 依序串接
-    ///
-    /// - Note: 以陣列記錄，「有沒有收到 delta」才不會和「delta 是空字串」混在一起
-    var refusalText: String {
-        if refusalDeltas.isEmpty {
-            return refusalDones.joined()
-        }
-        return refusalDeltas.joined()
     }
 
     /// 依回應物件組出結束事件的內容，`completed` 與 `incomplete` 共用

@@ -85,7 +85,9 @@ extension LKOpenAIStreamEvent {
         case response
     }
 
-    /// `response.completed`、`response.incomplete` 與 `response.failed` 的 `response`，只取失敗的原因、沒有完成的原因、實際回應的模型與用量
+    /// `response.completed`、`response.incomplete` 與 `response.failed` 的 `response`
+    ///
+    /// - Note: 只取失敗的原因、沒有完成的原因、實際回應的模型與用量
     struct Response: Decodable {
 
         /// 實際回應的模型識別碼；API 沒有回報時為 nil，這不是錯誤

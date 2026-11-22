@@ -291,7 +291,8 @@ struct LKOpenAIClientErrorTests {
     /// 驗證串流中途的 `response.failed` 事件依 `response.error` 的 `code` 分類：先交出已收到的文字，再以範例表預期的結果結束
     ///
     /// - Parameter testCase: 一列範例：`response.error` 的 JSON（nil 表示沒有這個鍵），以及預期的結果
-    /// - Note: `response.failed` 之後再接一個 `response.completed`，忽略 `response.failed` 的實作會多交出一個完成事件，測試就會失敗
+    /// - Note: `response.failed` 之後再接一個 `response.completed`
+    /// - Note: 忽略 `response.failed` 的實作會多交出一個完成事件，測試就會失敗
     /// - Note: 不認得的代碼只比對是無效回應，而且說明文字同時含代碼與 `message`
     @Test(.timeLimit(.minutes(1)), arguments: LKOpenAIClientErrorTests.failedResponseCases)
     func stream_串流中途的responseFailed_先交出文字再以範例表的錯誤結束(
