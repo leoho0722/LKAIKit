@@ -64,6 +64,8 @@
   - `LKAIFinishReason` 的 `.maxOutputTokens` 與 `.contextWindowExceeded` 只改 `///` 說明，寫明 OpenAI 以 `.maxOutputTokens` 回報 context window 塞滿。
   - 在 `LKOpenAIClientStreamTests` 新增 spec「Finish and refusal mapping」的兩個情境，含 terminal events 範例表的七列；每列在第一個結束事件之後，再接一個 `response.completed`。
 
+  備註：拒答文字的規則後來由 5.2 改為「delta 串接後為空時改用 done」，見 design「OpenAI 串流事件的對應規則」；上面是 2.3 當時的寫法。
+
   驗證：主對話先觀察到新測試在實作前失敗，實作後通過；完整 `swift test` 通過且零警告。
 - [x] 2.4 [after: 2.3] 交付 openai-provider 的「Error mapping」。依 design「錯誤依 error.code 與 error.type 分類」「輸入超過 context window 的錯誤不設專屬種類」，完成錯誤對應（sonnet）：
   - 新增 `LKOpenAIErrorBody`，`message`、`type`、`code` 都宣告為 Optional，並提供判斷政策性阻擋代碼與額度代碼的兩個函式，HTTP 與串流共用。

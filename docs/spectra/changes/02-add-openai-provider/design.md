@@ -463,7 +463,7 @@ OpenAI 的 `store` 預設為 true，會保存回應至少 30 天。LKAIKit 每�
 | 忽略 `error` 事件 | 串流 `error` 事件的測試 |
 | 解碼失敗改成略過該則事件 | 格式錯誤的事件資料的測試 |
 | 不認得的 `incomplete_details.reason` 改成略過 | 結束事件範例表的 `max_messages` 與沒有 `incomplete_details` 兩列 |
-| 拒答文字只讀 delta | 結束事件範例表只有 `response.refusal.done` 的那一列 |
+| 拒答文字只讀 delta | 結束事件範例表只有 `response.refusal.done` 的那一列；5.2 之後還有 delta 為空字串的那一列 |
 | `public init` 的 `shouldStoreResponses` 預設為 true | 以 URL session 建立、不帶保存設定的情境 |
 | `description` 含金鑰 | 金鑰保密的測試 |
 | HTTP 規則 3 把 401 也算進帶訊息的 4xx | HTTP 401 錯誤描述不含金鑰的測試、HTTP 錯誤範例表的 401 列 |
