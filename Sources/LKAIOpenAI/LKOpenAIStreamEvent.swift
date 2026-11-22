@@ -25,6 +25,21 @@ enum LKOpenAIStreamEvent {
     /// - Parameter response: 即 `response`，裡面有實際回應的模型與用量
     case completed(Response)
 
+    /// `response.refusal.delta`：一段新產生的拒答文字
+    ///
+    /// - Parameter string: 這一段拒答文字，即 `delta`
+    case refusalDelta(String)
+
+    /// `response.refusal.done`：拒答文字結束，帶著完整的拒答文字
+    ///
+    /// - Parameter string: 完整的拒答文字，即 `refusal`
+    case refusalDone(String)
+
+    /// `response.incomplete`：回應沒有完成，帶著完整的回應物件
+    ///
+    /// - Parameter response: 即 `response`，裡面有沒有完成的原因、實際回應的模型與用量
+    case incomplete(Response)
+
     /// 其他事件：生命週期、推理摘要、`response.output_text.done` 等，以及不認得的類型，一律略過
     case ignored
 
@@ -50,14 +65,17 @@ extension LKOpenAIStreamEvent {
         /// 事件類型
         case type
 
-        /// `response.output_text.delta` 的文字片段
+        /// `response.output_text.delta` 與 `response.refusal.delta` 的文字片段
         case delta
 
-        /// `response.completed` 的回應物件
+        /// `response.refusal.done` 的完整拒答文字
+        case refusal
+
+        /// `response.completed` 與 `response.incomplete` 的回應物件
         case response
     }
 
-    /// `response.completed` 的 `response`，只取實際回應的模型與用量
+    /// `response.completed` 與 `response.incomplete` 的 `response`，只取沒有完成的原因、實際回應的模型與用量
     struct Response: Decodable {
 
         /// 實際回應的模型識別碼；API 沒有回報時為 nil，這不是錯誤
@@ -65,6 +83,16 @@ extension LKOpenAIStreamEvent {
 
         /// 這次回應的用量；為 null 或沒有這個欄位時為 nil
         let usage: Usage?
+
+        /// 回應沒有完成的細節；為 null 或沒有這個欄位時為 nil
+        let incompleteDetails: IncompleteDetails?
+
+        /// 回應沒有完成的細節，目前只用到原因
+        struct IncompleteDetails: Decodable {
+
+            /// 沒有完成的原因，例如 `max_output_tokens`；API 沒有回報時為 nil
+            let reason: String?
+        }
     }
 
     /// 回應的用量；API 沒有回報或回報 null 的欄位是 nil，代表沒有回報
@@ -113,8 +141,17 @@ extension LKOpenAIStreamEvent: Decodable {
         case "response.output_text.delta":
             self = try .outputTextDelta(container.decode(String.self, forKey: .delta))
 
+        case "response.refusal.delta":
+            self = try .refusalDelta(container.decode(String.self, forKey: .delta))
+
+        case "response.refusal.done":
+            self = try .refusalDone(container.decode(String.self, forKey: .refusal))
+
         case "response.completed":
             self = try .completed(container.decode(Response.self, forKey: .response))
+
+        case "response.incomplete":
+            self = try .incomplete(container.decode(Response.self, forKey: .response))
 
         default:
             self = .ignored

@@ -74,6 +74,28 @@ extension LKAIServerSentEvent {
         )
     }
 
+    /// 建立一段拒答文字的 `response.refusal.delta` 事件
+    ///
+    /// - Parameter text: 這一段的拒答文字，直接放進 JSON 字串，所以不能含 `"` 或 `\`
+    /// - Returns: `response.refusal.delta` 事件
+    static func refusalDelta(_ text: String) -> LKAIServerSentEvent {
+        LKAIServerSentEvent(
+            event: "response.refusal.delta",
+            data: #"{"type":"response.refusal.delta","item_id":"msg_1","output_index":0,"content_index":0,"delta":"\#(text)","sequence_number":1}"#
+        )
+    }
+
+    /// 建立 `response.refusal.done` 事件，表示拒答文字結束，並帶著完整的拒答文字
+    ///
+    /// - Parameter text: 完整的拒答文字，直接放進 JSON 字串，所以不能含 `"` 或 `\`
+    /// - Returns: `response.refusal.done` 事件
+    static func refusalDone(_ text: String) -> LKAIServerSentEvent {
+        LKAIServerSentEvent(
+            event: "response.refusal.done",
+            data: #"{"type":"response.refusal.done","item_id":"msg_1","output_index":0,"content_index":0,"refusal":"\#(text)","sequence_number":1}"#
+        )
+    }
+
     /// 建立 `response.completed` 事件，內容是完整的回應物件，狀態是完成
     ///
     /// - Parameters:
@@ -89,6 +111,30 @@ extension LKAIServerSentEvent {
         return LKAIServerSentEvent(
             event: "response.completed",
             data: #"{"type":"response.completed","response":{"id":"resp_1","object":"response","status":"completed"\#(modelField),"output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Hello","annotations":[]}]}]\#(usageField)},"sequence_number":7}"#
+        )
+    }
+
+    /// 建立 `response.incomplete` 事件，內容是完整的回應物件，狀態是未完成
+    ///
+    /// - Parameters:
+    ///   - reason: 回應物件 `incomplete_details.reason` 的值；nil 表示不放 `incomplete_details` 這個鍵
+    ///   - model: 回應物件的 `model`；nil 表示不放這個鍵
+    ///   - usage: 回應物件的 `usage` JSON；nil 表示不放這個鍵，要測 null 時傳 `"null"`
+    /// - Returns: `response.incomplete` 事件
+    static func responseIncomplete(
+        reason: String?,
+        model: String? = "gpt-6-luna-2026-09-01",
+        usage: String? = nil
+    ) -> LKAIServerSentEvent {
+        let incompleteDetailsField = optionalField(
+            "incomplete_details",
+            reason.map { #"{"reason":"\#($0)"}"# }
+        )
+        let modelField = optionalField("model", model.map { "\"\($0)\"" })
+        let usageField = optionalField("usage", usage)
+        return LKAIServerSentEvent(
+            event: "response.incomplete",
+            data: #"{"type":"response.incomplete","response":{"id":"resp_1","object":"response","status":"incomplete"\#(incompleteDetailsField)\#(modelField),"output":[]\#(usageField)},"sequence_number":8}"#
         )
     }
 }

@@ -220,11 +220,217 @@ struct LKOpenAIClientStreamTests {
         #expect(outcome.events == expectedEvents)
         #expect(outcome.error == nil)
     }
+
+    // spectra-scenario: openai-provider / Map terminal events
+    // spectra-scenario: openai-provider / Map terminal events / terminal events
+    /// 驗證第一個結束事件決定結果：文字 "Hel" 之後，依拒答事件與結束事件交出完成事件或丟出錯誤，之後再來的 `response.completed` 不處理
+    ///
+    /// - Parameter testCase: 一列範例：結束事件之前的拒答事件、第一個結束事件，以及預期的事件與錯誤
+    /// - Note: 每列在第一個結束事件之後都再接一個 `response.completed`，結束事件沒有結束串流時，它會多交出一個完成事件
+    /// - Note: 拒答與 `content_filter` 比對完整的錯誤，兩種無效回應只比對是不是無效回應，原因文字不比對
+    @Test(
+        .timeLimit(.minutes(1)),
+        arguments: [
+            TerminalEventCase(
+                refusalEvents: [],
+                terminalEvent: .responseCompleted(),
+                expectedEvents: [
+                    .textDelta("Hel"),
+                    LKOpenAIClientTestSupport.finishedEvent(.completed),
+                ],
+                expectedError: nil
+            ),
+            TerminalEventCase(
+                refusalEvents: [
+                    .refusalDelta("I'm sorry,"),
+                    .refusalDelta(" I can't help with that."),
+                ],
+                terminalEvent: .responseCompleted(),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.refused(detail: "I'm sorry, I can't help with that."))
+            ),
+            TerminalEventCase(
+                refusalEvents: [.refusalDone("I can't help with that.")],
+                terminalEvent: .responseCompleted(),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.refused(detail: "I can't help with that."))
+            ),
+            TerminalEventCase(
+                refusalEvents: [],
+                terminalEvent: .responseIncomplete(reason: "max_output_tokens"),
+                expectedEvents: [
+                    .textDelta("Hel"),
+                    LKOpenAIClientTestSupport.finishedEvent(.maxOutputTokens),
+                ],
+                expectedError: nil
+            ),
+            TerminalEventCase(
+                refusalEvents: [],
+                terminalEvent: .responseIncomplete(reason: "content_filter"),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .error(.refused(detail: "content_filter"))
+            ),
+            TerminalEventCase(
+                refusalEvents: [],
+                terminalEvent: .responseIncomplete(reason: "max_messages"),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .invalidResponse
+            ),
+            TerminalEventCase(
+                refusalEvents: [],
+                terminalEvent: .responseIncomplete(reason: nil),
+                expectedEvents: [.textDelta("Hel")],
+                expectedError: .invalidResponse
+            ),
+        ] as [TerminalEventCase]
+    )
+    func stream_各種結束事件_依第一個結束事件交出完成事件或錯誤(
+        testCase: TerminalEventCase
+    ) async {
+        // Given
+        let events: [LKAIServerSentEvent] = [.outputTextDelta("Hel")]
+            + testCase.refusalEvents
+            + [testCase.terminalEvent, .responseCompleted()]
+        let client = LKOpenAIClientTestSupport.makeClient(events: events)
+
+        // When
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKOpenAIClientTestSupport.validRequest
+        )
+
+        // Then
+        #expect(outcome.events == testCase.expectedEvents)
+        switch testCase.expectedError {
+        case nil:
+            #expect(outcome.error == nil)
+
+        case .error(let expectedError)?:
+            #expect(outcome.error == expectedError)
+
+        case .invalidResponse?:
+            #expect(isInvalidResponse(outcome.error))
+        }
+    }
+
+    // spectra-scenario: openai-provider / Non-streaming call refused after partial text
+    /// 驗證回答到一半被拒答時，非串流呼叫以拒答錯誤失敗，原因是拒答的文字，不回傳結果
+    ///
+    /// - Note: 已產生的文字 "Sure" 不會出現在結果裡，因為呼叫沒有回傳結果
+    @Test(.timeLimit(.minutes(1)))
+    func invoke_產生部分文字後拒答_丟出拒答錯誤且不回傳結果() async throws {
+        // Given
+        let client = LKOpenAIClientTestSupport.makeClient(events: [
+            .outputTextDelta("Sure"),
+            .refusalDelta("I can't help with that."),
+            .responseCompleted(),
+        ])
+
+        // When
+        let actualError = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKOpenAIClientTestSupport.validRequest,
+            mode: .invoke
+        )
+
+        // Then
+        let error = try #require(actualError)
+        #expect(error == .refused(detail: "I can't help with that."))
+    }
+
+    /// 驗證拒答同時有 delta 與 done 時，拒答文字以 delta 串接為準，不把 done 的完整文字再接一次
+    ///
+    /// - Note: 對應 openai-provider 的「Finish and refusal mapping」需求中拒答文字的規則：有 `response.refusal.delta` 時只用 delta，沒有時才用 `response.refusal.done`
+    /// - Note: 這是實際串流最常見的形狀：幾則 delta 之後接一則帶完整文字的 done；兩種來源都串接時，原因文字會重複一次
+    @Test(.timeLimit(.minutes(1)))
+    func stream_拒答同時有delta與done_原因以delta串接為準() async {
+        // Given
+        let client = LKOpenAIClientTestSupport.makeClient(events: [
+            .outputTextDelta("Hel"),
+            .refusalDelta("I'm sorry,"),
+            .refusalDelta(" I can't help with that."),
+            .refusalDone("I'm sorry, I can't help with that."),
+            .responseCompleted(),
+        ])
+        let expectedError = LKAIError.refused(detail: "I'm sorry, I can't help with that.")
+
+        // When
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKOpenAIClientTestSupport.validRequest
+        )
+
+        // Then
+        #expect(outcome.events == [.textDelta("Hel")])
+        #expect(outcome.error == expectedError)
+    }
+
+    /// 驗證回應以輸出上限未完成且帶用量時，結束事件的結束原因是輸出上限，並帶著用量
+    ///
+    /// - Note: 對應 openai-provider 的「Usage mapping」需求：用量取自結束串流的事件，`response.incomplete` 也算
+    /// - Note: 模擬推理模型把輸出上限全用在推理、沒有可見輸出的情況，所以事件裡沒有文字
+    @Test(.timeLimit(.minutes(1)))
+    func stream_以輸出上限未完成且帶用量_結束事件帶輸出上限原因與用量() async {
+        // Given
+        let client = LKOpenAIClientTestSupport.makeClient(events: [
+            .responseIncomplete(
+                reason: "max_output_tokens",
+                usage: #"{"input_tokens":12,"output_tokens":4096,"output_tokens_details":{"reasoning_tokens":4096}}"#
+            ),
+        ])
+        let expectedUsage = LKAIUsage(
+            inputTokens: 12,
+            outputTokens: 4096,
+            cachedInputTokens: nil,
+            reasoningOutputTokens: 4096
+        )
+        let expectedEvents = [
+            LKOpenAIClientTestSupport.finishedEvent(.maxOutputTokens, usage: expectedUsage),
+        ]
+
+        // When
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKOpenAIClientTestSupport.validRequest
+        )
+
+        // Then
+        #expect(outcome.events == expectedEvents)
+        #expect(outcome.error == nil)
+    }
 }
 
 // MARK: - Nested Types
 
 extension LKOpenAIClientStreamTests {
+
+    /// 結束事件範例表的一列：結束事件之前的拒答事件、第一個結束事件，以及預期的事件與錯誤
+    struct TerminalEventCase: Sendable {
+
+        /// 文字 "Hel" 之後、第一個結束事件之前送出的拒答事件；沒有拒答時為空陣列
+        let refusalEvents: [LKAIServerSentEvent]
+
+        /// 第一個結束事件，`response.completed` 或 `response.incomplete`
+        let terminalEvent: LKAIServerSentEvent
+
+        /// 預期交出的全部事件
+        let expectedEvents: [LKAIChatStreamEvent]
+
+        /// 預期的錯誤；nil 表示預期沒有錯誤
+        let expectedError: ErrorExpectation?
+    }
+
+    /// 結束事件的預期錯誤：指定的錯誤，或只要求是無效回應
+    enum ErrorExpectation: Sendable {
+
+        /// 丟出的錯誤必須等於指定的錯誤
+        ///
+        /// - Parameter error: 預期的錯誤
+        case error(LKAIError)
+
+        /// 丟出的錯誤必須是無效回應，原因文字不比對
+        case invalidResponse
+    }
 
     /// 用量範例表的一列：完成事件的 `usage` JSON，以及預期的用量
     struct UsageCase {
