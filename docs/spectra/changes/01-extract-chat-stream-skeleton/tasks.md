@@ -43,7 +43,7 @@
     - 只 `fetch` 一次時不記錄問題，並回傳設定的狀態碼。
 
   驗證：主對話先觀察到第二次 `fetch` 的測試在實作前以「Known issue was not recorded」失敗，實作後通過；完整 `swift test` 通過且零警告。
-- [ ] 2.2 依 design「與供應商無關的測試 helper 提前放進 LKAITestSupport」，搬移與供應商無關的測試 helper：
+- [x] 2.2 依 design「與供應商無關的測試 helper 提前放進 LKAITestSupport」，搬移與供應商無關的測試 helper：
   - 新增 `LKAIChatClientProtocolTestSupport`：`CallMode`、`StreamOutcome`（明寫 `Sendable`）、`collectOutcome(from:request:onEvent:)`、`callError(on:request:mode:)`、`receiveFirstEvent(of:request:)`。
   - 新增 `LKAITestWaiting`：`waitUntil(_:)`。
   - `LKAnthropicClientTestSupport` 只留 Anthropic 專屬的成員。
@@ -53,7 +53,7 @@
   驗證：
   - `swift test` 全部通過且零警告，LKAIAnthropic 仍是 43 個測試，測試名稱與期望值不變。
   - `Tests/` 內的 `spectra-scenario:` 行排序後與修改前逐行相同。
-- [ ] 2.3 [after: 2.2] 依 design Implementation Contract 的表列分支，在 `LKAnthropicClientErrorTests` 補兩個既有行為的回歸測試，以 `LKAIMockHTTPClient` 的 `finish(throwing:)` 送出連線中斷：
+- [x] 2.3 [after: 2.2] 依 design Implementation Contract 的表列分支，在 `LKAnthropicClientErrorTests` 補兩個既有行為的回歸測試，以 `LKAIMockHTTPClient` 的 `finish(throwing:)` 送出連線中斷：
   - `stream_送出文字後連線中斷_先交出文字再丟出transport且保留底層錯誤代碼`：替身推送 `message_start`、文字區塊與 `Hel` 之後，以 `.transport` 結束。預期先收到 `.textDelta("Hel")`，再丟出同一個 `URLError` 代碼的 `.transport`。
   - `stream與invoke_讀取錯誤內容時連線中斷_丟出transport且保留底層錯誤代碼`：替身回應狀態碼 500，錯誤內容讀到一半以 `.transport` 結束。預期兩種呼叫方式都丟出同一個代碼的 `.transport`。
 

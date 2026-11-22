@@ -35,7 +35,11 @@ struct LKAnthropicClientTests {
         let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"system":"Be brief.","messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
 
         // When
-        _ = await LKAnthropicClientTestSupport.callError(on: client, with: request, mode: .stream)
+        _ = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: request,
+            mode: .stream
+        )
 
         // Then
         let recorded = try #require(mock.requests.first)
@@ -63,7 +67,11 @@ struct LKAnthropicClientTests {
         let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"}],"stream":true}"#)
 
         // When
-        _ = await LKAnthropicClientTestSupport.callError(on: client, mode: .invoke)
+        _ = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKAnthropicClientTestSupport.validRequest,
+            mode: .invoke
+        )
 
         // Then
         let recorded = try #require(mock.requests.first)
@@ -85,7 +93,11 @@ struct LKAnthropicClientTests {
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
 
         // When
-        _ = await LKAnthropicClientTestSupport.callError(on: client, mode: .stream)
+        _ = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKAnthropicClientTestSupport.validRequest,
+            mode: .stream
+        )
 
         // Then
         let recorded = try #require(mock.requests.first)
@@ -114,7 +126,11 @@ struct LKAnthropicClientTests {
         let expectedBody = try jsonObject(from: #"{"model":"claude-opus-5-5","max_tokens":1024,"messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"},{"role":"user","content":"Bye"}],"stream":true}"#)
 
         // When
-        _ = await LKAnthropicClientTestSupport.callError(on: client, with: request, mode: .stream)
+        _ = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: request,
+            mode: .stream
+        )
 
         // Then
         let recorded = try #require(mock.requests.first)
@@ -170,7 +186,11 @@ struct LKAnthropicClientTests {
             .map { try jsonFragment(from: $0) }
 
         // When
-        _ = await LKAnthropicClientTestSupport.callError(on: client, mode: .stream)
+        _ = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKAnthropicClientTestSupport.validRequest,
+            mode: .stream
+        )
 
         // Then
         let recorded = try #require(mock.requests.first)
@@ -196,11 +216,11 @@ struct LKAnthropicClientTests {
             .models(["claude-opus-4-8", "claude-opus-4-8"]),
             .models([""]),
         ] as [LKAnthropicRefusalFallback],
-        LKAnthropicClientTestSupport.CallMode.allCases
+        LKAIChatClientProtocolTestSupport.CallMode.allCases
     )
     func stream與invoke_不合法的備援模型清單_丟出無效請求錯誤且不送出請求(
         setting: LKAnthropicRefusalFallback,
-        mode: LKAnthropicClientTestSupport.CallMode
+        mode: LKAIChatClientProtocolTestSupport.CallMode
     ) async throws {
         // Given
         let mock = LKAIMockHTTPClient()
@@ -212,7 +232,11 @@ struct LKAnthropicClientTests {
         )
 
         // When
-        let actualError = await LKAnthropicClientTestSupport.callError(on: client, mode: mode)
+        let actualError = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKAnthropicClientTestSupport.validRequest,
+            mode: mode
+        )
 
         // Then
         let error = try #require(actualError)
@@ -248,11 +272,11 @@ struct LKAnthropicClientTests {
                 maxOutputTokens: 0
             ),
         ] as [LKAIChatRequest],
-        LKAnthropicClientTestSupport.CallMode.allCases
+        LKAIChatClientProtocolTestSupport.CallMode.allCases
     )
     func stream與invoke_不合法的請求_丟出無效請求錯誤且不送出請求(
         request: LKAIChatRequest,
-        mode: LKAnthropicClientTestSupport.CallMode
+        mode: LKAIChatClientProtocolTestSupport.CallMode
     ) async throws {
         // Given
         let mock = LKAIMockHTTPClient()
@@ -260,9 +284,9 @@ struct LKAnthropicClientTests {
         let client = LKAnthropicClient(apiKey: "test-key", httpClient: mock)
 
         // When
-        let actualError = await LKAnthropicClientTestSupport.callError(
+        let actualError = await LKAIChatClientProtocolTestSupport.callError(
             on: client,
-            with: request,
+            request: request,
             mode: mode
         )
 
@@ -304,9 +328,9 @@ struct LKAnthropicClientTests {
     ///
     /// - Parameter mode: 呼叫方式，串流或非串流
     /// - Note: 只檢查描述不含金鑰，不比對是哪一種錯誤，錯誤的分類由供應商的錯誤對應決定
-    @Test(.timeLimit(.minutes(1)), arguments: LKAnthropicClientTestSupport.CallMode.allCases)
+    @Test(.timeLimit(.minutes(1)), arguments: LKAIChatClientProtocolTestSupport.CallMode.allCases)
     func stream與invoke_HTTP401回應_錯誤描述不含金鑰(
-        mode: LKAnthropicClientTestSupport.CallMode
+        mode: LKAIChatClientProtocolTestSupport.CallMode
     ) async throws {
         // Given
         let mock = LKAIMockHTTPClient(
@@ -318,7 +342,11 @@ struct LKAnthropicClientTests {
         let client = LKAnthropicClient(apiKey: "sk-ant-secret-123", httpClient: mock)
 
         // When
-        let actualError = await LKAnthropicClientTestSupport.callError(on: client, mode: mode)
+        let actualError = await LKAIChatClientProtocolTestSupport.callError(
+            on: client,
+            request: LKAnthropicClientTestSupport.validRequest,
+            mode: mode
+        )
 
         // Then
         let error = try #require(actualError)
