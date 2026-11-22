@@ -301,11 +301,11 @@ LKAIKit 目前有 Anthropic（`LKAIAnthropic`）與 OpenAI（`LKAIOpenAI`）兩�
   - `LKAITestSupportTests` 3 → 6，多 `matches`、`optionalField` 與 `booleanField`。
   - `LKAIKit` 3 → 4。
   - 新增 `LKAIGemini` 約 19 個，含 2 個實際 API 測試。
-  - 第 6 組只改測試的比對條件與文件，測試數不變。
   - 第 5 組之後：`LKAITestSupportTests` 6 → 7，多 `sourceLocation` 的測試；`LKAIGemini` 19 → 20，多「Report no model when the completed interaction has none」。
+  - 第 6 組只改測試的比對條件與文件，測試數不變。
 - `spectra coverage 04-add-gemini-provider` 顯示 `gemini-provider` 的每個情境與範例都有測試，範例表的每一列都有測試案例。
 - XcodeBuildMCP 對 iOS 模擬器建置 `LKAIKit` scheme 零警告。
-- 反向檢查：故意改壞下列十八項行為，對應的測試必須失敗，做完後還原：
+- 反向檢查：故意改壞下列二十四項行為，對應的測試必須失敗，做完後還原（1 到 18 是規劃時列的，19 到 23 是第 5 組加的，24 是第 6 組加的）：
   1. 思考步驟的片段也交出：範例「stream with lifecycle events and a thought step」。
   2. 不記錄步驟類型，只看 `delta.type`：串流範例中 `thought` 步驟的 `text` 片段 "Thinking"。
   3. `incomplete` 回報完成：結束事件範例表的 `incomplete` 列。
