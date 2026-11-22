@@ -259,7 +259,7 @@ struct LKAIChatClientProtocolTests {
     /// - Parameter sourceError: 來源丟出的對話錯誤，範例是限流、服務暫時無法使用與 API 金鑰無效
     @Test(arguments: [
         LKAIError.rateLimited(retryAfter: .seconds(30)),
-        .serviceUnavailable(statusCode: 529),
+        .serviceUnavailable(statusCode: 529, retryAfter: nil),
         .invalidAPIKey,
     ] as [LKAIError])
     func invoke_串流丟出對話錯誤且未取消_原樣丟出(sourceError: LKAIError) async throws {

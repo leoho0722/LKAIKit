@@ -70,7 +70,8 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
             return [.finished(completion)]
 
         case .failed(let response):
-            throw response.error?.streamError ?? .serviceUnavailable(statusCode: 500)
+            throw response.error?.streamError
+                ?? .serviceUnavailable(statusCode: 500, retryAfter: nil)
 
         case .error(let detail):
             throw detail.streamError

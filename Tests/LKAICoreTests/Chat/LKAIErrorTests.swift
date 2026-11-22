@@ -21,7 +21,7 @@ struct LKAIErrorTests {
         .permissionDenied,
         .rateLimited(retryAfter: .seconds(30)),
         .quotaExceeded,
-        .serviceUnavailable(statusCode: 529),
+        .serviceUnavailable(statusCode: 529, retryAfter: nil),
         .invalidRequest(message: "bad"),
         .refused(detail: "cyber"),
         .cancelled,
@@ -43,7 +43,7 @@ struct LKAIErrorTests {
         (.rateLimited(retryAfter: .seconds(30)), true),
         (.rateLimited(retryAfter: nil), true),
         (.quotaExceeded, false),
-        (.serviceUnavailable(statusCode: 529), true),
+        (.serviceUnavailable(statusCode: 529, retryAfter: nil), true),
         (.invalidRequest(message: "bad"), false),
         (.refused(detail: "cyber"), false),
         (.cancelled, false),
@@ -111,22 +111,22 @@ struct LKAIErrorTests {
         StatusCase(
             statusCode: 500,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 500)
+            expectedError: .serviceUnavailable(statusCode: 500, retryAfter: nil)
         ),
         StatusCase(
             statusCode: 503,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 503)
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: nil)
         ),
         StatusCase(
             statusCode: 529,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 529)
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: nil)
         ),
         StatusCase(
             statusCode: 599,
             retryAfter: nil,
-            expectedError: .serviceUnavailable(statusCode: 599)
+            expectedError: .serviceUnavailable(statusCode: 599, retryAfter: nil)
         ),
     ])
     func init_狀態碼與retryAfter標頭_分類為範例表的錯誤(testCase: StatusCase) {

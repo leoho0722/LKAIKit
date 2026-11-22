@@ -100,17 +100,17 @@ extension LKOpenAIErrorBody {
                 return .quotaExceeded
             }
             guard let code else {
-                return .serviceUnavailable(statusCode: 500)
+                return .serviceUnavailable(statusCode: 500, retryAfter: nil)
             }
             switch code {
             case "rate_limit_exceeded", "slow_down":
                 return .rateLimited(retryAfter: nil)
 
             case "server_is_overloaded":
-                return .serviceUnavailable(statusCode: 503)
+                return .serviceUnavailable(statusCode: 503, retryAfter: nil)
 
             case "server_error", "vector_store_timeout":
-                return .serviceUnavailable(statusCode: 500)
+                return .serviceUnavailable(statusCode: 500, retryAfter: nil)
 
             case "invalid_prompt", "data_residency_mismatch":
                 return .invalidRequest(message: message)

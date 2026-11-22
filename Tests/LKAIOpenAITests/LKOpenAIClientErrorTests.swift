@@ -126,19 +126,19 @@ struct LKOpenAIClientErrorTests {
             statusCode: 503,
             extraHeaders: ["retry-after": "5"],
             body: #"{"error":{"message":"Model temporarily overloaded","type":"service_unavailable_error","code":"server_is_overloaded"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 503)
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: nil)
         ),
         ErrorResponseCase(
             statusCode: 500,
             extraHeaders: [:],
             body: #"{"error":{"message":"The server had an error while processing your request.","type":"server_error","code":null}}"#,
-            expectedError: .serviceUnavailable(statusCode: 500)
+            expectedError: .serviceUnavailable(statusCode: 500, retryAfter: nil)
         ),
         ErrorResponseCase(
             statusCode: 502,
             extraHeaders: [:],
             body: "<html>Bad Gateway</html>",
-            expectedError: .serviceUnavailable(statusCode: 502)
+            expectedError: .serviceUnavailable(statusCode: 502, retryAfter: nil)
         ),
     ] as [ErrorResponseCase]
 
@@ -162,17 +162,17 @@ struct LKOpenAIClientErrorTests {
         ErrorEventCase(
             code: "server_is_overloaded",
             message: "Model temporarily overloaded",
-            expectation: .error(.serviceUnavailable(statusCode: 503))
+            expectation: .error(.serviceUnavailable(statusCode: 503, retryAfter: nil))
         ),
         ErrorEventCase(
             code: "server_error",
             message: "The model failed to generate a response.",
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
         ErrorEventCase(
             code: "vector_store_timeout",
             message: "Vector store timed out.",
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
         ErrorEventCase(
             code: "cyber_policy",
@@ -207,7 +207,7 @@ struct LKOpenAIClientErrorTests {
         ErrorEventCase(
             code: nil,
             message: "Something went wrong.",
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
     ] as [ErrorEventCase]
 
@@ -219,7 +219,7 @@ struct LKOpenAIClientErrorTests {
         ),
         FailedResponseCase(
             errorJSON: #"{"code":"server_error","message":"The model failed to generate a response."}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
         FailedResponseCase(
             errorJSON: #"{"code":"bio_policy","message":"Request blocked."}"#,
@@ -235,7 +235,7 @@ struct LKOpenAIClientErrorTests {
         ),
         FailedResponseCase(
             errorJSON: nil,
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
     ] as [FailedResponseCase]
 

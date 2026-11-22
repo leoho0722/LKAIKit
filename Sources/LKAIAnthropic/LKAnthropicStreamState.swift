@@ -64,7 +64,7 @@ extension LKAnthropicStreamState: LKAIServerSentEventMapping {
         let streamEvent = try decode(event)
         if case .error(let body) = streamEvent {
             throw body.error.lkaiError(statusCode: nil, retryAfter: nil)
-                ?? .serviceUnavailable(statusCode: 500)
+                ?? .serviceUnavailable(statusCode: 500, retryAfter: nil)
         }
         if case .messageStop = streamEvent {
             let completion = try makeCompletion()

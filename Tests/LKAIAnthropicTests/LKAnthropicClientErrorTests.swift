@@ -71,19 +71,19 @@ struct LKAnthropicClientErrorTests {
             statusCode: 529,
             extraHeaders: [:],
             body: #"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 529)
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: nil)
         ),
         ErrorResponseCase(
             statusCode: 500,
             extraHeaders: [:],
             body: #"{"type":"error","error":{"type":"api_error","message":"Internal server error"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 500)
+            expectedError: .serviceUnavailable(statusCode: 500, retryAfter: nil)
         ),
         ErrorResponseCase(
             statusCode: 504,
             extraHeaders: [:],
             body: #"{"type":"error","error":{"type":"timeout_error","message":"Request timed out"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 504)
+            expectedError: .serviceUnavailable(statusCode: 504, retryAfter: nil)
         ),
         ErrorResponseCase(
             statusCode: 409,
@@ -95,7 +95,7 @@ struct LKAnthropicClientErrorTests {
             statusCode: 502,
             extraHeaders: [:],
             body: "<html>Bad Gateway</html>",
-            expectedError: .serviceUnavailable(statusCode: 502)
+            expectedError: .serviceUnavailable(statusCode: 502, retryAfter: nil)
         ),
     ] as [ErrorResponseCase]
 
@@ -103,19 +103,19 @@ struct LKAnthropicClientErrorTests {
     private static let errorEventCases = [
         ErrorEventCase(
             data: #"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 529))
+            expectation: .error(.serviceUnavailable(statusCode: 529, retryAfter: nil))
         ),
         ErrorEventCase(
             data: #"{"type":"error","error":{"type":"api_error","message":"Internal server error"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
         ErrorEventCase(
             data: #"{"type":"error","error":{"type":"timeout_error","message":"Request timed out"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 504))
+            expectation: .error(.serviceUnavailable(statusCode: 504, retryAfter: nil))
         ),
         ErrorEventCase(
             data: #"{"type":"error","error":{"type":"new_unknown_error","message":"Something new"}}"#,
-            expectation: .error(.serviceUnavailable(statusCode: 500))
+            expectation: .error(.serviceUnavailable(statusCode: 500, retryAfter: nil))
         ),
         ErrorEventCase(data: "not json", expectation: .invalidResponse),
     ] as [ErrorEventCase]

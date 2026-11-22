@@ -29,8 +29,13 @@ public enum LKAIError: Error, Equatable, Sendable {
 
     /// 供應商的服務暫時無法使用，例如過載或維護中
     ///
-    /// - Parameter statusCode: 供應商回報的 HTTP 狀態碼；串流中途發生的錯誤沒有 HTTP 狀態碼，由供應商依錯誤類型指定
-    case serviceUnavailable(statusCode: Int)
+    /// - Parameters:
+    ///   - statusCode: 供應商回報的 HTTP 狀態碼；串流中途發生的錯誤沒有 HTTP 狀態碼，由供應商依錯誤類型指定
+    ///   - retryAfter: 供應商要求等待的時間；沒有提供或無法解讀時為 nil，串流中途的錯誤一律為 nil
+    /// - Note: nil 只代表不知道要等多久，不代表可以立刻重試
+    /// - Note: 取狀態碼的寫法是 `case .serviceUnavailable(let statusCode, let retryAfter)`；
+    ///   pattern 只寫 `statusCode:` 一個標籤、漏掉 `retryAfter` 時，取到的值會悄悄變成整個 tuple，編譯器沒有警告
+    case serviceUnavailable(statusCode: Int, retryAfter: Duration?)
 
     /// 請求內容有問題，供應商無法處理
     ///
@@ -83,7 +88,7 @@ public enum LKAIError: Error, Equatable, Sendable {
             self = .invalidRequest(message: nil)
 
         case 500...599:
-            self = .serviceUnavailable(statusCode: httpStatusCode)
+            self = .serviceUnavailable(statusCode: httpStatusCode, retryAfter: nil)
 
         default:
             self = .invalidResponse(reason: "Unexpected HTTP status \(httpStatusCode)")
