@@ -292,14 +292,14 @@
 - `/spectra-verify` 的 Warning（供應商的錯誤訊息回顯金鑰）已記在清單第 7 章，本組不處理。
 - 派工依 design「實作由 sonnet 在單一 worktree 依序進行」：6.1、6.2 由 sonnet 在 `.worktrees/sonnet` 依序做，完成後第四次合併回功能分支，6.3 由主對話做。
 
-- [ ] 6.1 讓 `LKAITestJSONTests` 的 `sourceLocation` 測試只在 `#require` 記下的問題落在測試檔時通過（sonnet）：
+- [x] 6.1 讓 `LKAITestJSONTests` 的 `sourceLocation` 測試只在 `#require` 記下的問題落在測試檔時通過（sonnet）：
   - `withKnownIssue` 的比對條件先以 `guard case .expectationFailed = issue.kind else { return false }` 限定問題的種類，再比對 `fileName`，比照 `LKAIMockHTTPClientTests` 限定問題種類的寫法。理由見 design 決策「與供應商無關的測試 helper 收進 LKAITestSupport」補上的 `sourceLocation` 一段。
   - 依 ios-dev-kit `formatting.md`「測試本體的 `// When`、`// Then` 之前空 1 行」，在同一個測試的 `// When` 與 `// Then` 之間補空行，說明兩段寫在同一個呼叫的註解保留。
 
   驗證：
   - 主對話在 6.1 之前先執行反向檢查 24（`jsonObject(from:)` 的 `Data` 版改成直接丟一般錯誤），觀察到這個測試照樣通過；6.1 之後同一個改法讓它失敗，記在 6.3。
   - 完整 `swift test` 通過且零警告，測試數不變。
-- [ ] 6.2 更正並補充 `docs/adding-a-provider.md`，讓下一家供應商不會照著錯的前提做（sonnet）：
+- [x] 6.2 更正並補充 `docs/adding-a-provider.md`，讓下一家供應商不會照著錯的前提做（sonnet）：
   - **第 7 章** 02「`makeURLRequest(for:)` 的網址檢查與 `encodeBody(for:)` 各寫一份」那一列：「三家的請求內容目前都沒有 dictionary 欄位（fable 確認）」改成 design Open Questions 更正後的句子（沒有以資料當鍵的 dictionary；Anthropic 的 `Fallbacks.encode(to:)` 會編碼鍵固定為 `model` 的 dictionary，評估時以 anthropic-provider 的 fallbacks 測試確認鍵沒有被改）。
   - **第 3 章參考實作**那一條：「檔名把 `Gemini` 換成供應商名」改成「檔案的角色與它對應」，並補上三點：
     - 請求內容的檔名是 `LK<供應商><API 名>RequestBody`，例如 `LKOpenAIResponsesRequestBody`、`LKAnthropicMessagesRequestBody`。
@@ -311,7 +311,7 @@
   - 主對話審查內容：每一處都有 design 或程式碼的依據，提到的檔案與符號都存在。
   - `grep -n '第 6 章' docs/adding-a-provider.md` 仍只有第 2 章步驟 2 與第 7 章開頭兩處。
   - `grep -n -E '預定|由 04|fable 確認' docs/adding-a-provider.md` 沒有結果。
-- [ ] 6.3 [after: 6.1, 6.2] 第四次合併後的驗收（主對話）：
+- [x] 6.3 [after: 6.1, 6.2] 第四次合併後的驗收（主對話）：
   - 完整 `swift test` 通過且零警告，測試數與 5.6 相同。
   - 重跑反向檢查 23 與 24：兩者都要讓 `sourceLocation` 測試失敗。
   - 重跑 6.2 的兩個 grep。
@@ -319,3 +319,13 @@
   - 結果記錄在本任務下方。第 6 組沒有改 `Sources/` 的產品程式碼與 mapper，所以不重跑 iOS 建置、實際 API 測試與反向檢查 1 到 22。
 
   驗證：每一項都符合上面的描述。
+
+  驗收結果（2026-11-22，主對話，功能分支 `682e695`）：
+  - **完整 `swift test`**：通過、零警告，測試數與 5.6 相同：`LKAITestSupportTests` 7、`LKAIGemini` 20、`LKAICore` 68、`LKAIKit` 4、`LKAIAnthropicTests` 45、`LKAIOpenAITests` 23、`LKAIKitCLITests` 7。
+  - **反向檢查 24**（`jsonObject(from:)` 的 `Data` 版在最外層不是物件時改成直接丟 `CocoaError`、不經 `#require`）：
+    - 6.1 之前（`d1a2e50`，功能分支）：`sourceLocation` 測試兩列都以「Caught error」的已知問題**通過**，證實只比對檔名會放過這種錯誤。
+    - 6.1 之後（worktree `95af589` 與功能分支 `682e695` 各跑一次）：兩列都失敗，錯誤被記成真正的問題，並另外回報「Known issue was not recorded」。
+  - **反向檢查 23**（不傳 `sourceLocation`）：6.1 之後在同樣兩個版本上，兩列都失敗，問題記在 `LKAITestJSON.swift`。
+  - 每次改壞後都還原，`git diff -- Sources` 沒有差異。
+  - **清單的 grep**：「第 6 章」只有第 2 章步驟 2 與第 7 章開頭兩處；`預定`、`由 04`、`fable 確認` 都沒有結果。
+  - **spec 覆蓋**：`spectra coverage 04-add-gemini-provider` 為 annotated 26、excluded 0、missing 0。
