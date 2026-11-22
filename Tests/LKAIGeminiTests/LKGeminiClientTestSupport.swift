@@ -38,7 +38,7 @@ extension LKGeminiClientTestSupport {
         return LKGeminiClient(apiKey: "test-key", httpClient: mock)
     }
 
-    /// 建立預期的結束事件，用來寫期望值；模型預設是 `validRequest` 的模型
+    /// 建立預期的結束事件，用來寫期望值；模型預設是 `interactionCompleted(status:model:usage:errors:)` 預設的模型
     ///
     /// - Parameters:
     ///   - finishReason: 預期的結束原因

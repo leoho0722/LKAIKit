@@ -123,7 +123,7 @@ extension LKGeminiErrorBody {
         /// - Parameter statusCode: HTTP 回應的狀態碼
         /// - Returns: 被擋下的代碼為拒答；額度代碼為 `quotaExceeded`；401、402、403、429 以外的 4xx 為帶訊息的無效請求；其餘為 nil
         /// - Note: 被擋下的代碼與額度代碼優先於狀態碼，所以 400 與 429 也可能是拒答或額度用完
-        /// - Note: 額度用完不讀 `retry-after`，它不表示額度或帳務問題可以靠重試解決
+        /// - Note: 額度用完不讀 `retry-after`：`quota_exceeded` 要等每日額度重置、`payment_required` 要補餘額，重試沒有用
         func httpError(statusCode: Int) -> LKAIError? {
             if isBlocked {
                 return .refused(detail: code)

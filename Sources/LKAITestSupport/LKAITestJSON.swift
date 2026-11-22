@@ -27,8 +27,7 @@ extension LKAITestJSON {
         ///
         /// - Parameter decoder: 解碼器
         init(from decoder: any Decoder) throws {
-            // 數字、字串、物件等不是布林，不在這裡丟出，由 booleanField 統一以欄位名稱回報
-            value = try? decoder.singleValueContainer().decode(Bool.self)
+            value = try? decoder.singleValueContainer().decode(Bool.self) // 失敗可忽略，因為不是布林時記成 nil
         }
     }
 }
