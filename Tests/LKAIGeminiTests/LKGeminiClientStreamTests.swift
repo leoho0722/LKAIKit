@@ -16,9 +16,12 @@ struct LKGeminiClientStreamTests {
 
     // spectra-scenario: gemini-provider / Skip lifecycle and thought events
     // spectra-scenario: gemini-provider / Skip lifecycle and thought events / stream with lifecycle events and a thought step
-    /// 驗證串流有生命週期事件、思考步驟與不是文字的步驟時，只交出回答步驟的文字片段，再交出完成事件
+    /// 驗證串流有生命週期事件、思考步驟、不是文字的步驟，以及沒有 `step.start` 記錄過的 `index` 的文字片段時，
+    /// 只交出回答步驟的文字片段，再交出完成事件
     ///
     /// - Note: 思考步驟的文字片段與 `google_search_call` 步驟的內容、結果都不交出
+    /// - Note: `index` 5 沒有任何 `step.start` 記錄過，它的文字片段 "Orphan" 不交出，
+    ///   把沒有記錄的 `index` 也當成回答交出的實作會在這裡失敗
     /// - Note: `google_search_call` 的 `content` 與 `google_search_result` 的 `text`
     ///   都是 JSON 物件，不是陣列與字串，不論步驟類型都去解它們的實作會在這裡失敗
     @Test(.timeLimit(.minutes(1)))
@@ -42,6 +45,7 @@ struct LKGeminiClientStreamTests {
             ),
             .googleSearchResultDelta(index: 2),
             .stepStop(index: 2),
+            .stepDelta(index: 5, text: "Orphan"),
             .interactionCompleted(),
         ])
         let expectedEvents: [LKAIChatStreamEvent] = [
@@ -63,14 +67,21 @@ struct LKGeminiClientStreamTests {
 
     // spectra-scenario: gemini-provider / Deliver text carried by the start of a model output step
     // spectra-scenario: gemini-provider / Deliver text carried by the start of a model output step / text in the start of a model output step
-    /// 驗證回答步驟開始時就帶著文字內容時，先交出那段文字，再依序交出後面片段的文字；思考步驟帶的摘要不交出
+    /// 驗證回答步驟開始時就帶著文字內容時，先交出那段文字，再依序交出後面片段的文字；
+    /// 思考步驟帶的摘要，以及內容裡類型不是 `text` 的項目都不交出
+    ///
+    /// - Note: 內容的第二個項目是 `image`，只有 `data`、沒有 `text`，不能因此失敗，也不交出
     @Test(.timeLimit(.minutes(1)))
     func stream_回答步驟開始時帶內容_依序交出內容與片段的文字() async {
         // Given
         let client = LKGeminiClientTestSupport.makeClient(events: [
             .stepStart(index: 0, type: "thought", summary: #"[{"type":"text","text":"Thinking"}]"#),
             .stepStop(index: 0),
-            .stepStart(index: 1, type: "model_output", content: #"[{"type":"text","text":"Hel"}]"#),
+            .stepStart(
+                index: 1,
+                type: "model_output",
+                content: #"[{"type":"text","text":"Hel"},{"type":"image","data":"aGk="}]"#
+            ),
             .stepDelta(index: 1, text: "lo"),
             .stepStop(index: 1),
             .interactionCompleted(),
@@ -123,8 +134,9 @@ struct LKGeminiClientStreamTests {
     /// 驗證事件缺少必要欄位或欄位型別不對時，串流以無效回應錯誤失敗，不交出後面的文字與完成事件
     ///
     /// - Parameter brokenEvent: 有問題的事件，依序是缺少 `event_type`、`step.start` 缺少 `index`、
-    ///   缺少 `step.type`、文字內容缺少 `text`，`step.delta` 缺少 `index`、缺少 `delta.type`、
-    ///   文字片段缺少 `text`、`text` 不是字串，以及 `text` 是 null
+    ///   缺少 `step.type`、文字內容缺少 `text`、回答步驟的 `content` 不是陣列、內容項目缺少 `type`，
+    ///   `step.delta` 缺少 `index`、缺少 `delta.type`、文字片段缺少 `text`、`text` 不是字串，
+    ///   以及 `text` 是 null
     /// - Note: 有問題的事件放在回答步驟開始之後、文字片段之前，略過它的實作會交出後面的 "Hel"，測試就會失敗
     /// - Note: 最後兩列的 `index` 是 3，沒有任何 `step.start` 記錄過，也一樣要失敗
     /// - Note: 只比對是不是無效回應，不比對原因文字，規格沒有規定它
@@ -146,6 +158,14 @@ struct LKGeminiClientStreamTests {
             LKAIServerSentEvent(
                 event: "step.start",
                 data: #"{"event_type":"step.start","index":2,"step":{"type":"model_output","content":[{"type":"text"}]}}"#
+            ),
+            LKAIServerSentEvent(
+                event: "step.start",
+                data: #"{"event_type":"step.start","index":2,"step":{"type":"model_output","content":"Hel"}}"#
+            ),
+            LKAIServerSentEvent(
+                event: "step.start",
+                data: #"{"event_type":"step.start","index":2,"step":{"type":"model_output","content":[{"text":"Hel"}]}}"#
             ),
             LKAIServerSentEvent(
                 event: "step.delta",
@@ -369,6 +389,32 @@ struct LKGeminiClientStreamTests {
         let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
             from: client,
             request: request
+        )
+
+        // Then
+        #expect(outcome.events == expectedEvents)
+        #expect(outcome.error == nil)
+    }
+
+    // spectra-scenario: gemini-provider / Report no model when the completed interaction has none
+    /// 驗證完成事件的互動沒有 `model` 時，串流的結束事件沒有回應的模型，不改取 `interaction.created` 的模型
+    ///
+    /// - Note: `interaction.created` 帶 `gemini-3.6-flash`，改取它的實作會在這裡交出這個模型，測試就會失敗
+    @Test(.timeLimit(.minutes(1)))
+    func stream_完成事件沒有model_結束事件的回應模型為nil() async {
+        // Given
+        let client = LKGeminiClientTestSupport.makeClient(events: [
+            .interactionCreated(model: "gemini-3.6-flash"),
+            .interactionCompleted(model: nil),
+        ])
+        let expectedEvents = [
+            LKGeminiClientTestSupport.finishedEvent(.completed, respondingModel: nil),
+        ]
+
+        // When
+        let outcome = await LKAIChatClientProtocolTestSupport.collectOutcome(
+            from: client,
+            request: LKGeminiClientTestSupport.validRequest
         )
 
         // Then
