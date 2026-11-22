@@ -134,8 +134,27 @@
     - `description` 含金鑰：金鑰保密的描述測試失敗。
     - 另外加做一項：HTTP 規則 3 把 401 也算進帶訊息的 4xx。HTTP 401 錯誤描述不含金鑰的測試兩種呼叫方式都失敗，HTTP 錯誤範例表的 401 列也失敗。這個測試在 2.1 的骨架上就會通過，由這一項確認它有效。
   - **還原後**：`git status` 只剩本檔的修改；`swift test --filter LKAIOpenAITests` 23 個通過。
-- [ ] 4.2 [after: 4.1] owner 以自己的 OpenAI 金鑰執行實際 API 測試：
+- [x] 4.2 [after: 4.1] owner 以自己的 OpenAI 金鑰執行實際 API 測試：
   - 金鑰存進 Keychain 的 service `lkai-openai-api-key`。
   - 執行 `LKAI_OPENAI_API_KEY="$(security find-generic-password -s lkai-openai-api-key -w)" swift test --filter LKAIOpenAITests`。
 
   驗證：兩個實際 API 測試都有執行而且通過，結果由主對話記錄在本任務下方。
+
+  執行紀錄：
+
+  - **第 1 次（2026-11-22，功能分支 `58207f9`，主對話依 owner 的指示執行上面的指令）**：未通過。
+    - 兩個實際 API 測試都有執行，都以 `.invalidAPIKey` 失敗；其餘 21 個測試通過，輸出沒有任何 `sk-` 開頭的字串。
+    - Keychain 的值格式正常：`sk-proj-` 開頭、128 個字元、沒有空白或換行。
+    - 以同樣的請求直接呼叫 API（金鑰經由 stdin 傳給 curl，輸出遮蔽金鑰），OpenAI 回 HTTP 401，`code` 為 `invalid_api_key`，訊息為「Incorrect API key provided」。
+    - 結論：OpenAI 不認得 Keychain 裡的金鑰，等 owner 換上有效的金鑰後再執行一次。
+  - **第 2 次（2026-11-22，功能分支 `58207f9`，owner 表示已換金鑰後執行）**：未通過，兩個實際 API 測試同樣以 `.invalidAPIKey` 失敗，輸出沒有 `sk-` 開頭的字串。
+    - login keychain 中 service `lkai-openai-api-key` 只有一筆，建立與修改時間都是 2026-11-22 05:24 UTC。
+    - 第 1 次實測在 05:30 UTC，所以這一筆在第 1 次之後沒有被替換，讀到的仍是被拒絕的那把金鑰；沒有再送診斷請求。
+  - **第 3 次（2026-11-22，功能分支 `58207f9`）**：未通過，兩個實際 API 測試同樣以 `.invalidAPIKey` 失敗，輸出沒有 `sk-` 開頭的字串。
+    - Keychain 這一筆是 05:34 UTC 重新建立的，確實換過，但長度仍剛好是 128 個字元，三次都一樣。
+    - 推測的原因：`security add-generic-password ... -w` 不帶值時以密碼提示讀入，macOS `getpass(3)` 的文件寫明最多 128 個字元（`_PASSWORD_LEN`），超過的部分被丟掉，所以金鑰被截斷。
+    - 下一步：改用不經過密碼提示的方式存入完整的金鑰，再執行一次。
+  - **第 4 次（2026-11-22，功能分支 `58207f9`）**：通過。
+    - owner 改用剪貼簿以 `-w "$(pbpaste)"` 存入；Keychain 這一筆是 05:36 UTC 建立，長度 164 個字元，沒有空白或不可見字元，證實前三次是被截斷。
+    - `stream_要求只回一個詞_以完成結束且文字不為空` 與 `invoke_要求只回一個詞_結果以完成結束且文字不為空` 都有執行而且通過，其餘 21 個測試照常通過；輸出沒有 `sk-` 開頭的字串。
+    - 兩個測試都以完成結束，表示輸出上限 4096 足夠，沒有在推理途中用完；測試不輸出用量，所以 `reasoning_tokens` 的實際值沒有量測。
