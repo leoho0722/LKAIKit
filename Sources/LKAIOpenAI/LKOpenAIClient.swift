@@ -136,15 +136,17 @@ extension LKOpenAIClient: LKAIServerSentEventChatStreaming {
         return urlRequest
     }
 
-    /// 不分類非 2xx 的回應，一律回傳 nil，交給共同流程套用預設的狀態碼分類
+    /// 依 OpenAI 的 `error.code`、`error.type` 與狀態碼分類非 2xx 的回應；內容解析不了或規則都不符合時回傳 nil，改用預設分類
     ///
     /// - Parameters:
-    ///   - statusCode: 回應的 HTTP 狀態碼，這裡不使用
+    ///   - statusCode: 回應的 HTTP 狀態碼，用來判斷是不是 401、402、403、429 以外的 4xx
     ///   - headers: 回應標頭，這裡不使用
-    ///   - body: 已讀完的錯誤內容，這裡不使用
-    /// - Returns: 一律為 nil
+    ///   - body: OpenAI 的錯誤 JSON，格式見 `LKOpenAIErrorBody`
+    /// - Returns: 對應的錯誤；內容解析不了或規則都不符合時為 nil
+    /// - Note: 政策性阻擋與額度用完的代碼優先於狀態碼，所以 403 與 429 也可能分類成拒答或額度用完
+    /// - Note: 額度用完不讀 `retry-after`，只有走預設分類的 429 限流才由共同流程讀它
     package func httpError(statusCode: Int, headers: [String: String], body: String) -> LKAIError? {
-        nil
+        LKOpenAIErrorBody(text: body)?.error.httpError(statusCode: statusCode)
     }
 
     /// 建立 `LKOpenAIStreamState`，由它處理這條串流的 SSE 事件

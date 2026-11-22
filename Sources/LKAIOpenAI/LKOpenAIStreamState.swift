@@ -10,6 +10,8 @@ import LKAICore
 /// 讀取一次串流期間累積的狀態：收到的拒答文字，`response.completed` 與 `response.incomplete` 時由它組出結束事件的內容或丟出錯誤
 ///
 /// - Note: 只在 `LKAIOpenAI` 內使用；SSE 事件依序交給 `handle(_:)`，由它解碼並對應成要交出的對話事件
+/// - Note: 串流中的 `error` 事件與 `response.failed` 依 `code` 分類成錯誤丟出，分類規則見 `LKOpenAIErrorBody.Detail`
+/// - Note: `response.failed` 沒有 `response.error` 時，當成服務暫時無法使用，狀態碼 500
 /// - Note: 結束資訊只取自結束事件的 `response` 物件，其他事件不帶用量與模型
 /// - Note: OpenAI 回報的輸入與輸出總數本來就包含快取與推理，所以直接使用，不再相加
 /// - Note: 拒答文字有任何 `response.refusal.delta` 時，以 delta 依序串接；一則 delta 都沒有時，改用 `response.refusal.done` 依序串接
@@ -39,7 +41,7 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
     ///
     /// - Parameter event: 剛解析出的 SSE 事件，事件種類以 `data` 裡的 `type` 為準，不看事件名稱
     /// - Returns: 有文字時為只含 `.textDelta` 的陣列；正常結束時為只含 `.finished` 的陣列；其餘為空陣列
-    /// - Throws: `data` 解碼失敗丟 `invalidResponse`；結束事件時拒答文字不為空，或 `response.incomplete` 的原因是 `content_filter` 丟 `refused`；`response.incomplete` 的原因不認得或沒有原因丟 `invalidResponse`
+    /// - Throws: `data` 解碼失敗丟 `invalidResponse`；結束事件時拒答文字不為空，或 `response.incomplete` 的原因是 `content_filter` 丟 `refused`；`response.incomplete` 的原因不認得或沒有原因丟 `invalidResponse`；`error` 事件與 `response.failed` 丟 `code` 對應的錯誤，不認得的代碼丟 `invalidResponse`
     /// - Note: 拒答事件只累積文字，不交出事件；已交出的文字片段保留
     mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAIChatStreamEvent] {
         switch try decode(event) {
@@ -61,6 +63,12 @@ extension LKOpenAIStreamState: LKAIServerSentEventMapping {
         case .incomplete(let response):
             let completion = try makeIncompleteCompletion(from: response)
             return [.finished(completion)]
+
+        case .failed(let response):
+            throw response.error?.streamError ?? .serviceUnavailable(statusCode: 500)
+
+        case .error(let detail):
+            throw detail.streamError
 
         case .ignored:
             return []

@@ -114,6 +114,32 @@ extension LKAIServerSentEvent {
         )
     }
 
+    /// 建立串流中途的 `error` 事件，內容是平的 JSON，沒有巢狀的 `error` 物件
+    ///
+    /// - Parameters:
+    ///   - code: 錯誤代碼；nil 表示寫成 null
+    ///   - message: 錯誤說明，直接放進 JSON 字串，所以不能含 `"` 或 `\`
+    /// - Returns: `error` 事件；`type` 固定是 `error`，另帶 `param` 與 `sequence_number`
+    static func errorEvent(code: String?, message: String) -> LKAIServerSentEvent {
+        let codeJSON = code.map { "\"\($0)\"" } ?? "null"
+        return LKAIServerSentEvent(
+            event: "error",
+            data: #"{"type":"error","code":\#(codeJSON),"message":"\#(message)","param":null,"sequence_number":1}"#
+        )
+    }
+
+    /// 建立 `response.failed` 事件，內容是完整的回應物件，狀態是失敗
+    ///
+    /// - Parameter error: 回應物件 `error` 的 JSON；nil 表示不放 `error` 這個鍵
+    /// - Returns: `response.failed` 事件
+    static func responseFailed(error: String?) -> LKAIServerSentEvent {
+        let errorField = optionalField("error", error)
+        return LKAIServerSentEvent(
+            event: "response.failed",
+            data: #"{"type":"response.failed","response":{"id":"resp_1","object":"response","status":"failed","model":"gpt-6-luna-2026-09-01","output":[],"usage":null\#(errorField)},"sequence_number":9}"#
+        )
+    }
+
     /// 建立 `response.incomplete` 事件，內容是完整的回應物件，狀態是未完成
     ///
     /// - Parameters:

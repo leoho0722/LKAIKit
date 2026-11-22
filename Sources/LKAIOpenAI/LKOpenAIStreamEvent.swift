@@ -40,6 +40,16 @@ enum LKOpenAIStreamEvent {
     /// - Parameter response: 即 `response`，裡面有沒有完成的原因、實際回應的模型與用量
     case incomplete(Response)
 
+    /// `response.failed`：回應失敗，帶著完整的回應物件
+    ///
+    /// - Parameter response: 即 `response`，失敗的原因在 `response.error`；沒有時為 nil
+    case failed(Response)
+
+    /// `error`：串流中途的錯誤，整個事件就是錯誤內容；由 `LKOpenAIStreamState.handle(_:)` 對應成錯誤丟出
+    ///
+    /// - Parameter detail: 錯誤內容，即事件的 JSON
+    case error(LKOpenAIErrorBody.Detail)
+
     /// 其他事件：生命週期、推理摘要、`response.output_text.done` 等，以及不認得的類型，一律略過
     case ignored
 
@@ -71,11 +81,11 @@ extension LKOpenAIStreamEvent {
         /// `response.refusal.done` 的完整拒答文字
         case refusal
 
-        /// `response.completed` 與 `response.incomplete` 的回應物件
+        /// `response.completed`、`response.incomplete` 與 `response.failed` 的回應物件
         case response
     }
 
-    /// `response.completed` 與 `response.incomplete` 的 `response`，只取沒有完成的原因、實際回應的模型與用量
+    /// `response.completed`、`response.incomplete` 與 `response.failed` 的 `response`，只取失敗的原因、沒有完成的原因、實際回應的模型與用量
     struct Response: Decodable {
 
         /// 實際回應的模型識別碼；API 沒有回報時為 nil，這不是錯誤
@@ -86,6 +96,9 @@ extension LKOpenAIStreamEvent {
 
         /// 回應沒有完成的細節；為 null 或沒有這個欄位時為 nil
         let incompleteDetails: IncompleteDetails?
+
+        /// 回應失敗的錯誤內容，只有 `response.failed` 才有；為 null 或沒有這個欄位時為 nil
+        let error: LKOpenAIErrorBody.Detail?
 
         /// 回應沒有完成的細節，目前只用到原因
         struct IncompleteDetails: Decodable {
@@ -152,6 +165,12 @@ extension LKOpenAIStreamEvent: Decodable {
 
         case "response.incomplete":
             self = try .incomplete(container.decode(Response.self, forKey: .response))
+
+        case "response.failed":
+            self = try .failed(container.decode(Response.self, forKey: .response))
+
+        case "error":
+            self = try .error(LKOpenAIErrorBody.Detail(from: decoder))
 
         default:
             self = .ignored
