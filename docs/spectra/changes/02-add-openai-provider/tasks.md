@@ -17,7 +17,7 @@
 
 ## 1. SSE 分框的測試 helper
 
-- [ ] 1.1 依 design「SSE 分框的測試 helper 搬進 LKAITestSupport」，讓兩家供應商的測試共用同一個 SSE 分框 helper，並為它沒有事件名稱的分支補上測試（haiku）：
+- [x] 1.1 依 design「SSE 分框的測試 helper 搬進 LKAITestSupport」，讓兩家供應商的測試共用同一個 SSE 分框 helper，並為它沒有事件名稱的分支補上測試（haiku）：
   - 新增 `Sources/LKAITestSupport/LKAIServerSentEventTestSupport.swift`：沒有 case 的 `package enum`，只有 `package static func lines(of events: [LKAIServerSentEvent]) -> [String]`；`event` 為 nil 時不輸出 `event:` 那一行。
   - `LKAnthropicClientTestSupport` 移除自己的 `SSEEvent` 與 `lines(of:)`；Anthropic 的事件建構函式改寫成 `extension LKAIServerSentEvent` 的 static 方法，獨立成檔 `Tests/LKAIAnthropicTests/LKAIServerSentEvent+AnthropicEvents.swift`。
   - `makeClient(events:)` 與 `LKAnthropicClientStreamTests`、`LKAnthropicClientErrorTests`、`LKAnthropicClientCancellationTests` 的呼叫處跟著修改。
@@ -31,7 +31,7 @@
 
 ## 2. LKAIOpenAI
 
-- [ ] 2.1 交付 openai-provider 的「Responses API request」「Response storage setting」「API key secrecy」「Availability through LKAIKit」。依 design「LKOpenAIClient 照 LKAnthropicClient 的結構建立並遵循共同流程」「回應保存由 App 在建立 client 時選擇，預設不保存」「送出 Responses API 的請求內容」「輸出上限照原樣送出，由 API 檢查最小值」「金鑰遮蔽由每家 client 各自實作三個遵循」「型別依 ios-dev-kit 樣板建立，測試 target 依受測 target 增加」，完成以下改動（sonnet）：
+- [x] 2.1 交付 openai-provider 的「Responses API request」「Response storage setting」「API key secrecy」「Availability through LKAIKit」。依 design「LKOpenAIClient 照 LKAnthropicClient 的結構建立並遵循共同流程」「回應保存由 App 在建立 client 時選擇，預設不保存」「送出 Responses API 的請求內容」「輸出上限照原樣送出，由 API 檢查最小值」「金鑰遮蔽由每家 client 各自實作三個遵循」「型別依 ios-dev-kit 樣板建立，測試 target 依受測 target 增加」，完成以下改動（sonnet）：
   - **`Package.swift`**：新增 `LKAIOpenAI` 與 `LKAIOpenAITests`，`LKAIKit` 依賴 `LKAIOpenAI`。`Sources/LKAIKit/Exports.swift` 重新匯出 `LKAIOpenAI`。
   - **`LKOpenAIClient`**：建立方式、`LKAIChatClientProtocol` 與 `LKAIServerSentEventChatStreaming` 的遵循，以及三個不含金鑰的描述遵循。
   - **`LKOpenAIResponsesRequestBody`**：請求內容。
@@ -46,7 +46,7 @@
     - 「Availability through LKAIKit」只能以編譯失敗觀察。先在還沒有 `@_exported import LKAIOpenAI` 時看到 `ExportsTests` 編譯失敗，再補上重新匯出。
     - 補上之後，整個 `swift test` 才能建置，這時再觀察其餘新測試失敗。
   - 完整 `swift test` 通過且零警告；LKAIKit 為 3 個測試，其餘既有測試不變。
-- [ ] 2.2 [after: 1.1, 2.1] 交付 openai-provider 的「Stream text mapping」「Responding model」「Usage mapping」。依 design「OpenAI 串流事件的對應規則」「實際回應的模型與用量取自結束事件的 response 物件」，讓 `LKOpenAIStreamState` 交出 `response.output_text.delta` 的文字，並在 `response.completed` 交出帶模型與用量的完成事件；其他事件不交出事件，`data` 不是合法的 JSON 時丟出 invalid response（sonnet）。
+- [x] 2.2 [after: 1.1, 2.1] 交付 openai-provider 的「Stream text mapping」「Responding model」「Usage mapping」。依 design「OpenAI 串流事件的對應規則」「實際回應的模型與用量取自結束事件的 response 物件」，讓 `LKOpenAIStreamState` 交出 `response.output_text.delta` 的文字，並在 `response.completed` 交出帶模型與用量的完成事件；其他事件不交出事件，`data` 不是合法的 JSON 時丟出 invalid response（sonnet）。
   - `LKOpenAIStreamEvent` 以 `LKAISnakeCaseJSON` 解碼。
   - 測試用的 OpenAI 事件建構函式寫在 `Tests/LKAIOpenAITests/LKAIServerSentEvent+OpenAIEvents.swift` 的 `extension LKAIServerSentEvent`。
   - 在 `LKOpenAIClientStreamTests` 新增以下測試：
@@ -57,7 +57,7 @@
   驗證：
   - 主對話先觀察到新測試在實作前失敗，實作後通過；完整 `swift test` 通過且零警告。
   - 例外：「Fail on malformed event data」在 2.1 的骨架上就會通過，看不到 RED，改由 4.1 的反向檢查「解碼失敗改成略過該則事件」把關。
-- [ ] 2.3 [after: 2.2] 交付 openai-provider 的「Finish and refusal mapping」。依 design「OpenAI 串流事件的對應規則」「拒答文字作為 refused 的 detail，content_filter 以固定字串表示」「Responses API 沒有 context window 的結束原因」，加入以下對應（sonnet）：
+- [x] 2.3 [after: 2.2] 交付 openai-provider 的「Finish and refusal mapping」。依 design「OpenAI 串流事件的對應規則」「拒答文字作為 refused 的 detail，content_filter 以固定字串表示」「Responses API 沒有 context window 的結束原因」，加入以下對應（sonnet）：
   - `response.refusal.delta` 與 `response.refusal.done` 累積拒答文字；有 delta 時以 delta 為準，沒有時改用 done。
   - `response.completed`、`response.incomplete` 在拒答文字不為空時丟出 refused。
   - `response.incomplete` 依 `incomplete_details.reason` 對應。
@@ -65,7 +65,7 @@
   - 在 `LKOpenAIClientStreamTests` 新增 spec「Finish and refusal mapping」的兩個情境，含 terminal events 範例表的七列；每列在第一個結束事件之後，再接一個 `response.completed`。
 
   驗證：主對話先觀察到新測試在實作前失敗，實作後通過；完整 `swift test` 通過且零警告。
-- [ ] 2.4 [after: 2.3] 交付 openai-provider 的「Error mapping」。依 design「錯誤依 error.code 與 error.type 分類」「輸入超過 context window 的錯誤不設專屬種類」，完成錯誤對應（sonnet）：
+- [x] 2.4 [after: 2.3] 交付 openai-provider 的「Error mapping」。依 design「錯誤依 error.code 與 error.type 分類」「輸入超過 context window 的錯誤不設專屬種類」，完成錯誤對應（sonnet）：
   - 新增 `LKOpenAIErrorBody`，`message`、`type`、`code` 都宣告為 Optional，並提供判斷政策性阻擋代碼與額度代碼的兩個函式，HTTP 與串流共用。
   - `httpError(statusCode:headers:body:)` 依序套用 design 的四條 HTTP 規則。
   - 串流的 `error` 事件與 `response.failed` 依 `code` 分類，不認得的代碼丟出說明帶 `code` 與 `message` 的 invalid response。
@@ -75,7 +75,7 @@
 
 ## 3. 實際 API 測試與文件
 
-- [ ] 3.1 [after: 2.1] 依 design「實際 API 測試以 gpt-6-luna 執行，由 owner 手動跑」，新增 `Tests/LKAIOpenAITests/LKOpenAIClientLiveTests.swift`（haiku）：
+- [x] 3.1 [after: 2.1] 依 design「實際 API 測試以 gpt-6-luna 執行，由 owner 手動跑」，新增 `Tests/LKAIOpenAITests/LKOpenAIClientLiveTests.swift`（haiku）：
   - 串流與非串流各一個測試，都以 `gpt-6-luna`、輸出上限 4096 要求只回一個詞，檢查以完成結束、文字去掉空白後不為空。
   - 只在環境變數 `LKAI_OPENAI_API_KEY` 存在時執行，金鑰不出現在程式碼與輸出。
   - owner 的實際執行記在 4.2。
@@ -87,12 +87,53 @@
 
 ## 4. 驗收
 
-- [ ] 4.1 [after: 1.1, 2.4, 3.1, 3.2] 合併兩組任務後的整體驗收（主對話）：依 design Implementation Contract 的「完成後的狀態」與「驗收」逐項執行，完成反向檢查表的十三項，並把每一項的執行結果記錄在本任務下方。
+- [x] 4.1 [after: 1.1, 2.4, 3.1, 3.2] 合併兩組任務後的整體驗收（主對話）：依 design Implementation Contract 的「完成後的狀態」與「驗收」逐項執行，完成反向檢查表的十三項，並把每一項的執行結果記錄在本任務下方。
 
   驗證：每一項結果都符合 Implementation Contract 的描述：
   - LKAIAnthropic 仍是 45 個測試，LKAIKit 為 3 個。
   - `spectra coverage` 顯示 `openai-provider` 的每個情境與範例都有測試。
   - `LKAIKit-Package` 的 iOS 測試建置只有既有的 `Process` 錯誤。
+
+  執行結果（2026-11-22，功能分支 `2350ff3`，主對話執行）：
+
+  - **建置與測試**：`swift package clean` 後 `swift build`、`swift build --build-tests` 與 `swift test` 都零警告。
+    - Swift Testing 共 147 個通過：LKAICore 66、LKAIAnthropic 45、LKAIOpenAI 23、LKAIKitCLI 7、LKAIKit 3、LKAITestSupportTests 3。
+    - LKAIOpenAI 的 23 個含 2 個沒有金鑰時略過的實際 API 測試。design 估計約 19 個，實際多出的 4 個是實作時補的分支測試：非串流的回應模型、沒有 `model`、拒答 delta 與 done 並存、以 `max_output_tokens` 未完成時帶用量。
+    - LKAIAnthropic 的 45 個測試名稱與 1.1 修改前相同。
+  - **spectra-scenario 標記**：`Tests/` 內共 119 行。`fcb2c47` 的 93 行逐行都在；新增的 26 行都是 `spectra-scenario: openai-provider / ...`。
+  - **`spectra coverage`**：`openai-provider` 的 24 個情境與範例全部 `annotated`，沒有 `missing`。
+  - **`swift package dump-package`**：
+    - `LKAIOpenAI` 只依賴 `LKAICore`。
+    - `LKAIKit` 依賴 `LKAICore`、`LKAIAnthropic`、`LKAIOpenAI`。
+    - `LKAIOpenAITests` 依賴 `LKAIOpenAI`、`LKAICore`、`LKAITestSupport`。
+    - products 只有 `LKAIKit` 與 `lkai`，`LKAITestSupport` 不屬於任何 product。
+  - **grep**：
+    - `Sources/LKAIOpenAI/` 內沒有 `Task {` 與 `JSONDecoder()`；`Task {` 仍只在 `LKAIChatStream.swift` 與 `LKAIHTTPClient.swift` 兩處。
+    - `LKAnthropicClientTestSupport` 沒有 `SSEEvent` 與 `lines(of:)`。
+    - `LKAIServerSentEventTestSupport` 只有 `lines(of:)`。
+  - **XcodeBuildMCP（iPhone 17 模擬器）**：
+    - `LKAIKit` scheme 建置成功、零警告。
+    - `LKAIKit-Package` 建置測試的錯誤只有 `LKAICommandTests.swift:226` 既有的 `Process`，零警告。
+    - `Sources/LKAIOpenAI/` 的五個檔案與 `Tests/LKAIOpenAITests/` 的測試檔都有編譯，沒有錯誤。
+    - 驗收後 session 的 scheme 已改回 `LKAIKit`。
+  - **`LKAIFinishReason`**：`git diff` 只有 `.maxOutputTokens` 與 `.contextWindowExceeded` 的 `///` 說明，型別與 case 不變。
+  - **config.yaml 的指標**：3.2 之後沒有再修改；3.2 已確認 `spectra instructions proposal` 回傳的 context 含有新的指標，與 design 引用的文字逐字相同。
+  - **反向檢查**：在功能分支上以腳本逐項暫時改壞，執行 `swift test --filter LKAIOpenAITests`，觀察到預期的失敗後以 `git checkout` 還原。
+    - `shouldStoreResponses` 為 false 時送 `store: true`：回應保存設定的測試（未指定、關閉兩列）與有系統指示的請求測試失敗。
+    - 沒有系統指示時仍送 `instructions`：省略 `instructions` 的測試失敗。
+    - `response.refusal.delta` 當成文字交出：結束事件範例表的拒答 delta 列、非串流拒答、delta 與 done 並存三個測試失敗。
+    - `content_filter` 對應成完成：結束事件範例表的 `content_filter` 列失敗。
+    - 額度與帳務的代碼改走預設分類：HTTP 錯誤範例表 `type` 不是 `insufficient_quota` 的四個額度列失敗。
+    - HTTP 規則拿掉「`error.type` 為 `insufficient_quota`」：HTTP 錯誤範例表 `code` 為 null 的額度列失敗。
+    - 政策性阻擋的代碼改走狀態碼規則：HTTP 錯誤範例表的 `misalignment_policy_violation` 與 `cyber_policy` 兩列失敗。
+    - 忽略 `error` 事件：串流 `error` 事件範例表的十二列都失敗。
+    - 解碼失敗改成略過該則事件：格式錯誤的事件資料的測試三列都失敗。
+    - 不認得的 `incomplete_details.reason` 改成略過：結束事件範例表的 `max_messages`、沒有 `incomplete_details` 兩列失敗（`content_filter` 列也一併失敗）。
+    - 拒答文字只讀 delta：結束事件範例表只有 `response.refusal.done` 的那一列失敗。
+    - `public init` 的 `shouldStoreResponses` 預設為 true：以 URL session 建立、不帶保存設定的情境失敗。
+    - `description` 含金鑰：金鑰保密的描述測試失敗。
+    - 另外加做一項：HTTP 規則 3 把 401 也算進帶訊息的 4xx。HTTP 401 錯誤描述不含金鑰的測試兩種呼叫方式都失敗，HTTP 錯誤範例表的 401 列也失敗。這個測試在 2.1 的骨架上就會通過，由這一項確認它有效。
+  - **還原後**：`git status` 只剩本檔的修改；`swift test --filter LKAIOpenAITests` 23 個通過。
 - [ ] 4.2 [after: 4.1] owner 以自己的 OpenAI 金鑰執行實際 API 測試：
   - 金鑰存進 Keychain 的 service `lkai-openai-api-key`。
   - 執行 `LKAI_OPENAI_API_KEY="$(security find-generic-password -s lkai-openai-api-key -w)" swift test --filter LKAIOpenAITests`。
