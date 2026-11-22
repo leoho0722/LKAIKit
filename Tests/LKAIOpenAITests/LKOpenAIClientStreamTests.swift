@@ -86,7 +86,7 @@ struct LKOpenAIClientStreamTests {
 
         // Then
         #expect(outcome.events.isEmpty)
-        #expect(isInvalidResponse(outcome.error))
+        #expect(LKAIErrorTestSupport.isInvalidResponse(outcome.error))
     }
 
     // spectra-scenario: openai-provider / Report the model of the finished response
@@ -282,13 +282,13 @@ struct LKOpenAIClientStreamTests {
                 refusalEvents: [],
                 terminalEvent: .responseIncomplete(reason: "max_messages"),
                 expectedEvents: [.textDelta("Hel")],
-                expectedError: .invalidResponse
+                expectedError: .invalidResponse(containing: [])
             ),
             TerminalEventCase(
                 refusalEvents: [],
                 terminalEvent: .responseIncomplete(reason: nil),
                 expectedEvents: [.textDelta("Hel")],
-                expectedError: .invalidResponse
+                expectedError: .invalidResponse(containing: [])
             ),
         ] as [TerminalEventCase]
     )
@@ -313,11 +313,8 @@ struct LKOpenAIClientStreamTests {
         case nil:
             #expect(outcome.error == nil)
 
-        case .error(let expectedError)?:
-            #expect(outcome.error == expectedError)
-
-        case .invalidResponse?:
-            #expect(isInvalidResponse(outcome.error))
+        case .some(let expectedError):
+            #expect(expectedError.matches(outcome.error))
         }
     }
 
@@ -427,19 +424,7 @@ extension LKOpenAIClientStreamTests {
         let expectedEvents: [LKAIChatStreamEvent]
 
         /// 預期的錯誤；nil 表示預期沒有錯誤
-        let expectedError: ErrorExpectation?
-    }
-
-    /// 結束事件的預期錯誤：指定的錯誤，或只要求是無效回應
-    enum ErrorExpectation: Sendable {
-
-        /// 丟出的錯誤必須等於指定的錯誤
-        ///
-        /// - Parameter error: 預期的錯誤
-        case error(LKAIError)
-
-        /// 丟出的錯誤必須是無效回應，原因文字不比對
-        case invalidResponse
+        let expectedError: LKAIErrorTestSupport.Expectation?
     }
 
     /// 用量範例表的一列：完成事件的 `usage` JSON，以及預期的用量
@@ -450,21 +435,5 @@ extension LKOpenAIClientStreamTests {
 
         /// 預期結束事件帶的用量；nil 表示結束事件不帶用量
         let expectedUsage: LKAIUsage?
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKOpenAIClientStreamTests {
-
-    /// 判斷錯誤是不是無效回應錯誤，只看種類，不看原因文字
-    ///
-    /// - Parameter error: 要判斷的錯誤；沒有錯誤時為 nil
-    /// - Returns: 是無效回應錯誤時為 `true`
-    func isInvalidResponse(_ error: LKAIError?) -> Bool {
-        if case .invalidResponse = error {
-            return true
-        }
-        return false
     }
 }

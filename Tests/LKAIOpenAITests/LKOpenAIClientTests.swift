@@ -36,7 +36,7 @@ struct LKOpenAIClientTests {
             systemPrompt: "Be brief.",
             maxOutputTokens: 1024
         )
-        let expectedBody = try jsonObject(from: #"{"model":"gpt-6-luna","instructions":"Be brief.","input":[{"role":"user","content":"Hi"}],"max_output_tokens":1024,"stream":true,"store":false}"#)
+        let expectedBody = try LKAITestJSON.jsonObject(from: #"{"model":"gpt-6-luna","instructions":"Be brief.","input":[{"role":"user","content":"Hi"}],"max_output_tokens":1024,"stream":true,"store":false}"#)
 
         // When
         _ = await LKAIChatClientProtocolTestSupport.callError(
@@ -47,15 +47,17 @@ struct LKOpenAIClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
-        let recordedFlags = try decodeBooleanFlags(of: recorded)
+        let recordedData = try #require(recorded.httpBody)
+        let recordedBody = try LKAITestJSON.jsonObject(from: recordedData)
+        let recordedStreamFlag = try LKAITestJSON.booleanField("stream", in: recordedData)
+        let recordedStoreFlag = try LKAITestJSON.booleanField("store", in: recordedData)
         #expect(recorded.httpMethod == "POST")
         #expect(recorded.url?.absoluteString == "https://api.openai.com/v1/responses")
         #expect(recorded.value(forHTTPHeaderField: "Authorization") == "Bearer test-key")
         #expect(recorded.value(forHTTPHeaderField: "content-type") == "application/json")
         #expect(recordedBody == expectedBody)
-        #expect(recordedFlags.stream)
-        #expect(!recordedFlags.store)
+        #expect(recordedStreamFlag)
+        #expect(!recordedStoreFlag)
     }
 
     // spectra-scenario: openai-provider / Omit the instructions field without a system prompt
@@ -76,7 +78,7 @@ struct LKOpenAIClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedBody = try LKAITestJSON.jsonObject(from: #require(recorded.httpBody))
         #expect(recordedBody["instructions"] == nil)
     }
 
@@ -97,7 +99,7 @@ struct LKOpenAIClientTests {
             ],
             maxOutputTokens: 1024
         )
-        let expectedInput = try jsonFragment(from: #"[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello!"},{"role":"user","content":"How are you?"}]"#)
+        let expectedInput = try LKAITestJSON.jsonFragment(from: #"[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello!"},{"role":"user","content":"How are you?"}]"#)
 
         // When
         _ = await LKAIChatClientProtocolTestSupport.callError(
@@ -108,7 +110,7 @@ struct LKOpenAIClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedBody = try LKAITestJSON.jsonObject(from: #require(recorded.httpBody))
         #expect(recordedBody["input"] as? NSObject == expectedInput)
     }
 
@@ -135,7 +137,7 @@ struct LKOpenAIClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedBody = try jsonObject(from: #require(recorded.httpBody))
+        let recordedBody = try LKAITestJSON.jsonObject(from: #require(recorded.httpBody))
         #expect(recordedBody["max_output_tokens"] as? Int == 8)
     }
 
@@ -172,8 +174,11 @@ struct LKOpenAIClientTests {
 
         // Then
         let recorded = try #require(mock.requests.first)
-        let recordedFlags = try decodeBooleanFlags(of: recorded)
-        #expect(recordedFlags.store == testCase.expectedStore)
+        let recordedData = try #require(recorded.httpBody)
+        let recordedStoreFlag = try LKAITestJSON.booleanField("store", in: recordedData)
+        // 只要求 stream 也是 JSON 布林，它的值由其他測試確認
+        _ = try LKAITestJSON.booleanField("stream", in: recordedData)
+        #expect(recordedStoreFlag == testCase.expectedStore)
     }
 
     // spectra-scenario: openai-provider / Create a client from a URL session without a storage setting
@@ -257,16 +262,6 @@ struct LKOpenAIClientTests {
 
 extension LKOpenAIClientTests {
 
-    /// 只解出請求內容的 `stream` 與 `store` 欄位，用來嚴格確認它們是 JSON 布林
-    struct BooleanFlagsBody: Decodable {
-
-        /// 請求內容的 `stream`；`JSONDecoder` 不會把數字 `1` 解成 `Bool`，解不出時丟出錯誤
-        let stream: Bool
-
-        /// 請求內容的 `store`；`JSONDecoder` 不會把數字 `0` 或 `1` 解成 `Bool`，解不出時丟出錯誤
-        let store: Bool
-    }
-
     /// 回應保存設定範例表的一列：保存設定，以及預期送出的 `store` 欄位
     struct StorageCase {
 
@@ -275,52 +270,5 @@ extension LKOpenAIClientTests {
 
         /// 預期的 `store` 欄位
         let expectedStore: Bool
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKOpenAIClientTests {
-
-    /// 把 JSON 文字解析成 JSON 物件，比對時不受鍵的順序影響
-    ///
-    /// - Parameter text: JSON 文字，最外層必須是物件
-    /// - Returns: 解析出的 JSON 物件
-    /// - Throws: 文字不是合法的 JSON，或最外層不是物件時丟出
-    func jsonObject(from text: String) throws -> NSDictionary {
-        try jsonObject(from: Data(text.utf8))
-    }
-
-    /// 把 JSON 資料解析成 JSON 物件，比對時不受鍵的順序影響
-    ///
-    /// - Parameter data: JSON 資料，最外層必須是物件
-    /// - Returns: 解析出的 JSON 物件
-    /// - Throws: 資料不是合法的 JSON，或最外層不是物件時丟出
-    func jsonObject(from data: Data) throws -> NSDictionary {
-        let value = try JSONSerialization.jsonObject(with: data)
-        return try #require(value as? NSDictionary)
-    }
-
-    /// 以 `JSONDecoder` 解出請求內容的 `stream` 與 `store`；它們只接受 JSON 布林，內容是數字時解碼失敗
-    ///
-    /// - Parameter request: 記錄到的請求
-    /// - Returns: 請求內容的 `stream` 與 `store` 值
-    /// - Throws: 請求沒有內容，或 `stream`、`store` 不是 JSON 布林時丟出
-    func decodeBooleanFlags(of request: URLRequest) throws -> BooleanFlagsBody {
-        let body = try #require(request.httpBody)
-        return try JSONDecoder().decode(BooleanFlagsBody.self, from: body)
-    }
-
-    /// 把 JSON 文字解析成 JSON 值，最外層可以是字串或陣列
-    ///
-    /// - Parameter text: JSON 文字
-    /// - Returns: 解析出的 JSON 值
-    /// - Throws: 文字不是合法的 JSON 時丟出
-    func jsonFragment(from text: String) throws -> NSObject {
-        let value = try JSONSerialization.jsonObject(
-            with: Data(text.utf8),
-            options: .fragmentsAllowed
-        )
-        return try #require(value as? NSObject)
     }
 }

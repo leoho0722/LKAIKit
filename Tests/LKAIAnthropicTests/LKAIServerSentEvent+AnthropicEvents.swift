@@ -6,6 +6,7 @@
 //
 
 import LKAICore
+import LKAITestSupport
 
 // MARK: - Internal Method
 
@@ -22,7 +23,7 @@ extension LKAIServerSentEvent {
         model: String = "claude-opus-5-5",
         usage: String? = nil
     ) -> LKAIServerSentEvent {
-        let usageField = optionalField("usage", usage)
+        let usageField = LKAITestJSON.optionalField("usage", usage)
         return LKAIServerSentEvent(
             event: "message_start",
             data: #"{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"\#(model)","stop_reason":null,"stop_sequence":null\#(usageField)}}"#
@@ -77,8 +78,8 @@ extension LKAIServerSentEvent {
         usage: String? = nil
     ) -> LKAIServerSentEvent {
         let stopReasonJSON = stopReason.map { "\"\($0)\"" } ?? "null"
-        let stopDetailsField = optionalField("stop_details", stopDetails)
-        let usageField = optionalField("usage", usage)
+        let stopDetailsField = LKAITestJSON.optionalField("stop_details", stopDetails)
+        let usageField = LKAITestJSON.optionalField("usage", usage)
         return LKAIServerSentEvent(
             event: "message_delta",
             data: #"{"type":"message_delta","delta":{"stop_reason":\#(stopReasonJSON),"stop_sequence":null\#(stopDetailsField)}\#(usageField)}"#
@@ -144,23 +145,5 @@ extension LKAIServerSentEvent {
             event: "content_block_start",
             data: #"{"type":"content_block_start","index":\#(index),"content_block":{"type":"fallback","from":{"model":"\#(from)"},"to":{"model":"\#(to)"}}}"#
         )
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAIServerSentEvent {
-
-    /// 組出 JSON 物件裡可有可無的欄位，前面帶逗號，接在其他欄位之後
-    ///
-    /// - Parameters:
-    ///   - name: 欄位名稱
-    ///   - json: 欄位值的 JSON；nil 表示不放這個欄位
-    /// - Returns: `,"名稱":值`；沒有值時為空字串
-    static func optionalField(_ name: String, _ json: String?) -> String {
-        guard let json else {
-            return ""
-        }
-        return ",\"\(name)\":\(json)"
     }
 }

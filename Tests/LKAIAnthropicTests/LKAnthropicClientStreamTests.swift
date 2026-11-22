@@ -233,7 +233,7 @@ struct LKAnthropicClientStreamTests {
 
         // Then
         #expect(outcome.events.isEmpty)
-        #expect(isInvalidResponse(outcome.error))
+        #expect(LKAIErrorTestSupport.isInvalidResponse(outcome.error))
     }
 
     /// 驗證串流有多個 `message_delta` 時，採用最後一個不是 null 的 `stop_reason`，後面的 null 不會蓋掉它
@@ -775,7 +775,7 @@ struct LKAnthropicClientStreamTests {
 
         // Then
         #expect(outcome.events == expectedEvents)
-        #expect(isInvalidResponse(outcome.error))
+        #expect(LKAIErrorTestSupport.isInvalidResponse(outcome.error))
     }
 
     /// 驗證回應的內容是空的、沒有任何事件就結束時，以無效回應錯誤失敗，不交出任何事件
@@ -792,22 +792,6 @@ struct LKAnthropicClientStreamTests {
 
         // Then
         #expect(outcome.events.isEmpty)
-        #expect(isInvalidResponse(outcome.error))
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAnthropicClientStreamTests {
-
-    /// 判斷錯誤是不是無效回應錯誤，只看種類，不看原因文字
-    ///
-    /// - Parameter error: 要判斷的錯誤；沒有錯誤時為 nil
-    /// - Returns: 是無效回應錯誤時為 `true`
-    func isInvalidResponse(_ error: LKAIError?) -> Bool {
-        if case .invalidResponse = error {
-            return true
-        }
-        return false
+        #expect(LKAIErrorTestSupport.isInvalidResponse(outcome.error))
     }
 }
