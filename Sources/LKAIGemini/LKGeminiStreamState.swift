@@ -7,10 +7,12 @@
 
 import LKAICore
 
-/// 讀取一次串流期間累積的狀態：每個步驟的類型，`interaction.completed` 時由它組出結束事件的內容或丟出錯誤
+/// 讀取一次串流期間累積的狀態：哪些 `index` 是回答步驟，`interaction.completed` 時由它組出結束事件的內容或丟出錯誤
 ///
 /// - Note: 只在 `LKAIGemini` 內使用；SSE 事件依序交給 `handle(_:)`，由它解碼並對應成要交出的對話事件
-/// - Note: `step.delta` 不帶步驟類型，只帶 `index`，所以要記住 `step.start` 的 `index` 與 `step.type`
+/// - Note: `step.delta` 不帶步驟類型，只帶 `index`，所以要記住哪些 `index` 是回答步驟（`model_output`）
+/// - Note: 「是不是回答步驟」與「是不是 `failed`」都由 `LKGeminiStreamEvent` 解碼時判斷，這裡只用它帶來的結果
+/// - Note: 同一個 `index` 之後以別的類型開始時，從記錄中移除，之後的片段不交出
 /// - Note: 只交出 `model_output` 步驟的文字；思考步驟的簽章與摘要不是給使用者看的文字
 /// - Note: 沒有 `step.start` 記錄過的 `index`，它的片段不交出
 /// - Note: 結束資訊只取自 `interaction.completed` 的 `interaction`，其他事件不帶用量與模型
@@ -23,8 +25,8 @@ struct LKGeminiStreamState {
 
     // MARK: - Properties
 
-    /// 依 `step.start` 記錄的對照，步驟的 `index` 對應它的 `step.type`；還沒有收到任何 `step.start` 時為空
-    private var stepTypes: [Int: String] = [:]
+    /// 依 `step.start` 記錄的回答步驟的 `index`；還沒有收到任何回答步驟的 `step.start` 時為空
+    private var modelOutputIndexes: Set<Int> = []
 
     // MARK: - Init
 
@@ -44,15 +46,21 @@ extension LKGeminiStreamState: LKAIServerSentEventMapping {
     ///   `interaction.completed` 的狀態是 `requires_action`、`cancelled`、其他值或沒有狀態丟 `invalidResponse`；
     ///   `error` 事件與 `failed` 狀態丟 `code` 對應的錯誤，
     ///   沒有代碼或不認得的代碼丟 `LKAIError.unrecognizedStreamError(code:message:)` 的結果
+    /// - Note: `failed` 狀態由 `LKGeminiStreamEvent` 解成獨立的 `.failed` 事件，帶 `errors` 的第一筆；
+    ///   沒有第一筆時丟出沒有代碼的錯誤
     /// - Note: `step.start` 帶著文字時，依序交出每一段，然後才輪到之後的 `step.delta`
     mutating func handle(_ event: LKAIServerSentEvent) throws(LKAIError) -> [LKAIChatStreamEvent] {
         switch try decode(event) {
-        case .stepStart(let index, let type, let texts):
-            stepTypes[index] = type
+        case .stepStart(let index, let isModelOutput, let texts):
+            if isModelOutput {
+                modelOutputIndexes.insert(index)
+            } else {
+                modelOutputIndexes.remove(index)
+            }
             return texts.map { LKAIChatStreamEvent.textDelta($0) }
 
         case .stepDelta(let index, let text):
-            guard stepTypes[index] == "model_output", let text else {
+            guard modelOutputIndexes.contains(index), let text else {
                 return []
             }
             return [.textDelta(text)]
@@ -60,6 +68,9 @@ extension LKGeminiStreamState: LKAIServerSentEventMapping {
         case .completed(let interaction):
             let completion = try makeCompletion(from: interaction)
             return [.finished(completion)]
+
+        case .failed(let firstError):
+            throw firstError?.streamError ?? .unrecognizedStreamError(code: nil, message: nil)
 
         case .error(let detail):
             throw detail.streamError
@@ -87,19 +98,14 @@ private extension LKGeminiStreamState {
         }
     }
 
-    /// 依 `interaction.completed` 的互動組出結束事件的內容，`handle(_:)` 收到 `interaction.completed` 時呼叫
+    /// 依狀態不是 `failed` 的 `interaction.completed` 的互動，組出結束事件的內容
     ///
-    /// - Parameter interaction: `interaction.completed` 帶的互動
+    /// - Parameter interaction: `interaction.completed` 帶的互動，狀態不是 `failed`
     /// - Returns: 帶著結束原因、用量與實際回應的模型的結束資訊
-    /// - Throws: 狀態是 `failed` 時丟出 `errors` 第一筆對應的錯誤，沒有第一筆時丟出沒有代碼的錯誤；
-    ///   狀態不是 `completed`、`incomplete` 或 `failed` 時丟出 `invalidResponse`
+    /// - Throws: 狀態不是 `completed` 或 `incomplete` 時丟出 `invalidResponse`
     func makeCompletion(
         from interaction: LKGeminiStreamEvent.Interaction
     ) throws(LKAIError) -> LKAIChatCompletion {
-        if interaction.status == "failed" {
-            throw interaction.errors?.first?.streamError
-                ?? .unrecognizedStreamError(code: nil, message: nil)
-        }
         let finishReason = try makeFinishReason(fromStatus: interaction.status)
         return LKAIChatCompletion(
             finishReason: finishReason,

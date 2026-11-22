@@ -15,17 +15,20 @@ import LKAICore
 /// - Note: 欄位只在用得到時才解碼：`step.start` 的 `content` 只在步驟類型是 `model_output` 時解碼，
 ///   `step.delta` 的 `text` 只在片段類型是 `text` 時解碼，其他類型帶什麼內容都不影響串流
 /// - Note: `interaction.completed` 的 `errors` 也只在 `status` 是 `failed` 時解碼，其他狀態完全不讀
+/// - Note: 「步驟是不是回答步驟」與「互動是不是 `failed`」只在解碼時判斷一次，結果帶在事件裡，
+///   `LKGeminiStreamState` 不再比對這兩個字串
 /// - Note: 認得的事件欄位格式不符時解碼失敗；JSON 的鍵是 snake_case，請用 `init(data:)` 解碼
 enum LKGeminiStreamEvent {
 
-    /// `step.start`：一個步驟開始，記錄它的類型；回答步驟開始時就帶著文字的話，也一併交出
+    /// `step.start`：一個步驟開始；回答步驟開始時就帶著文字的話，也一併交出
     ///
     /// - Parameters:
     ///   - index: 步驟的 `index`，之後的 `step.delta` 靠它找到所屬的步驟
-    ///   - type: 步驟的 `step.type`，例如 `thought`、`model_output`
+    ///   - isModelOutput: 是不是回答步驟，也就是 `step.type` 是 `model_output`；
+    ///     `LKGeminiStreamState` 只記錄回答步驟的 `index`
     ///   - texts: 步驟開始時就帶著的文字，依序是 `content` 裡類型為 `text` 的項目的 `text`；
-    ///     步驟類型不是 `model_output`，或沒有 `content` 時為空陣列
-    case stepStart(index: Int, type: String, texts: [String])
+    ///     不是回答步驟，或沒有 `content` 時為空陣列
+    case stepStart(index: Int, isModelOutput: Bool, texts: [String])
 
     /// `step.delta`：一個步驟的增量
     ///
@@ -34,10 +37,15 @@ enum LKGeminiStreamEvent {
     ///   - text: 增量的文字；增量類型不是 `text` 時為 nil
     case stepDelta(index: Int, text: String?)
 
-    /// `interaction.completed`：互動結束，帶著結束時的互動
+    /// `interaction.completed`：互動結束，狀態不是 `failed`，帶著結束時的互動
     ///
     /// - Parameter interaction: 即 `interaction`，裡面有結束的狀態、實際回應的模型與用量
     case completed(Interaction)
+
+    /// `interaction.completed` 的狀態是 `failed`：互動失敗，帶著 `errors` 的第一筆
+    ///
+    /// - Parameter firstError: `interaction.errors` 的第一筆；沒有、為 null 或空陣列時為 nil
+    case failed(firstError: LKGeminiErrorBody.Detail?)
 
     /// `error`：串流中途的錯誤，`error` 物件放的是錯誤內容；由 `LKGeminiStreamState.handle(_:)` 對應成錯誤丟出
     ///
@@ -85,13 +93,13 @@ extension LKGeminiStreamEvent {
         case error
     }
 
-    /// `step.start` 的 `step`，只取步驟類型與開始時帶著的文字
+    /// `step.start` 的 `step`，只取是不是回答步驟與開始時帶著的文字
     struct Step: Decodable {
 
-        /// 步驟類型，例如 `thought`、`model_output`
-        let type: String
+        /// 是不是回答步驟，也就是步驟類型是 `model_output`；其他類型例如 `thought` 都不是
+        let isModelOutput: Bool
 
-        /// 步驟開始時就帶著的文字；步驟類型不是 `model_output`，或沒有 `content` 時為空陣列
+        /// 步驟開始時就帶著的文字；不是回答步驟，或沒有 `content` 時為空陣列
         let texts: [String]
 
         /// 依步驟類型解碼：只有 `model_output` 才讀 `content`，其他類型的欄位不看
@@ -102,8 +110,9 @@ extension LKGeminiStreamEvent {
         init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let stepType = try container.decode(String.self, forKey: .type)
-            type = stepType
-            if stepType == "model_output" {
+            let isOutput = stepType == "model_output"
+            isModelOutput = isOutput
+            if isOutput {
                 let parts = try container.decodeIfPresent([TextPart].self, forKey: .content) ?? []
                 texts = parts.compactMap { $0.text }
             } else {
@@ -157,6 +166,7 @@ extension LKGeminiStreamEvent {
     ///
     /// - Note: `errors` 是整份設計中證據最弱的欄位，只在 `status` 是 `failed` 時才解碼，
     ///   其他狀態帶什麼 `errors` 都不影響，不能讓 `completed` 因它失敗
+    /// - Note: 狀態是不是 `failed` 只在解碼時判斷一次，結果放在 `isFailed`
     /// - Note: 沒有宣告的欄位自動略過
     struct Interaction: Decodable {
 
@@ -169,8 +179,11 @@ extension LKGeminiStreamEvent {
         /// 這次互動的用量；為 null 或沒有這個欄位時為 nil
         let usage: Usage?
 
-        /// 失敗的錯誤，依序排列；只有 `status` 是 `failed` 才會解碼，其他狀態、為 null 或沒有這個欄位時為 nil
-        let errors: [LKGeminiErrorBody.Detail]?
+        /// 互動是不是失敗，也就是 `status` 是 `failed`
+        let isFailed: Bool
+
+        /// `errors` 的第一筆；只有 `status` 是 `failed` 才會解碼，其他狀態、沒有、為 null 或空陣列時為 nil
+        let firstError: LKGeminiErrorBody.Detail?
 
         /// 依狀態解碼：先解 `status`，只有 `failed` 才讀 `errors`，其他狀態的 `errors` 完全不看
         ///
@@ -183,13 +196,16 @@ extension LKGeminiStreamEvent {
             status = interactionStatus
             model = try container.decodeIfPresent(String.self, forKey: .model)
             usage = try container.decodeIfPresent(Usage.self, forKey: .usage)
-            if interactionStatus == "failed" {
-                errors = try container.decodeIfPresent(
+            let failed = interactionStatus == "failed"
+            isFailed = failed
+            if failed {
+                let errors = try container.decodeIfPresent(
                     [LKGeminiErrorBody.Detail].self,
                     forKey: .errors
                 )
+                firstError = errors?.first
             } else {
-                errors = nil
+                firstError = nil
             }
         }
 
@@ -242,7 +258,7 @@ extension LKGeminiStreamEvent: Decodable {
         case "step.start":
             let index = try container.decode(Int.self, forKey: .index)
             let step = try container.decode(Step.self, forKey: .step)
-            self = .stepStart(index: index, type: step.type, texts: step.texts)
+            self = .stepStart(index: index, isModelOutput: step.isModelOutput, texts: step.texts)
 
         case "step.delta":
             let index = try container.decode(Int.self, forKey: .index)
@@ -250,7 +266,12 @@ extension LKGeminiStreamEvent: Decodable {
             self = .stepDelta(index: index, text: delta.text)
 
         case "interaction.completed":
-            self = try .completed(container.decode(Interaction.self, forKey: .interaction))
+            let interaction = try container.decode(Interaction.self, forKey: .interaction)
+            if interaction.isFailed {
+                self = .failed(firstError: interaction.firstError)
+            } else {
+                self = .completed(interaction)
+            }
 
         case "error":
             self = try .error(container.decode(LKGeminiErrorBody.Detail.self, forKey: .error))
