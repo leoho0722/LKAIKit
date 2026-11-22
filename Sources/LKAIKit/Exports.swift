@@ -10,4 +10,5 @@
 
 @_exported import LKAIAnthropic
 @_exported import LKAICore
+@_exported import LKAIGemini
 @_exported import LKAIOpenAI
