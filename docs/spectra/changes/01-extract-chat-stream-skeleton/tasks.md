@@ -61,7 +61,7 @@
 
 ## 3. 文件與驗收
 
-- [ ] 3.1 依 design「config.yaml 的指標改為同時指向本 change」，把 `docs/spectra/config.yaml` API 演進規則的指標換成 design 引用的文字（主對話）。
+- [x] 3.1 依 design「config.yaml 的指標改為同時指向本 change」，把 `docs/spectra/config.yaml` API 演進規則的指標換成 design 引用的文字（主對話）。
 
   驗證：`spectra instructions proposal --change "01-extract-chat-stream-skeleton" --json` 回傳的 context 含有新的指標。
 - [ ] 3.2 [after: 1.2, 2.1, 2.3, 3.1] 合併兩組任務後的整體驗收（主對話）：依 design Implementation Contract 的「驗收」逐項執行，並完成反向檢查表剩下的四項（吞掉逐行讀取的錯誤、讀不到錯誤內容、送出兩次 `fetch`、拿掉 `Issue.record`）。每一項的執行結果記錄在本任務下方。
