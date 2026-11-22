@@ -131,7 +131,7 @@ private extension LKAnthropicClientCancellationTests {
     /// - Returns: 回應停在等待更多資料的替身
     func makePendingMock() -> LKAIMockHTTPClient {
         let mock = LKAIMockHTTPClient()
-        mock.yield(lines: LKAnthropicClientTestSupport.lines(of: [
+        mock.yield(lines: LKAIServerSentEventTestSupport.lines(of: [
             .messageStart(),
             .textBlockStart(),
             .textDelta("Hel"),
@@ -144,7 +144,7 @@ private extension LKAnthropicClientCancellationTests {
     /// - Returns: 已送出 `message_stop`，但連線還沒結束的替身
     func makeStoppedMock() -> LKAIMockHTTPClient {
         let mock = makePendingMock()
-        mock.yield(lines: LKAnthropicClientTestSupport.lines(of: [
+        mock.yield(lines: LKAIServerSentEventTestSupport.lines(of: [
             .messageDelta(stopReason: "end_turn"),
             .messageStop(),
         ]))

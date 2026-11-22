@@ -17,7 +17,7 @@ context: |
     - 公開 enum 預期會新增 case 時標 `@nonexhaustive`，App 的 switch 必須寫 `@unknown default`；在非 resilient 模組日後再加是 API 破壞性變更，拿掉則不會。
     - 公開 struct 之後新增欄位時，`public init` 的新參數一律給預設值，讓 App 建立這些值的程式碼（例如測試替身）不必修改。
     - 供應商的 change 不得為了自己的格式修改 LKAICore 的共用公開型別；需要修改時另開 change 修改 `chat-client` spec。
-    - 新增供應商的 change 開始前，先讀 add-chat-abstraction-anthropic 與 01-extract-chat-stream-skeleton 封存後的 design：逐列核對前者 Context 的三家對照表，並處理兩者 Open Questions 留給下一家供應商的項目。以 SSE 串流回答的供應商一律遵循 `LKAIServerSentEventChatStreaming`，不自行建立 `Task`。前者「生產端 task 的擁有權」、「`LKAITestSupport` 不設測試 target」與 Open Questions 的抽出共同流程一項，以後者為準。
+    - 新增供應商的 change 開始前，先讀 add-chat-abstraction-anthropic、01-extract-chat-stream-skeleton 與 02-add-openai-provider 封存後的 design：逐列核對第一份 Context 的三家對照表（OpenAI 一欄以 02 的 Context 為準），並處理三者 Open Questions 留給下一家供應商的項目。以 SSE 串流回答的供應商一律遵循 `LKAIServerSentEventChatStreaming`，不自行建立 `Task`。第一份的「生產端 task 的擁有權」、「`LKAITestSupport` 不設測試 target」與 Open Questions 的抽出共同流程一項，以 01 為準；第一份 Open Questions 的輸入超過 context window 的錯誤、只 `import LKAIKit` 的使用端檢查兩項，以及 01 的 Open Questions 中共同流程分支的測試位置、SSE 分框的測試 helper、金鑰遮蔽三項，以 02 為準。
   使用方式：
     - library：主要供 iOS App 專案整合使用，例如 BuyLedger。
     - executableTarget：主要供 CI/CD 使用，不用於 App 專案。
