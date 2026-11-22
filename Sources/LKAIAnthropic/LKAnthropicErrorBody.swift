@@ -75,13 +75,22 @@ extension LKAnthropicErrorBody {
                 return .invalidRequest(message: message)
 
             case "api_error":
-                return .serviceUnavailable(statusCode: statusCode ?? 500, retryAfter: nil)
+                return .serviceUnavailable(
+                    statusCode: statusCode ?? 500,
+                    retryAfter: LKAIError.retryDelay(from: retryAfter)
+                )
 
             case "overloaded_error":
-                return .serviceUnavailable(statusCode: statusCode ?? 529, retryAfter: nil)
+                return .serviceUnavailable(
+                    statusCode: statusCode ?? 529,
+                    retryAfter: LKAIError.retryDelay(from: retryAfter)
+                )
 
             case "timeout_error":
-                return .serviceUnavailable(statusCode: statusCode ?? 504, retryAfter: nil)
+                return .serviceUnavailable(
+                    statusCode: statusCode ?? 504,
+                    retryAfter: LKAIError.retryDelay(from: retryAfter)
+                )
 
             default:
                 // 不認得的類型不猜，交給呼叫端決定

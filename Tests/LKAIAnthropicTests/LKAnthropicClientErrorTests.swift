@@ -86,6 +86,24 @@ struct LKAnthropicClientErrorTests {
             expectedError: .serviceUnavailable(statusCode: 504, retryAfter: nil)
         ),
         ErrorResponseCase(
+            statusCode: 529,
+            extraHeaders: ["retry-after": "10"],
+            body: #"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: .seconds(10))
+        ),
+        ErrorResponseCase(
+            statusCode: 500,
+            extraHeaders: ["retry-after": "3"],
+            body: #"{"type":"error","error":{"type":"api_error","message":"Internal server error"}}"#,
+            expectedError: .serviceUnavailable(statusCode: 500, retryAfter: .seconds(3))
+        ),
+        ErrorResponseCase(
+            statusCode: 504,
+            extraHeaders: ["retry-after": "7"],
+            body: #"{"type":"error","error":{"type":"timeout_error","message":"Request timed out"}}"#,
+            expectedError: .serviceUnavailable(statusCode: 504, retryAfter: .seconds(7))
+        ),
+        ErrorResponseCase(
             statusCode: 409,
             extraHeaders: [:],
             body: #"{"type":"error","error":{"type":"conflict_error","message":"Conflict"}}"#,
