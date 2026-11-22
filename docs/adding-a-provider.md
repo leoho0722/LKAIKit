@@ -39,7 +39,7 @@
 - 供應商 target 的頂層型別以 `LK<供應商>` 開頭，例如 `LKOpenAIClient`；型別依 ios-dev-kit 樣板建立，測試 target 依受測 target 增加，例如 `LKAIOpenAITests`。（`add-swift-package-foundation`「非供應商型別以 LKAI 開頭，供應商型別以 LK 加供應商名開頭」；`02-add-openai-provider`「型別依 ios-dev-kit 樣板建立，測試 target 依受測 target 增加」）
 - 非本 package 的型別遵循本 package 的 `public` protocol，只能寫在 `LKAICore`。（第一份「外部型別遵循本 package 的 public protocol 只能寫在 LKAICore」）
 - 端點固定為供應商的官方網址；不提供思考深度、推理設定與取樣參數，一律用 API 的預設值。（第一份 Non-Goals）
-- 新增供應商時照著 Gemini 的實作做。參考實作是 `Sources/LKAIGemini/` 與 `Tests/LKAIGeminiTests/`，新供應商的檔案與它一一對應，檔名把 `Gemini` 換成供應商名。（`04-add-gemini-provider` 的實作審查）
+- 新增供應商時照著 Gemini 的實作做。參考實作是 `Sources/LKAIGemini/` 與 `Tests/LKAIGeminiTests/`，新供應商的檔案，角色與它對應。（`04-add-gemini-provider` 的實作審查）
   - `Sources/LKAIGemini/` 每個檔案的角色：
     - `LKGeminiClient.swift`：client，包含兩個 `init`、三個描述遵循、`stream(_:)`、`makeURLRequest(for:)`、`httpError(statusCode:headers:body:)` 與 `makeEventMapper()`。
     - `LKGeminiInteractionsRequestBody.swift`：請求內容，以 `JSONEncoder()` 編碼。
@@ -47,6 +47,10 @@
     - `LKGeminiStreamState.swift`：mapper，遵循 `LKAIServerSentEventMapping`，持有每條串流的狀態，把事件對應成對話事件、結束資訊或錯誤。
     - `LKGeminiErrorBody.swift`：Interactions 格式的錯誤內容；它的 `Detail` 是 HTTP 錯誤、串流的 `error` 事件與 `failed` 的 `errors` 共用的型別。
     - `LKGeminiGoogleErrorBody.swift`：Google 通用格式的錯誤內容。
+  - 檔名與取捨的三點（比對 `Sources/LKAIAnthropic/`、`Sources/LKAIOpenAI/` 與 `Sources/LKAIGemini/` 的檔名）：
+    - 請求內容的檔名是 `LK<供應商><API 名>RequestBody`，例如 `LKOpenAIResponsesRequestBody`、`LKAnthropicMessagesRequestBody`，Gemini 的 `LKGeminiInteractionsRequestBody` 同樣是這個格式。
+    - 第二種錯誤格式的檔案（Gemini 的 `LKGeminiGoogleErrorBody`）只在供應商有不只一種錯誤格式時才需要，Anthropic 與 OpenAI 各只有一個錯誤格式的檔案。
+    - 供應商專屬的公開設定另開檔案，例如 Anthropic 的 `LKAnthropicRefusalFallback`。
   - 錯誤分類只有兩個入口：串流中的錯誤用 `streamError`，HTTP 錯誤用 `httpError(statusCode:)`，都在 `LKGeminiErrorBody.Detail`；`LKOpenAIErrorBody.Detail` 是同樣的名稱與分工。
   - `Tests/LKAIGeminiTests/` 每個檔案的角色：
     - `LKGeminiClientTests.swift`：請求內容、回應保存設定、`Mirror` 與金鑰遮蔽。
@@ -63,6 +67,7 @@
 - 每條串流的事件狀態與「何時結束」的判斷，由供應商的 mapper（遵循 `LKAIServerSentEventMapping` 的型別）持有。不認得的事件一律略過。（`01-extract-chat-stream-skeleton`「每條串流的事件狀態與結束判斷由供應商的 mapper 持有」）
 - 解碼一律經 `LKAISnakeCaseJSON`，不自己建立 `JSONDecoder()`；經它解碼的型別，手寫的 `CodingKeys` 用 camelCase、不寫 raw value，因為它先把 JSON 的鍵轉成 camelCase 再比對，寫 raw value 會比對不到。以 `JSONEncoder()` 編碼的請求內容沒有這個策略，照舊寫 raw value，例如 `LKGeminiInteractionsRequestBody` 的 `max_output_tokens`。（`01-extract-chat-stream-skeleton`「snake_case JSON 的解碼設定收成 LKAISnakeCaseJSON」；`04-add-gemini-provider`「事件的巢狀欄位只在用得到時才解碼，手寫的鍵用 camelCase」）
 - 事件的巢狀欄位只在用得到時才解碼：依同一則事件的其他欄位（步驟類型、狀態、片段類型）決定要不要讀某個欄位，比照 `LKAnthropicStreamEvent` 的 `ContentBlock` 與 `Delta`，以及 `LKGeminiStreamEvent` 的 `Step`、`TextPart` 與 `Interaction`。Optional 只容許欄位不存在或為 null，欄位存在但型別不對時仍會失敗，所以只寫成 Optional 擋不住；供應商之後新增的步驟或事件，以及只依文件、還沒實測的欄位，都不該讓串流失敗。已知的例外：`LKOpenAIStreamEvent` 的 `Response` 不論事件種類都解碼全部欄位，見第 7 章。（`04-add-gemini-provider`「事件的巢狀欄位只在用得到時才解碼，手寫的鍵用 camelCase」）
+- 解碼端依判別欄位（步驟類型、狀態）做的判斷，只在解碼時做一次，結果帶在事件裡，mapper 不再比對同一個字串：兩邊各比對一次時，只改一邊會讓文字一邊交出、一邊略過，或讀不到 `errors`，而且沒有錯誤可以發現。比照 `LKGeminiStreamEvent` 的 `stepStart(index:isModelOutput:texts:)`（帶「是不是回答步驟」）與 `failed(firstError:)`（`failed` 解成獨立的事件）。（`04-add-gemini-provider`「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」）
 
 **共用型別與 API 演進**
 
@@ -181,7 +186,7 @@
 | 02 | `OpenAI-Organization`、`OpenAI-Project` 標頭 | 留給之後 | 等使用端需要多個組織或專案時再加 |
 | 02 | chat-client「Context window limit」要不要加上「供應商有回報時」的條件 | 已解決 | 03 修改 chat-client 的「Context window limit」 |
 | 02 | 金鑰遮蔽改用 `LKAICore` 的 `package` 包裝型別 | 已解決 | `04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」 |
-| 02 | `makeURLRequest(for:)` 的網址檢查與 `encodeBody(for:)` 各寫一份 | 已解決：不收 | 02 設的條件「要統一加標頭或改編碼設定時再收」沒有成立：Gemini 兩者都不需要，所以 `makeURLRequest(for:)` 與 `encodeBody(for:)` 不收進 `LKAICore`，現在三家各一份（`04-add-gemini-provider` Non-Goals）。實作審查另外指出（fable）：三家的 `StreamState.decode(_:)` 完全相同，`encodeBody(for:)` 只差請求內容的型別。重新評估的時機：要統一加標頭或改編碼設定時，以及下一家供應商的第一組任務；候選方案是在 `LKAISnakeCaseJSON` 加上以 `.convertToSnakeCase` 編碼的入口，請求內容的 raw value 可以一起拿掉，這也是 02 設的條件「改編碼設定」。三家的請求內容目前都沒有 dictionary 欄位（fable 確認），`.convertToSnakeCase` 不會轉到資料的鍵 |
+| 02 | `makeURLRequest(for:)` 的網址檢查與 `encodeBody(for:)` 各寫一份 | 已解決：不收 | 02 設的條件「要統一加標頭或改編碼設定時再收」沒有成立：Gemini 兩者都不需要，所以 `makeURLRequest(for:)` 與 `encodeBody(for:)` 不收進 `LKAICore`，現在三家各一份（`04-add-gemini-provider` Non-Goals）。實作審查另外指出（fable）：三家的 `StreamState.decode(_:)` 完全相同，`encodeBody(for:)` 只差請求內容的型別。重新評估的時機：要統一加標頭或改編碼設定時，以及下一家供應商的第一組任務；候選方案是在 `LKAISnakeCaseJSON` 加上以 `.convertToSnakeCase` 編碼的入口，請求內容的 raw value 可以一起拿掉，這也是 02 設的條件「改編碼設定」。三家的請求內容沒有以資料當鍵的 dictionary；Anthropic 的 `Fallbacks.encode(to:)` 會編碼鍵固定為 `model` 的 dictionary（第二輪實作審查時 fable 更正第一輪的說法，主對話讀碼確認），評估 `.convertToSnakeCase` 時，以 anthropic-provider 的 fallbacks 測試確認這個鍵沒有被改 |
 | 02 | 與供應商無關的測試 helper 兩家各一份，Gemini 會是第三份 | 已解決 | `04-add-gemini-provider`「與供應商無關的測試 helper 收進 LKAITestSupport」：`LKAITestJSON` 與 `LKAIErrorTestSupport` |
 | 02 | 503 的 `Retry-After` 沒有欄位可放 | 已解決 | 03「服務不可用的錯誤帶上等待時間，不給預設值」 |
 | 02 | `LKAIError.refused(detail:)` 的說明沒有提到 detail 可能是模型寫的文字 | 已解決 | 03「refused 的 detail 說明補上隱私提醒」 |
