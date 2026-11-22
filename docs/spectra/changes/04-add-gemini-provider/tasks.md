@@ -13,7 +13,7 @@
 
 ## 1. 金鑰包裝型別與共用的測試 helper
 
-- [ ] 1.1 依 design「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」，在 `LKAICore` 新增 `package struct LKAIAPIKey`，形狀照 Implementation Contract（sonnet）：
+- [x] 1.1 依 design「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」，在 `LKAICore` 新增 `package struct LKAIAPIKey`，形狀照 Implementation Contract（sonnet）：
   - **先寫測試**：`Tests/LKAICoreTests/Networking/LKAIAPIKeyTests.swift` 以參數化測試檢查：
     - `String(describing:)`、`String(reflecting:)`、`dump(_:)` 的結果都不含原始值，而且前兩者等於 `LKAIAPIKey(redacted)`。
     - 一個不寫任何描述遵循、只有 `LKAIAPIKey` 欄位的測試用 struct，三種輸出也都不含原始值。這一列固定了討論時以 Swift 6.4.2 做的實測。
@@ -24,7 +24,7 @@
   驗證：
   - 主對話觀察到新測試在骨架上失敗，實作後通過。
   - 完整 `swift test` 通過且零警告，`LKAICore` 從 67 個變成 68 個。這是估計值，實際數字記在 4.2。
-- [ ] 1.2 [after: 1.1] 依同一個決策，`LKAnthropicClient` 與 `LKOpenAIClient` 改以 `LKAIAPIKey` 保存金鑰，行為不變（sonnet）：
+- [x] 1.2 [after: 1.1] 依同一個決策，`LKAnthropicClient` 與 `LKOpenAIClient` 改以 `LKAIAPIKey` 保存金鑰，行為不變（sonnet）：
   - `private let apiKey` 的型別改成 `LKAIAPIKey`；公開與 `package` 的 `init(apiKey: String, …)` 不變，在 init 內包裝。
   - 只有 `makeURLRequest(for:)` 讀 `unredactedValue`。
   - 三個描述遵循的內容不變。
@@ -33,7 +33,7 @@
   - 兩家既有的金鑰遮蔽測試（anthropic-provider 與 openai-provider 的「Describe a configured client」）不改就通過。
   - 完整 `swift test` 通過且零警告，測試數不變。
   - `grep -rn 'unredactedValue' Sources | grep -v '///'` 只出現在 `LKAIAPIKey.swift` 與兩家的 `makeURLRequest(for:)`；`grep -rn 'let apiKey: String' Sources` 沒有結果。
-- [ ] 1.3 依 design「與供應商無關的測試 helper 收進 LKAITestSupport」，把兩家測試裡與供應商無關的 helper 搬進 `LKAITestSupport`，兩家的測試改用它們，行為不變（sonnet）：
+- [x] 1.3 依 design「與供應商無關的測試 helper 收進 LKAITestSupport」，把兩家測試裡與供應商無關的 helper 搬進 `LKAITestSupport`，兩家的測試改用它們，行為不變（sonnet）：
   - **新增**：`Sources/LKAITestSupport/` 的 `LKAITestJSON` 與 `LKAIErrorTestSupport`，形狀照 Implementation Contract；`LKAIErrorTestSupport.Expectation.matches(_:)` 的 nil 一律不符合；`Expectation` 的說明採用 Anthropic 那份。
   - **測試**：`Tests/LKAITestSupportTests/` 新增三個測試：
     - `matches` 的參數化測試，列出：錯誤相等、錯誤不相等、無效回應含全部片段、缺一個片段、不是無效回應、空的片段清單、nil。
@@ -58,7 +58,7 @@
 
 ## 2. Gemini 供應商
 
-- [ ] 2.1 [after: 1.1, 1.3] 依 design「以 Interactions API v1 實作，串流與非串流都送 stream: true」「回應保存預設關閉，由 App 建立 client 時開啟」，建立 `LKAIGemini` 與 `LKGeminiClient`，交付 gemini-provider 的「Interactions API request」「Response storage setting」「API key secrecy」「Availability through LKAIKit」（sonnet）：
+- [x] 2.1 [after: 1.1, 1.3] 依 design「以 Interactions API v1 實作，串流與非串流都送 stream: true」「回應保存預設關閉，由 App 建立 client 時開啟」，建立 `LKAIGemini` 與 `LKGeminiClient`，交付 gemini-provider 的「Interactions API request」「Response storage setting」「API key secrecy」「Availability through LKAIKit」（sonnet）：
   - **target**：`Package.swift` 新增 `LKAIGemini` 與 `LKAIGeminiTests`，`LKAIKit` 加上依賴；`Sources/LKAIKit/Exports.swift` 加上 `@_exported import LKAIGemini`。
   - **client**：`LKGeminiClient` 比照 `LKOpenAIClient` 的結構與 MARK 分區，形狀照 Implementation Contract，以 `LKAIAPIKey` 保存金鑰；`makeURLRequest(for:)` 與請求內容 `LKGeminiInteractionsRequestBody`。`httpError` 先一律回傳 nil，`makeEventMapper()` 先回傳不交出任何事件的 `LKGeminiStreamState`，2.2 與 2.3 再實作。
   - **先寫測試**：
@@ -74,7 +74,7 @@
     - HTTP 401 的錯誤描述不含金鑰：骨架的 `httpError` 回傳 nil，預設分類得到 `.invalidAPIKey`。
     - 以 `URLSession` 建立時的 `Mirror`：骨架有預設為 false 的 `shouldStoreResponses` 欄位時就會通過。
   - 完整 `swift test` 通過且零警告；`swift package dump-package` 顯示 `LKAIGemini` 只依賴 `LKAICore`，products 仍只有 `LKAIKit` 與 `lkai`。
-- [ ] 2.2 [after: 2.1] 依 design「文字只取 model_output 步驟的 text 片段，步驟類型依 step.start 的 index 記錄」「interaction.completed 依狀態對應結束原因，incomplete 回報 maxOutputTokens」「用量的輸出 token 加上思考 token」「實際回應的模型取自 interaction.completed」「事件的巢狀欄位只在用得到時才解碼，手寫的鍵用 camelCase」，交付 gemini-provider 的「Stream text mapping」「Finish mapping」（`failed` 六列除外，見 2.3）「Responding model」「Usage mapping」（sonnet）：
+- [x] 2.2 [after: 2.1] 依 design「文字只取 model_output 步驟的 text 片段，步驟類型依 step.start 的 index 記錄」「interaction.completed 依狀態對應結束原因，incomplete 回報 maxOutputTokens」「用量的輸出 token 加上思考 token」「實際回應的模型取自 interaction.completed」「事件的巢狀欄位只在用得到時才解碼，手寫的鍵用 camelCase」，交付 gemini-provider 的「Stream text mapping」「Finish mapping」（`failed` 六列除外，見 2.3）「Responding model」「Usage mapping」（sonnet）：
   - **先寫測試**：
     - `Tests/LKAIGeminiTests/LKGeminiClientStreamTests.swift`，事件以 `Tests/LKAIGeminiTests/LKAIServerSentEvent+GeminiEvents.swift` 的建構函式產生，比照兩家的寫法。範例表的值照抄 spec。
     - 實際回應模型的測試，`interaction.created` 不帶 `model`，只有 `interaction.completed` 帶，才分得出實作取的是哪一則。
@@ -89,7 +89,7 @@
   - 主對話觀察到新測試在 2.1 的 mapper 骨架上失敗，實作後通過。
   - 「Fail on malformed event data」與「Fail on events missing required fields」在骨架上就會通過，屬於回歸保護：骨架不交出任何事件，讀完沒有 `.finished` 時，共同流程同樣回報 `.invalidResponse`。
   - 完整 `swift test` 通過且零警告；`LKAIFinishReason.swift` 相對 `main` 只有 `///` 行改變。
-- [ ] 2.3 [after: 2.2] 依 design「HTTP 錯誤處理 Interactions 與 Google 通用兩種格式」「生成被擋下的代碼回報 refused，HTTP 與串流相同」「串流的 error 事件依 error.code 分類」，交付 gemini-provider 的「Error mapping」與「Finish mapping」的 `failed` 六列（sonnet）：
+- [x] 2.3 [after: 2.2] 依 design「HTTP 錯誤處理 Interactions 與 Google 通用兩種格式」「生成被擋下的代碼回報 refused，HTTP 與串流相同」「串流的 error 事件依 error.code 分類」，交付 gemini-provider 的「Error mapping」與「Finish mapping」的 `failed` 六列（sonnet）：
   - **先寫測試**：
     - `Tests/LKAIGeminiTests/LKGeminiClientErrorTests.swift` 的 HTTP 錯誤範例表與 `error` 事件範例表，以及 2.2 的結束事件範例表補上 `failed` 六列。範例表的值照抄 spec。
     - HTTP 測試以非串流呼叫，比照 `LKOpenAIClientErrorTests`。
@@ -107,7 +107,7 @@
     - 401 與 403 的 Google 通用格式、沒有 `API_KEY_INVALID` 的兩列 400 Google 通用格式。
   - 結束事件表的 `failed` 帶數字代碼一列，在 2.2 把 `failed` 當成其他狀態時就會通過，也屬於回歸保護。
   - 完整 `swift test` 通過且零警告；`Sources/LKAIGemini/` 內沒有「Unrecognized stream error code」、`Task {` 與 `JSONDecoder()`。
-- [ ] 2.4 [after: 2.1] 依 design「實際 API 測試以 gemini-3.5-flash-lite 執行，由 owner 手動跑」，新增 `Tests/LKAIGeminiTests/LKGeminiClientLiveTests.swift`（sonnet）：
+- [x] 2.4 [after: 2.1] 依 design「實際 API 測試以 gemini-3.5-flash-lite 執行，由 owner 手動跑」，新增 `Tests/LKAIGeminiTests/LKGeminiClientLiveTests.swift`（sonnet）：
   - 串流與非串流各一個，比照 `LKOpenAIClientLiveTests`。
   - 只在設定 `LKAI_GEMINI_API_KEY` 時執行，模型 `gemini-3.5-flash-lite`，輸出上限 64。
   - 檢查以完成結束、文字不為空、回應的模型不是 nil 也不是空字串。
@@ -116,7 +116,7 @@
 
 ## 3. 文件
 
-- [ ] 3.1 [after: 1.2, 2.3, 2.4, 4.1] 依 `config.yaml` 的指標與 `docs/adding-a-provider.md` 第 1 章「什麼時候更新」，把清單更新成 Gemini 實作後的狀態，逐列處理下面每一處（sonnet）：
+- [x] 3.1 [after: 1.2, 2.3, 2.4, 4.1] 依 `config.yaml` 的指標與 `docs/adding-a-provider.md` 第 1 章「什麼時候更新」，把清單更新成 Gemini 實作後的狀態，逐列處理下面每一處（sonnet）：
   - **第 2 章**：把「Gemini 查證時，文件與實際回應有四處不同」更新成本 change Context 的結果。
   - **第 3 章**：
     - 「金鑰與隱私」：金鑰以 `LKAIAPIKey` 保存，只有 `makeURLRequest(for:)` 讀 `unredactedValue`；附上兩個 grep 檢查：`grep -rn 'unredactedValue' Sources | grep -v '///'` 只出現在 `LKAIAPIKey.swift` 與各家的 `makeURLRequest(for:)`，`grep -rn 'let apiKey: String' Sources` 沒有結果。原本那一條結尾的「04 預定加上包裝型別，見第 6 章」改成指向本 change 的決策「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」。
@@ -141,18 +141,60 @@
   - 主對話審查內容：每一處修改都有 design 或程式碼的依據，第 3 章提到的符號都存在。
   - `grep -n '第 6 章' docs/adding-a-provider.md` 只剩第 2 章步驟 2 與第 7 章開頭兩處。
   - `grep -n -E '預定|由 04' docs/adding-a-provider.md` 沒有結果。
-- [ ] 3.2 [after: 3.1] 主對話依 design 的「完成後的狀態」與清單核對 `config.yaml` 的指標與 API 演進規則：確認不必修改，或修改並寫明原因。
+- [x] 3.2 [after: 3.1] 主對話依 design 的「完成後的狀態」與清單核對 `config.yaml` 的指標與 API 演進規則：確認不必修改，或修改並寫明原因。
 
   驗證：主對話的檢查結果記在本任務下方。
 
+  檢查結果（2026-11-22，主對話，功能分支 `0569ec7`）：`config.yaml` 不必修改。
+  - **指標**：「新增供應商的 change 開始前，先讀 `docs/adding-a-provider.md`」那條只指向清單本身，不寫章節號，3.1 改寫章節內容後仍然正確；「以 SSE 串流回答的供應商一律遵循 `LKAIServerSentEventChatStreaming`，不自行建立 `Task`」與實作相符（`grep 'Task {' Sources/LKAIGemini` 沒有結果）。本 change 新增的規則（`LKAIAPIKey`、條件式解碼、camelCase 的 `CodingKeys`、測試 helper）都寫在清單第 3 章，依 03 的決策「新增供應商的清單取代 config.yaml 的層層指標」，不在 `config.yaml` 另寫。
+  - **命名規則**：模組 `LKAIGemini` 符合 `LKAI<名稱>`；供應商 target 的頂層型別都以 `LKGemini` 開頭；`LKAITestSupport` 與 `LKAICore` 新增的 `LKAITestJSON`、`LKAIErrorTestSupport`、`LKAIAPIKey` 符合 `LKAI<名稱>`；沒有型別與模組同名；新增的 Sources 沒有頂層函式，extension 都是本 package 的型別。
+  - **API 演進規則**：`git diff main -- Sources/LKAICore` 沒有任何 `public` 宣告改變（`LKAIFinishReason` 只改 `///`，`LKAIAPIKey` 是 `package`）；公開 API 只新增 `LKGeminiClient`，沒有修改共用公開型別，不需要另開 change 修改 chat-client spec。
+
 ## 4. 驗收
 
-- [ ] 4.1 [after: 2.3, 2.4] owner 以自己的金鑰執行實際 API 測試：`LKAI_GEMINI_API_KEY="$(security find-generic-password -s lkai-gemini-api-key -w)" swift test --filter LKGeminiClientLiveTests`，在功能分支上執行：2.1 到 2.4 都已合併回功能分支之後。排在整體驗收與清單更新之前，因為這是唯一以真實 API 檢查 mapper 的步驟；失敗而要改 mapper 時，整體驗收與清單的 Gemini 一欄都不必重做。
+- [x] 4.1 [after: 2.3, 2.4] owner 以自己的金鑰執行實際 API 測試：`LKAI_GEMINI_API_KEY="$(security find-generic-password -s lkai-gemini-api-key -w)" swift test --filter LKGeminiClientLiveTests`，在功能分支上執行：2.1 到 2.4 都已合併回功能分支之後。排在整體驗收與清單更新之前，因為這是唯一以真實 API 檢查 mapper 的步驟；失敗而要改 mapper 時，整體驗收與清單的 Gemini 一欄都不必重做。
 
   驗證：串流與非串流兩個測試都通過，輸出沒有出現金鑰。
-- [ ] 4.2 [after: 1.2, 2.3, 2.4, 3.2, 4.1] 合併後的整體驗收（主對話）：依 design Implementation Contract 的「完成後的狀態」與「驗收」逐項執行，含十八項反向檢查，並把每一項的結果，以及 4.1 的結果，記錄在本任務下方。
+- [x] 4.2 [after: 1.2, 2.3, 2.4, 3.2, 4.1] 合併後的整體驗收（主對話）：依 design Implementation Contract 的「完成後的狀態」與「驗收」逐項執行，含十八項反向檢查，並把每一項的結果，以及 4.1 的結果，記錄在本任務下方。
 
   驗證：
   - 每一項都符合 Implementation Contract 的描述。
   - 測試數與估計值比對，不同時記錄實際數字與原因。
   - `spectra coverage 04-add-gemini-provider` 顯示每個情境與範例都有測試。
+
+  驗收結果（2026-11-22，主對話，功能分支 `0569ec7`；`Sources/`、`Tests/` 與 `Package.swift` 在 `ceeef86` 之後沒有改變，十八項反向檢查在 `ceeef86` 執行）：
+
+  **4.1 的結果**：owner 同意後由主對話在功能分支（`ceeef86`）執行 `LKAI_GEMINI_API_KEY="$(security find-generic-password -s lkai-gemini-api-key -w)" swift test --filter LKGeminiClientLiveTests`，模型 `gemini-3.5-flash-lite`、輸出上限 64：串流與非串流兩個測試都通過；在同一個 shell 以 `grep -F` 比對，輸出沒有出現金鑰。
+
+  **完成後的狀態**：
+  - `grep -rn 'unredactedValue' Sources | grep -v '///'`：只有 `LKAIAPIKey.swift`（宣告、init 參數與賦值）與三家 client 的 `makeURLRequest(for:)` 各一處。
+  - `grep -rn 'let apiKey: String' Sources`：沒有結果。
+  - `Tests/` 內的 helper grep：只剩 `Tests/LKAICoreTests/Chat/LKAIErrorTests.swift` 的 `UnrecognizedStreamCase.Expectation`（依規定保留）。
+  - `Sources/LKAIGemini/` 內沒有「Unrecognized stream error code」、`Task {` 與 `JSONDecoder()`。
+  - `LKAIAnthropicTests` 45 個、`LKAIOpenAITests` 23 個；1.3 前後比對過測試名稱與每個參數化測試的列數，都沒有改變。
+
+  **建置與測試**：`swift package clean` 後，`swift build`、`swift build --build-tests` 與完整 `swift test` 都成功、零警告。XcodeBuildMCP 清除後對 iOS 模擬器（iPhone 17）建置 `LKAIKit` scheme 成功、零警告，log 確認 `Sources/LKAIGemini/` 的 6 個檔案都有編譯。
+
+  **測試數**（都與估計值相同）：`LKAICore` 67 → 68；`LKAITestSupportTests` 3 → 6；`LKAIKit` 3 → 4；`LKAIGemini` 新增 19 個（含 2 個實際 API 測試，沒有設定環境變數時列為略過）；`LKAIKitCLITests` 7 個不變。
+
+  **spec 覆蓋**：`spectra coverage 04-add-gemini-provider` 為 annotated 25、excluded 0、missing 0；逐一讀過標記的測試，斷言對應 THEN，spec 範例中的 58 個 JSON 字面值都原樣出現在測試中，每張範例表的每一列都有測試案例。
+
+  **十八項反向檢查**（每項改壞一處、以 `swift test --no-parallel --filter 'LKAIGeminiTests|LKAIAPIKeyTests'` 執行、再還原；做完 `git diff -- Sources` 沒有差異）：
+  1. 思考步驟的片段也交出：範例「stream with lifecycle events and a thought step」失敗。
+  2. 不記錄步驟類型，只看 `delta.type`：同一個範例失敗。
+  3. `incomplete` 回報完成：結束事件表的 `incomplete` 列失敗；「Finish at the output token limit while still thinking」也失敗。
+  4. 輸出 token 不加思考 token：用量表第一列失敗。
+  5. 不讀 `API_KEY_INVALID`：HTTP 表中帶 `API_KEY_INVALID` 的兩列（陣列與物件外層）失敗。
+  6. 串流的 `safety` 不回報 `.refused`：`error` 事件表的 `safety` 列失敗；同一個寫法也讓 `recitation` 列與結束事件表 `failed` 帶 `safety` 列失敗。
+  7. `store` 預設送 true：保存設定表的「not set」列失敗；「Send a request with a system prompt」的兩列也失敗。
+  8. 不認得的代碼回報 500：`error` 事件表的 `new_unknown_code` 列失敗。
+  9. `LKAIAPIKey.description` 回傳原始值：`LKAIAPIKey` 的測試失敗（`unredactedValue` 以外的 6 列）。
+  10. `failed` 不看 `errors`：結束事件表 `failed` 帶 `safety` 列失敗。
+  11. Interactions 規則 3 不排除 429：HTTP 表的 429 `too_many_requests` 列失敗；429 `rate_limit_exceeded` 列也失敗。
+  12. `step.start` 的 `step.content` 不交出：範例「text in the start of a model output step」失敗。
+  13. 把無法解碼的 `error` 事件略過：`error` 事件表的 `{"event_type":"error"}` 列失敗；`code` 為數字的列也失敗。
+  14. Google 通用格式只接受陣列外層：HTTP 表中物件外層、帶 `API_KEY_INVALID` 的列失敗。
+  15. 不論步驟類型都解碼 `step.content`：範例「stream with lifecycle events and a thought step」失敗（`google_search_call` 的物件 `content`）。
+  16. 不論狀態都解碼 `interaction.errors`：結束事件表「status `completed`、`errors` 是 `"none"`」列失敗。
+  17. 不論 `delta.type` 都解碼 `delta.text`：範例「stream with lifecycle events and a thought step」失敗（`google_search_result` 的物件 `text`）。
+  18. 照簡化前的規則實作（`delta.text` 解成 Optional，只有 `model_output` 步驟缺 `text` 才失敗）：缺欄位表中 `index` 3、`delta.text` 為 null 的列失敗。改壞的寫法同時放寬了 `step.content` 項目的 `text`（兩者共用 `TextPart`），所以「content 項目缺 `text`」列也失敗。
