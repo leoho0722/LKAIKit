@@ -126,7 +126,7 @@ struct LKOpenAIClientErrorTests {
             statusCode: 503,
             extraHeaders: ["retry-after": "5"],
             body: #"{"error":{"message":"Model temporarily overloaded","type":"service_unavailable_error","code":"server_is_overloaded"}}"#,
-            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: nil)
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: .seconds(5))
         ),
         ErrorResponseCase(
             statusCode: 500,

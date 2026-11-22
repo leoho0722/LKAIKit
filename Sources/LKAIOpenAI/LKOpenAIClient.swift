@@ -144,7 +144,7 @@ extension LKOpenAIClient: LKAIServerSentEventChatStreaming {
     ///   - body: OpenAI 的錯誤 JSON，格式見 `LKOpenAIErrorBody`
     /// - Returns: 對應的錯誤；內容解析不了或規則都不符合時為 nil
     /// - Note: 政策性阻擋與額度用完的代碼優先於狀態碼，所以 403 與 429 也可能分類成拒答或額度用完
-    /// - Note: 額度用完不讀 `retry-after`，只有走預設分類的 429 限流才由共同流程讀它
+    /// - Note: 額度用完不讀 `retry-after`，走預設分類的 429 限流與 5xx 服務不可用，才由共同流程讀它
     package func httpError(statusCode: Int, headers: [String: String], body: String) -> LKAIError? {
         LKOpenAIErrorBody(text: body)?.error.httpError(statusCode: statusCode)
     }

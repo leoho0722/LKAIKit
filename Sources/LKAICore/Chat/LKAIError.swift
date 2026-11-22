@@ -69,7 +69,7 @@ public enum LKAIError: Error, Equatable, Sendable {
     ///   - retryAfter: `retry-after` 標頭的原始值，沒有標頭時為 nil
     /// - Note: 401、402、403 分別是金鑰無效、用量用完、沒有權限，429 是限流，其他 4xx 是請求有問題
     /// - Note: 5xx 是服務不可用，其餘（含 1xx、3xx 與 600 以上）是無法解讀的回應
-    /// - Note: 只有 429 會讀 `retryAfter`，且只接受純 ASCII 數字的秒數；帶正負號、空白或 HTTP 日期都視為沒有提供
+    /// - Note: 429 與 5xx 會讀 `retryAfter`，且只接受純 ASCII 數字的秒數；帶正負號、空白或 HTTP 日期都視為沒有提供
     package init(httpStatusCode: Int, retryAfter: String?) {
         switch httpStatusCode {
         case 401:
@@ -88,7 +88,10 @@ public enum LKAIError: Error, Equatable, Sendable {
             self = .invalidRequest(message: nil)
 
         case 500...599:
-            self = .serviceUnavailable(statusCode: httpStatusCode, retryAfter: nil)
+            self = .serviceUnavailable(
+                statusCode: httpStatusCode,
+                retryAfter: Self.retryDelay(from: retryAfter)
+            )
 
         default:
             self = .invalidResponse(reason: "Unexpected HTTP status \(httpStatusCode)")

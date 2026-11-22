@@ -44,6 +44,7 @@ struct LKAIErrorTests {
         (.rateLimited(retryAfter: nil), true),
         (.quotaExceeded, false),
         (.serviceUnavailable(statusCode: 529, retryAfter: nil), true),
+        (.serviceUnavailable(statusCode: 503, retryAfter: .seconds(5)), true),
         (.invalidRequest(message: "bad"), false),
         (.refused(detail: "cyber"), false),
         (.cancelled, false),
@@ -119,8 +120,23 @@ struct LKAIErrorTests {
             expectedError: .serviceUnavailable(statusCode: 503, retryAfter: nil)
         ),
         StatusCase(
+            statusCode: 503,
+            retryAfter: "5",
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: .seconds(5))
+        ),
+        StatusCase(
+            statusCode: 503,
+            retryAfter: "-1",
+            expectedError: .serviceUnavailable(statusCode: 503, retryAfter: nil)
+        ),
+        StatusCase(
             statusCode: 529,
             retryAfter: nil,
+            expectedError: .serviceUnavailable(statusCode: 529, retryAfter: nil)
+        ),
+        StatusCase(
+            statusCode: 529,
+            retryAfter: "Wed, 21 Oct 2026 07:28:00 GMT",
             expectedError: .serviceUnavailable(statusCode: 529, retryAfter: nil)
         ),
         StatusCase(
