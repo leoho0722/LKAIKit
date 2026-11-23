@@ -65,6 +65,25 @@ struct LKAICLITextTests {
         #expect(!actualText.contains("%@"))
     }
 
+    /// 驗證每個 case 在所有輸出語言查到的字串兩兩不同
+    ///
+    /// - Parameter text: 要查的字串
+    /// - Note: 語言資料夾不見或改名時，查詢會靜默退回預設語言，期望值也跟著退回，原本「不為空、
+    ///   不等於 key」的測試擋不下來；只有比較各語言的字串，才發現得了
+    /// - Note: 比較的是 String Catalog 的實際值，不在測試裡寫死翻譯；帶 `%@` 的字串不代入參數，
+    ///   直接比較樣板
+    @Test(arguments: LKAICLIText.allCases)
+    func string_每個case在各輸出語言_字串兩兩不同(text: LKAICLIText) {
+        // Given
+        let languages = LKAIOutputLanguage.allCases
+
+        // When
+        let actualTexts = languages.map { text.string(in: $0) }
+
+        // Then
+        #expect(Set(actualTexts).count == languages.count)
+    }
+
     /// 驗證每個 case 在兩種語言的字串都不含 `LKAI_`：環境變數的名稱由程式從供應商清單組出來代入，
     /// 不寫在 String Catalog
     ///

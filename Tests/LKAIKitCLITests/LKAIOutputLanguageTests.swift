@@ -5,12 +5,31 @@
 //  Created by Leo Ho on 2026/11/23.
 //
 
+import Foundation
+import LKAIKit
 import Testing
 
 @testable import LKAIKitCLI
 
-/// `LKAIOutputLanguage` 的單元測試：從命令列掃描輸出語言，以及語言對應的 String Catalog 語言資料夾
+/// `LKAIOutputLanguage` 的單元測試：從命令列掃描輸出語言、語言對應的 String Catalog 語言資料夾，
+/// 以及每種輸出語言的錯誤說明彼此不同
 struct LKAIOutputLanguageTests {
+
+    // MARK: - Properties
+
+    /// `LKAIError` 的每一個 case 各取一個值，關聯值隨意；`LKAIError` 新增 case 時要加進來
+    private static let errors: [LKAIError] = [
+        .invalidAPIKey,
+        .permissionDenied,
+        .rateLimited(retryAfter: nil),
+        .quotaExceeded,
+        .serviceUnavailable(statusCode: 503, retryAfter: nil),
+        .invalidRequest(message: nil),
+        .refused(detail: nil),
+        .cancelled,
+        .transport(underlying: URLError(.timedOut)),
+        .invalidResponse(reason: "Unexpected response"),
+    ]
 
     // spectra-scenario: cli-output-language / Apply the language wherever the option appears
     // spectra-scenario: cli-output-language / Apply the language wherever the option appears / option positions
@@ -111,6 +130,26 @@ struct LKAIOutputLanguageTests {
 
         // Then
         #expect(actualLocalization == expectedLocalization)
+    }
+
+    /// 驗證 `LKAIError` 的每個 case，在所有輸出語言的說明兩兩不同
+    ///
+    /// - Parameter error: 要查說明的錯誤
+    /// - Note: 加第三種輸出語言時，漏了 `LKAICore` 的翻譯，或語言資料夾的名稱對不上，
+    ///   查詢會靜默退回預設語言，說明就會和另一種語言相同，這個測試會發現
+    /// - Note: 比較的是 `LKAICore` 的 String Catalog 的實際值，不在測試裡寫死翻譯
+    @Test(arguments: LKAIOutputLanguageTests.errors)
+    func errorDescription_每個LKAIError在各輸出語言_說明兩兩不同(error: LKAIError) {
+        // Given
+        let languages = LKAIOutputLanguage.allCases
+
+        // When
+        let actualDescriptions = languages.map {
+            error.errorDescription(localization: $0.localization)
+        }
+
+        // Then
+        #expect(Set(actualDescriptions).count == languages.count)
     }
 }
 
