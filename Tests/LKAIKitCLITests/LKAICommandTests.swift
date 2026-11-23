@@ -12,7 +12,9 @@ import Testing
 
 @testable import LKAIKitCLI
 
-/// `LKAICommand` 的單元測試
+/// `LKAICommand` 的單元測試：在同一個行程內直接呼叫 `parseAsRoot` 與 `run`
+///
+/// - Note: 以行程執行 `lkai` 的測試在 `LKAICommandProcessTests`
 struct LKAICommandTests {
 
     // spectra-scenario: cli-root-command / Run the executable without arguments
@@ -116,132 +118,5 @@ struct LKAICommandTests {
         let firstLine = try #require(lines.first)
         #expect(firstLine == expectedFirstLine)
         #expect(LKAICommand.exitCode(for: error) == ExitCode.validationFailure)
-    }
-
-    // spectra-scenario: cli-root-command / Run the executable without arguments
-    // spectra-scenario: cli-root-command / Request help with the long flag
-    // spectra-scenario: cli-root-command / Request help with the short flag
-    /// 驗證不帶參數、`--help`、`-h` 時，標準輸出有一行剛好是 `USAGE: lkai` 並列出 `--version`，標準錯誤為空，退出碼為 0
-    ///
-    /// - Parameter arguments: 傳給 `lkai` 的命令列引數，空陣列表示不帶參數
-    @Test(arguments: [[], ["--help"], ["-h"]])
-    func lkai_不帶參數或要求說明_說明只印到標準輸出且退出碼為0(arguments: [String]) throws {
-        // Given
-
-        // When
-        let output = try runLKAI(arguments: arguments)
-
-        // Then
-        #expect(output.standardOutput.split(separator: "\n").contains("USAGE: lkai"))
-        #expect(output.standardOutput.contains("--version"))
-        #expect(output.standardError.isEmpty)
-        #expect(output.terminationStatus == 0)
-    }
-
-    // spectra-scenario: cli-root-command / Request the version
-    /// 驗證 `--version` 只在標準輸出印出 `LKAIKitInfo.version` 加一個換行，標準錯誤為空，退出碼為 0
-    @Test
-    func lkai_要求版本_版本只印到標準輸出且退出碼為0() throws {
-        // Given
-        let expectedOutput = "\(LKAIKitInfo.version)\n"
-
-        // When
-        let output = try runLKAI(arguments: ["--version"])
-
-        // Then
-        #expect(output.standardOutput == expectedOutput)
-        #expect(output.standardError.isEmpty)
-        #expect(output.terminationStatus == 0)
-    }
-
-    // spectra-scenario: cli-root-command / Reject undefined input
-    // spectra-scenario: cli-root-command / Reject undefined input / unknown option and unexpected argument
-    /// 驗證未定義的選項或引數只在標準錯誤印出錯誤，第一行指出該輸入，標準輸出為空，退出碼為 64
-    ///
-    /// - Parameters:
-    ///   - argument: 指令沒有定義的選項或引數
-    ///   - expectedFirstLine: 標準錯誤的第一行，與 spec 範例的 stderr 第一行逐字相同
-    @Test(
-        arguments: zip(
-            ["--bogus", "foo"],
-            ["Error: Unknown option '--bogus'", "Error: Unexpected argument 'foo'"]
-        )
-    )
-    func lkai_未定義的輸入_錯誤只印到標準錯誤且退出碼為64(argument: String, expectedFirstLine: String) throws {
-        // Given
-
-        // When
-        let output = try runLKAI(arguments: [argument])
-
-        // Then
-        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
-        let firstLine = try #require(lines.first)
-        #expect(firstLine == expectedFirstLine)
-        #expect(output.standardOutput.isEmpty)
-        #expect(output.terminationStatus == 64)
-    }
-}
-
-// MARK: - Nested Types
-
-extension LKAICommandTests {
-
-    /// 只用來讓 `Bundle(for:)` 找出測試 bundle 的空型別，因為該 API 只接受 class
-    private final class BundleLocator {
-
-    }
-
-    /// 一次 `lkai` 行程結束後留下的標準輸出、標準錯誤與退出碼
-    struct CommandOutput {
-
-        /// 行程寫到標準輸出的全部文字
-        let standardOutput: String
-
-        /// 行程寫到標準錯誤的全部文字
-        let standardError: String
-
-        /// 行程的退出碼
-        let terminationStatus: Int32
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAICommandTests {
-
-    /// 以 `Process` 執行建置出的 `lkai`，標準輸出與標準錯誤各接一條 `Pipe` 分開收集
-    ///
-    /// - Parameter arguments: 傳給 `lkai` 的命令列引數
-    /// - Returns: 行程結束後讀到的標準輸出、標準錯誤與退出碼
-    /// - Throws: 行程無法啟動或輸出讀取失敗時丟出
-    /// - Note: 執行檔取自測試 bundle 所在的資料夾；找不到時讓測試失敗，不略過
-    func runLKAI(arguments: [String]) throws -> CommandOutput {
-        let testBundleURL = Bundle(for: BundleLocator.self).bundleURL
-        let executableURL = testBundleURL.deletingLastPathComponent().appending(path: "lkai")
-        try #require(
-            FileManager.default.isExecutableFile(atPath: executableURL.path),
-            "找不到 lkai 執行檔：\(executableURL.path)"
-        )
-
-        let process = Process()
-        let standardOutputPipe = Pipe()
-        let standardErrorPipe = Pipe()
-        process.executableURL = executableURL
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = standardOutputPipe
-        process.standardError = standardErrorPipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        // 輸出只有幾行，行程結束後再讀不會塞滿 Pipe；沒有內容時以空資料處理
-        let standardOutputData = try standardOutputPipe.fileHandleForReading.readToEnd() ?? Data()
-        let standardErrorData = try standardErrorPipe.fileHandleForReading.readToEnd() ?? Data()
-        return CommandOutput(
-            standardOutput: String(decoding: standardOutputData, as: UTF8.self),
-            standardError: String(decoding: standardErrorData, as: UTF8.self),
-            terminationStatus: process.terminationStatus
-        )
     }
 }
