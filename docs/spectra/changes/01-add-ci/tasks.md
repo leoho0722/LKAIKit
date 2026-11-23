@@ -48,7 +48,7 @@
     - spectra-exclude: continuous-integration / A unit test fails | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由內容審查確認 swift test 的退出碼會讓 job 失敗
     - spectra-exclude: continuous-integration / Smoke check the setup action | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.2 在 CI 上確認
     - spectra-exclude: continuous-integration / The action looks for lkai in the debug build directory | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.1 在 scratch 的乾淨 clone 中實測
-- [ ] 1.3 依 design「lkai 留在 release 建置資料夾執行，不複製」，改寫 `docs/adding-a-provider.md` 第 7 章「`lkai` 要和 `LKAIKit_LKAICore.bundle`、`LKAIKit_LKAIKitCLI.bundle` 放在同一個資料夾」一列，讓之後修改的人知道 bundle 的問題怎麼處理（sonnet）：
+- [x] 1.3 依 design「lkai 留在 release 建置資料夾執行，不複製」，改寫 `docs/adding-a-provider.md` 第 7 章「`lkai` 要和 `LKAIKit_LKAICore.bundle`、`LKAIKit_LKAIKitCLI.bundle` 放在同一個資料夾」一列，讓之後修改的人知道 bundle 的問題怎麼處理（sonnet）：
   - 處理方式改為已處理：action 不複製 `lkai`，從 release 的建置資料夾執行。
   - 寫出這個 change 的驗收方式（lkai-setup-action「Report a service failure when run from PATH」）。
   - 寫明之後要複製 `lkai`（例如附上執行檔）時，仍要連同兩個 bundle 一起複製。
