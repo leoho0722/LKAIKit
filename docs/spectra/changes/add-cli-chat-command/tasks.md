@@ -318,7 +318,7 @@
     - 兩個新測試都是回歸防護，通過。
     - mutation check：`LKAIOutputLanguage.zhTW` 的 `localization` 改成 `"zh-TW"` 後，兩個新測試與既有的 `localization_各輸出語言_對應語言資料夾的名稱` 都失敗，之後已還原。
     - sonnet 推測：機器的語言是正體中文時，退回的查詢可能取得 zh-Hant 的字串，這個 mutation 就會漏掉。實測結果：這台機器的偏好語言是 `zh-Hant-TW`、`en-TW`，退回的查詢得到的仍是 en 的字串，所以新測試抓得到。
-- [ ] 9.4 [after: 9.1] 其他測試的補強與修正（回歸防護）（sonnet）：
+- [x] 9.4 [after: 9.1] 其他測試的補強與修正（回歸防護）（sonnet）：
   - 補 cli-chat「Keep partial streamed text on failure」新增的順序（實作審查 opus S3）：`LKAIChatRunnerTests` 的 `run_stream中途失敗_stdout保留已收到的文字並補LF` 與 `run_stream沒有結束事件就結束_當成失敗並寫出細節`，以 `recorder.timeline` 斷言補的 LF 寫在第一個 stderr 寫入之前。
   - 補兩個情境，都寫在 `LKAIChatRunnerTests`：
     - 「Keep a multi-line detail as received」（實作審查 opus S2）。
@@ -332,7 +332,16 @@
   - 驗證：
     - `swift test --filter "LKAIChatRunnerTests|LKAICommandProcessTests|LKAIChatInputTests|LKAIChatProviderTests|LKAICommandLiveTests"` 通過，實際 API 測試顯示為略過。
     - 主對話暫時對調 `runStream(_:)` 中補 LF 與寫 stderr 的順序，確認順序的斷言會失敗，然後還原。
-- [ ] 9.5 [after: 9.1] 註解、說明文字與文件（sonnet）：
+  - 完成紀錄（主對話，2026-11-23）：
+    - 新增與修改的斷言都是回歸防護。`LKAIKitCLITests` 91 個測試通過，3 個實際 API 測試略過，建置零警告。
+    - 順序斷言的寫法和任務描述不同：sonnet 改成「stdout 的寫入都排在第一個 stderr 寫入之前」。原因是兩個測試的第二列本來就不會補 LF（文字已經以 LF 結尾，或根本沒有文字）。補 LF 的那一列已涵蓋 spec 要求的順序。
+    - mutation check 四項都讓新測試失敗，之後已還原：
+      - 先寫 stderr 再補 LF：兩個串流失敗測試失敗。
+      - 細節的 LF 換成空格：多行細節的測試失敗。
+      - 回答也遮蔽金鑰：回答原樣寫出的測試失敗。
+      - Gemini 的環境變數改成 `GEMINI_API_KEY`：名稱樣式的測試失敗。
+    - 用法那一行，以及 `-v --provider bogus` 的退出碼，都由 swift-argument-parser 產生，沒有做 mutation check。
+- [x] 9.5 [after: 9.1] 註解、說明文字與文件（sonnet）：
   - String Catalog 的 `cli.help.discussion` 中退出碼 1 的說明，en 與 zh-Hant 改成 design Implementation Contract「行為」寫的文字（實作審查 opus S6）。
   - `///` 的修改（實作審查 fable S2）：
     - `LKAICommand` 的 `outputLanguage` 屬性，以及 `extension LKAIOutputLanguage: ExpressibleByArgument {}`，各加一段：改名稱、parsing 策略或值的轉換時，要同步修改 `LKAIOutputLanguage.scanned(from:)`，並在 `scanned_可解析的引數_與解析出的輸出語言相同` 加一組引數。
@@ -350,6 +359,9 @@
   - 驗證：
     - `swift build --build-tests` 零警告，`swift test --filter LKAIKitCLITests` 通過。
     - 內容審查確認 discussion 的兩種語言、`///` 與第 7 章的四列。
+  - 完成紀錄（主對話，2026-11-23）：
+    - 「加一個換行」改成 LF 的用語修正，和 9.4 一起 commit。
+    - discussion 改寫之後，以 `COLUMNS=300` 重新實測：最長的一行仍是 `--output-language` 的 244 字元，`helpColumns` 的說明仍然正確。
 - [ ] 9.6 [after: 9.2, 9.3, 9.4, 9.5] 修正後的驗收（主對話），依 design「完成後的狀態」與「驗收」：
   - `swift package clean` 後的建置與完整測試零警告，記錄測試數。
   - iOS 模擬器建置 `LKAIKit` scheme。
