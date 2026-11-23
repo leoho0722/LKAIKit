@@ -340,6 +340,104 @@ struct LKAICommandTests {
         #expect(englishRequest.systemPrompt == nil)
     }
 
+    // spectra-scenario: cli-chat / Build the request from the options
+    /// 驗證不給 `--max-output-tokens` 時，送給 client 的請求的 `maxOutputTokens` 是預設的 4096，
+    /// 模型與訊息來自 `-m` 與 `-p`，沒有系統指示
+    ///
+    /// - Note: 預期的請求以字面值組出，4096 是 spec 與 design 寫的預設值，不從受測的程式碼取值
+    @Test
+    func execute_沒給maxOutputTokens_請求的輸出上限是預設的4096() async throws {
+        // Given
+        let arguments = [
+            "--provider", "anthropic", "-m", "claude-opus-5-5", "-p", "Reply with OK.",
+            "--apiKey", "sk-test",
+        ]
+        let client = makeSucceedingClient()
+        let expectedRequest = LKAIChatRequest(
+            model: "claude-opus-5-5",
+            messages: [LKAIMessage(role: .user, text: "Reply with OK.")],
+            systemPrompt: nil,
+            maxOutputTokens: 4096
+        )
+
+        // When
+        try await executeCommand(arguments, client: client)
+
+        // Then
+        #expect(client.invokeReceivedRequests.first == expectedRequest)
+    }
+
+    // spectra-scenario: cli-chat / Redact the API key in the detail
+    // spectra-scenario: cli-output-language / Translate an error from the AI service
+    /// 驗證 `--output-language` 與 `--apiKey` 都從 `execute` 接到執行器：client 丟出的錯誤訊息含金鑰時，
+    /// 標準錯誤第一行是 `Error: ` 加 `zh-Hant` 的說明，第二行的金鑰換成 `[REDACTED]`，
+    /// 整段不含金鑰；`execute` 丟出的錯誤對應成退出碼 1（`ExitCode.failure`）
+    ///
+    /// - Note: 第一行的期望值以 `errorDescription(localization:)` 查出，不在測試裡寫死翻譯
+    /// - Note: `#require` 放在最後，前面的斷言失敗時也都會執行
+    @Test
+    func execute_輸出語言zhTW且錯誤訊息含金鑰_stderr是該語言的說明並遮蔽金鑰且退出碼為1() async throws {
+        // Given
+        let arguments = [
+            "--provider", "openai", "-m", "x", "-p", "hi", "--apiKey", "sk-secret-123",
+            "--output-language", "zh-TW",
+        ]
+        let chatError = LKAIError.invalidRequest(
+            message: "Incorrect API key provided: sk-secret-123"
+        )
+        let client = MockChatClient(invokeResult: .failure(chatError))
+        let recorder = ChatRunRecorder()
+        let expectedDescription = LKAIError.invalidRequest(message: nil)
+            .errorDescription(localization: "zh-Hant")
+        var actualError: (any Error)?
+
+        // When
+        do {
+            try await executeCommand(arguments, client: client, recorder: recorder)
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let lines = recorder.standardError
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        #expect(lines.first == "Error: \(expectedDescription)")
+        #expect(lines.dropFirst().first == "Details: Incorrect API key provided: [REDACTED]")
+        #expect(!recorder.standardError.contains("sk-secret-123"))
+        let thrownError = try #require(actualError)
+        #expect(LKAICommand.exitCode(for: thrownError) == ExitCode.failure)
+    }
+
+    // spectra-scenario: cli-chat / Report a failed write of the answer
+    /// 驗證標準輸出的第 1 次寫入以 `CocoaError(.fileWriteOutOfSpace)` 失敗時，
+    /// `execute` 丟出的錯誤對應成退出碼 1（`ExitCode.failure`）
+    ///
+    /// - Note: client 會成功回答，所以失敗只來自寫入；訊息的內容由 `LKAIChatRunnerTests` 驗證，
+    ///   這裡確認 `execute` 把寫入失敗接到退出碼
+    @Test
+    func execute_寫入標準輸出失敗_丟出的錯誤對應成退出碼1() async throws {
+        // Given
+        let arguments = ["--provider", "openai", "-m", "x", "-p", "hi", "--apiKey", "sk-test"]
+        let failingWrite: (index: Int, error: any Error) = (
+            index: 1,
+            error: CocoaError(.fileWriteOutOfSpace)
+        )
+        let recorder = ChatRunRecorder(failingStandardOutputWrite: failingWrite)
+        var actualError: (any Error)?
+
+        // When
+        do {
+            try await executeCommand(arguments, client: makeSucceedingClient(), recorder: recorder)
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let thrownError = try #require(actualError)
+        #expect(LKAICommand.exitCode(for: thrownError) == ExitCode.failure)
+    }
+
     /// 驗證結果對應成退出碼：回答完成時 `execute` 不丟出，被截斷時丟出 `ExitCode(2)`，
     /// 對話失敗時丟出 `ExitCode.failure`（1）
     ///
@@ -513,13 +611,16 @@ private extension LKAICommandTests {
     ///   - arguments: 命令列引數
     ///   - client: 替身 client
     ///   - environment: 傳給 `execute` 的環境變數，預設是空的
+    ///   - recorder: 記錄輸出的記錄器，預設每次建立新的一個；要檢查輸出，或要讓標準輸出的寫入失敗時，
+    ///     由呼叫端傳入
     /// - Returns: `makeClient` 依序收到的輸入
     /// - Throws: 解析失敗，或 `execute` 丟出錯誤時原樣丟出
     @discardableResult
     func executeCommand(
         _ arguments: [String],
         client: MockChatClient,
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        recorder: ChatRunRecorder = ChatRunRecorder()
     ) async throws -> [LKAIChatInput] {
         let command = try makeCommand(arguments)
         var receivedInputs: [LKAIChatInput] = []
@@ -529,7 +630,7 @@ private extension LKAICommandTests {
                 receivedInputs.append(input)
                 return client
             },
-            output: ChatRunRecorder().output
+            output: recorder.output
         )
         return receivedInputs
     }
