@@ -481,7 +481,7 @@
       - `scanned(from:)` 一律回傳 en-US：zh-TW 的 `Help:` 行測試失敗。
     - 實際 API 測試：`git diff -U0 1bf56e3..HEAD -- Sources/` 中，`///` 以外的變更行數是 0，所以不重跑；9.6 的結果仍然有效。
     - 之後依使用者的選擇，再跑一次 `/spectra-verify`、`/spectra-review`，並送 fable 與 opus 審查。
-- [ ] 9.11 [after: 9.10] 封存前最終審查後複審的修正，交付 cli-root-command「Invalid input rejection」新情境的測試（回歸防護）（sonnet）。來源是 `/spectra-verify`、fable 與 opus 的複審；`/spectra-review` 沒有發現問題：
+- [x] 9.11 [after: 9.10] 封存前最終審查後複審的修正，交付 cli-root-command「Invalid input rejection」新情境的測試（回歸防護）（sonnet）。來源是 `/spectra-verify`、fable 與 opus 的複審；`/spectra-review` 沒有發現問題：
   - 測試：
     - `LKAICommandProcessTests` 新增 cli-root-command「Invalid input rejection」的情境「Request help together with undefined input」，以「help with undefined input」三列參數化。斷言：stdout 有一行以 `USAGE: lkai ` 開頭、stderr 為空、退出碼 0。2026-11-23 實測這三列都印出說明、退出碼 0（fable S1、opus S2）。
     - `LKAIChatInputTests.makeSessionConfiguration_指定逾時_請求逾時等於該秒數` 加兩個斷言：`urlCache?.diskCapacity` 是 0，`httpCookieStorage` 不是 `HTTPCookieStorage.shared`。依據是 2026-11-23 實測：`.ephemeral` 的磁碟快取是 0、cookie 不共用；`.default` 是 20000000、cookie 共用（verify 建議 1）。
@@ -497,13 +497,30 @@
   - 驗證：
     - `swift test --filter LKAIKitCLITests` 通過，`Sources/` 沒有變更。
     - 主對話做 mutation check：`makeSessionConfiguration()` 改用 `.default`，新斷言要失敗。
-- [ ] 9.12 [after: 9.11] 最後的驗收（主對話）：
+  - 完成紀錄（主對話，2026-11-23）：
+    - 新測試都是回歸防護，通過。`LKAIKitCLITests` 98 個測試通過，建置零警告，`Sources/` 沒有變更。
+    - mutation check：`makeSessionConfiguration()` 改用 `.default` 後，`makeSessionConfiguration_指定逾時_請求逾時等於該秒數` 失敗，之後已還原。
+    - 說明旗標加未定義輸入、空白的 `blank.md` 這兩項，行為都來自 swift-argument-parser，或來自既有的輸入檢查，所以沒有做 mutation check。
+- [x] 9.12 [after: 9.11] 最後的驗收（主對話）：
   - 檢查項目和 9.8 相同：乾淨建置與完整測試零警告、iOS 模擬器建置、反向檢查。
   - 執行 `spectra coverage`。MODIFIED 的「Invalid input rejection」使既有的「Reject undefined input」也納入這次的 delta，確認它和新情境都有測試標記。
   - 確認 `Sources/` 從 50bb95c 之後沒有變更，所以不重跑實際 API 測試。
   - 驗收通過後執行 `/spectra-archive`（使用者 2026-11-23 選擇）。
   - 驗證：每一項的結果記錄在本任務下方。
 
+  - 執行紀錄（2026-11-23，主對話，功能分支在 9.11 合併之後，三個 `LKAI_*_API_KEY` 都沒有設定）：
+    - 建置：`swift package clean` 後，`swift build`、`swift build --build-tests` 與 `swift test` 都以退出碼 0 結束，三份紀錄都沒有 `warning:`。
+    - 測試數：270 個測試、41 個 suite 全部通過，其中 `LKAIKitCLITests` 有 98 個。9 個實際 API 測試略過；4 個 known issue 和 8.2 相同。
+    - iOS：`build_sim` 建置 iPhone 17（iOS 26.5）的 `LKAIKit` scheme，SUCCEEDED，沒有 warning，也沒有 error。
+    - 反向檢查：和 9.6 的項目相同，全部符合。另外三項：
+      - 照 `docs/adding-a-provider.md` 第 3 章的寫法執行 `grep -rn 'unredactedValue' Sources | grep -v '///'`，結果正好是 8 行：`LKAIAPIKey.swift` 3 行、三家 client 各 1 行、`LKAIKitCLI` 2 行。
+      - `let apiKey: String` 沒有結果。
+      - 測試說明中沒有描述開發過程的用語。
+    - spec 情境：`spectra coverage` 回報 69 項都有測試標記，0 項排除，0 項缺少。
+      - MODIFIED 的「Invalid input rejection」，讓既有的「Reject undefined input」也納入 delta；它和新情境都有標記。
+      - 指向主 spec 原有情境、不在這次 delta 裡的標記，從 10 個減為 6 個。
+    - 實際 API 測試：`git diff 50bb95c..HEAD -- Sources/` 沒有任何變更，所以不重跑；9.6 的結果仍然有效。
+    - 驗收通過，接著執行 `/spectra-archive`（使用者 2026-11-23 選擇）。
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。
 - fable S6：「detail lines」表在兩個測試檔各有一份；`outputModes` 與「取第一行」的寫法重複。`makeTemporaryDirectory()` 在 9.1 之後已經有三份，改由 9.7 收進共用的 support 檔（實作複審 fable S3）。
