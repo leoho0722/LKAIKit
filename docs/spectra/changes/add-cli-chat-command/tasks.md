@@ -424,6 +424,9 @@
     - spec 情境：`spectra coverage` 回報 61 項都有測試標記，0 項排除，0 項缺少；新情境「Report a failed write of the trailing LF in a stream」與它的範例都有標記。
     - 實際 API 測試：`git diff -U0 29c5540..HEAD -- Sources/` 中，`///` 以外的變更行數是 0，`Sources` 的行為不變，所以不重跑；9.6 的結果仍然有效。
     - 之後送 fable 與 opus 複審 9.7。
+  - 第三輪複審（2026-11-23，fable、opus）：
+    - 兩位都回報 Critical 0、Warning 0，第二輪的各項都正確處理，spec、design、proposal、tasks 與實作一致。
+    - 兩位提出同一項 Suggestion：`LKAICommandTestSupport` 型別說明中列出的使用者，沒有包含 9.7 之後才使用它的測試。主對話改成依用途說明，只改 `///`。
 
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。

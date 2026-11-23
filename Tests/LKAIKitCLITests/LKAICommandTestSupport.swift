@@ -11,8 +11,8 @@ import Testing
 /// `lkai` 的測試共用 helper：以行程執行建置出的 `lkai`、說明文字固定的寬度，
 /// 以及測試共用的暫存資料夾
 ///
-/// - Note: 給 in-process 的 `LKAICommandTests`、以行程執行的 `LKAICommandProcessTests`
-///   與 `LKAICommandLiveTests` 共用
+/// - Note: 依用途共用：`runLKAI` 與 `defaultEnvironment` 給以行程執行 `lkai` 的測試，
+///   `helpColumns` 給檢查說明文字的測試，`makeTemporaryDirectory()` 給需要暫存檔案的測試
 /// - Note: 和對話替身（`MockChatClient`、`ChatRunRecorder`）是不同的檔案
 enum LKAICommandTestSupport {
 
