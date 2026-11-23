@@ -57,7 +57,7 @@
 
 ## 2. 驗收
 
-- [ ] 2.1 [after: 1.1, 1.2, 1.3] 主對話在功能分支上做本機的檢查，不 push：
+- [x] 2.1 [after: 1.1, 1.2, 1.3] 主對話在功能分支上做本機的檢查，不 push：
   - owner 同意後以 Homebrew 安裝 `actionlint`，`actionlint .github/workflows/ci.yml` 沒有錯誤。
   - 照 `action.yml` 建置 step 的指令建置 release 版的 `lkai`，確認 `--show-bin-path` 印出 `.build/out/Products/Release`，把它加進 `PATH`。
   - 依 lkai-setup-action「Report a service failure when run from PATH」，在 package 以外的資料夾：
@@ -66,6 +66,13 @@
   - 依 continuous-integration「The action looks for lkai in the debug build directory」，在 scratch 的乾淨 clone 中，把 action 的 `--show-bin-path` 改成不加 `-c release` 執行一次，確認 `lkai -v` 失敗、退出碼不是 0。
   - `swift test` 通過。
   - 驗證：以上指令的結果記在任務回報中。
+  - 執行紀錄（2026-11-24，本機 M1、Xcode 27.2）：
+    - `brew install actionlint`（1.7.12，連同依賴 `shellcheck`）。`actionlint .github/workflows/ci.yml` 只回報 `label "xcode-27" is unknown`：1.7.12 內建的標籤清單還沒有 2026-10-15 GA 的 `xcode-27`（GitHub Changelog 與 runner-images README 都列有這個標籤），屬於誤報，由 2.2 的實際執行確認；以 `-ignore 'label "xcode-27" is unknown'` 重跑沒有其他錯誤，`run` 區塊的 shellcheck 也通過。
+    - 照 `action.yml` 的指令以 `--package-path` 指向 repo 建置：`--show-bin-path` 印出 `.build/out/Products/Release`，`lkai -v` 是 `0.1.0`。
+    - 在 package 以外的資料夾從 `PATH` 執行：`lkai -v` 印出 `0.1.0`、退出碼 0；以被拒絕的金鑰執行 `lkai --provider anthropic -m claude-opus-5-5 -p hi`，退出碼 1，stderr 第一行是 `Error: The API key is invalid.`，stdout 是空的，輸出不含金鑰。
+    - 「The action looks for lkai in the debug build directory」：在 scratch 的乾淨 clone 中只做 release 建置，再以不加 `-c release` 的 `--show-bin-path` 取資料夾，用 `bash --noprofile --norc -eo pipefail` 執行時 `lkai -v` 以退出碼 127 失敗，後面的指令沒有執行。（第一次誤用 zsh 執行，zsh 的 `set -e` 不會在失敗的指令替換中止，那次結果不採用。）
+    - 另外把 `action.yml` 的建置 step 與 `ci.yml` 的試跑 step 原樣取出，在乾淨的 clone 中以同樣的 bash 依序執行：建置 step 退出碼 0，`GITHUB_PATH` 是 Release 資料夾，輸出 `path` 與 `version=0.1.0`；試跑 step 退出碼 0。
+    - `swift test` 退出碼 0：7 個測試 target 共 270 個測試通過、0 個失敗，9 個需要真實 API Key 的測試函式顯示為略過；環境中沒有任何 `LKAI_*` 變數。
 - [ ] 2.2 [after: 2.1] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 在 `xcode-27` runner 通過：
   - 依 design「CI 跑單元測試與 action 試跑」，在分支上暫時加一個 step，以 `uses: leoho0722/LKAIKit@feat/01-add-ci` 引用 action，並執行 `lkai -v`；通過後移除這個 step 再推一次，確認 CI 仍通過。
   - 驗證：PR 的 CI check 成功。
