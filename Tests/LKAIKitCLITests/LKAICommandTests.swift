@@ -12,11 +12,14 @@ import Testing
 
 @testable import LKAIKitCLI
 
-/// `LKAICommand` 的單元測試
+/// `LKAICommand` 的單元測試：在同一個行程內直接呼叫 `parseAsRoot` 與 `run`
+///
+/// - Note: 以行程執行 `lkai` 的測試在 `LKAICommandProcessTests`
 struct LKAICommandTests {
 
     // spectra-scenario: cli-root-command / Run the executable without arguments
-    /// 驗證不帶參數解析出的指令執行 `run()` 時，丟出說明請求，訊息有一行剛好是 `USAGE: lkai`，退出碼為成功
+    /// 驗證不帶參數解析出的指令執行 `run()` 時，丟出說明請求，訊息有一行以 `USAGE: lkai `（含結尾空格）開頭，
+    /// 退出碼為成功
     @Test
     func run_不帶參數_拋出說明請求且退出碼為成功() async throws {
         // Given
@@ -34,13 +37,14 @@ struct LKAICommandTests {
         // Then
         let error = try #require(actualError)
         let message = LKAICommand.fullMessage(for: error)
-        #expect(message.split(separator: "\n").contains("USAGE: lkai"))
+        #expect(message.split(separator: "\n").contains { $0.hasPrefix("USAGE: lkai ") })
         #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
     }
 
     // spectra-scenario: cli-root-command / Request help with the long flag
     // spectra-scenario: cli-root-command / Request help with the short flag
-    /// 驗證 `--help` 與 `-h` 解析後執行指令，得到有一行剛好是 `USAGE: lkai` 且列出 `--version` 的說明，退出碼為成功
+    /// 驗證 `--help` 與 `-h` 解析後執行指令，得到有一行以 `USAGE: lkai `（含結尾空格）開頭且列出 `--version` 的說明，
+    /// 退出碼為成功
     ///
     /// - Parameter argument: 要求說明的命令列旗標
     @Test(arguments: ["--help", "-h"])
@@ -59,7 +63,7 @@ struct LKAICommandTests {
         // Then
         let error = try #require(actualError)
         let message = LKAICommand.fullMessage(for: error)
-        #expect(message.split(separator: "\n").contains("USAGE: lkai"))
+        #expect(message.split(separator: "\n").contains { $0.hasPrefix("USAGE: lkai ") })
         #expect(message.contains("--version"))
         #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
     }
@@ -118,67 +122,466 @@ struct LKAICommandTests {
         #expect(LKAICommand.exitCode(for: error) == ExitCode.validationFailure)
     }
 
-    // spectra-scenario: cli-root-command / Run the executable without arguments
-    // spectra-scenario: cli-root-command / Request help with the long flag
-    // spectra-scenario: cli-root-command / Request help with the short flag
-    /// 驗證不帶參數、`--help`、`-h` 時，標準輸出有一行剛好是 `USAGE: lkai` 並列出 `--version`，標準錯誤為空，退出碼為 0
-    ///
-    /// - Parameter arguments: 傳給 `lkai` 的命令列引數，空陣列表示不帶參數
-    @Test(arguments: [[], ["--help"], ["-h"]])
-    func lkai_不帶參數或要求說明_說明只印到標準輸出且退出碼為0(arguments: [String]) throws {
-        // Given
-
-        // When
-        let output = try runLKAI(arguments: arguments)
-
-        // Then
-        #expect(output.standardOutput.split(separator: "\n").contains("USAGE: lkai"))
-        #expect(output.standardOutput.contains("--version"))
-        #expect(output.standardError.isEmpty)
-        #expect(output.terminationStatus == 0)
-    }
-
-    // spectra-scenario: cli-root-command / Request the version
-    /// 驗證 `--version` 只在標準輸出印出 `LKAIKitInfo.version` 加一個換行，標準錯誤為空，退出碼為 0
+    // spectra-scenario: cli-root-command / Request the version with the short flag
+    /// 驗證 `-v` 得到的訊息就是 `LKAIKitInfo.version` 本身、沒有多餘文字，且以成功的退出碼結束
     @Test
-    func lkai_要求版本_版本只印到標準輸出且退出碼為0() throws {
+    func parseAsRoot_短旗標要求版本_訊息等於套件版本且退出碼為成功() throws {
         // Given
-        let expectedOutput = "\(LKAIKitInfo.version)\n"
+        let expectedVersion = LKAIKitInfo.version
+        var actualError: (any Error)?
 
         // When
-        let output = try runLKAI(arguments: ["--version"])
+        do {
+            _ = try LKAICommand.parseAsRoot(["-v"])
+        } catch {
+            actualError = error
+        }
 
         // Then
-        #expect(output.standardOutput == expectedOutput)
-        #expect(output.standardError.isEmpty)
-        #expect(output.terminationStatus == 0)
+        let error = try #require(actualError)
+        #expect(LKAICommand.fullMessage(for: error) == expectedVersion)
+        #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
     }
 
-    // spectra-scenario: cli-root-command / Reject undefined input
-    // spectra-scenario: cli-root-command / Reject undefined input / unknown option and unexpected argument
-    /// 驗證未定義的選項或引數只在標準錯誤印出錯誤，第一行指出該輸入，標準輸出為空，退出碼為 64
+    // spectra-scenario: cli-root-command / Request the version together with chat options
+    /// 驗證版本旗標與完整的對話選項一起給時，`parseAsRoot` 就丟出版本訊息：訊息等於
+    /// `LKAIKitInfo.version`、退出碼為成功；流程在 `validate()` 就結束，所以 `execute` 不會執行
+    @Test
+    func parseAsRoot_版本旗標加對話選項_訊息等於套件版本且退出碼為成功() throws {
+        // Given
+        let expectedVersion = LKAIKitInfo.version
+        var actualError: (any Error)?
+
+        // When
+        do {
+            _ = try LKAICommand.parseAsRoot(
+                ["-v", "--provider", "openai", "-m", "gpt-6-luna", "-p", "hi"]
+            )
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let error = try #require(actualError)
+        #expect(LKAICommand.fullMessage(for: error) == expectedVersion)
+        #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
+    }
+
+    /// 驗證輸出語言是 `zh-TW` 時，說明的簡介與 `--provider` 的說明都是 `zh-Hant` 的翻譯
+    ///
+    /// - Note: 以 `LKAIOutputLanguage.$current` 綁定語言，說明以固定的寬度產生，期望值以 `LKAICLIText` 查出
+    /// - Note: 驗證 cli-output-language「Translated command text」本文中選項說明的翻譯，沒有對應的 Scenario，
+    ///   所以不加 `spectra-scenario` 標記
+    @Test
+    func helpMessage_輸出語言為zhTW_簡介與provider說明是正體中文() {
+        // Given
+        let expectedAbstract = LKAICLIText.helpAbstract.string(in: .zhTW)
+        let expectedProviderHelp = LKAICLIText.helpProvider.string(in: .zhTW)
+
+        // When
+        let message = LKAIOutputLanguage.$current.withValue(.zhTW) {
+            LKAICommand.helpMessage(columns: LKAICommandTestSupport.helpColumns)
+        }
+
+        // Then
+        #expect(message.contains(expectedAbstract))
+        #expect(message.contains(expectedProviderHelp))
+    }
+
+    // spectra-scenario: cli-chat / List every environment variable in the help
+    /// 驗證兩種輸出語言的說明，都含每個供應商讀取金鑰的環境變數名稱
+    ///
+    /// - Parameter language: 輸出語言
+    @Test(arguments: LKAIOutputLanguage.allCases)
+    func helpMessage_各輸出語言_列出每個供應商的環境變數(language: LKAIOutputLanguage) {
+        // Given
+
+        // When
+        let message = LKAIOutputLanguage.$current.withValue(language) {
+            LKAICommand.helpMessage(columns: LKAICommandTestSupport.helpColumns)
+        }
+
+        // Then
+        for provider in LKAIChatProvider.allCases {
+            #expect(message.contains(provider.apiKeyEnvironmentName))
+        }
+    }
+
+    // spectra-scenario: cli-chat / Name the alternatives in the prompt help
+    // spectra-scenario: cli-chat / Name the alternatives in the prompt help / help languages
+    /// 驗證兩種輸出語言的說明，都含 `--prompt` 的說明，而且那則說明寫明 `--prompt=` 與 `--prompt-file`
+    ///
+    /// - Parameter language: 輸出語言，對應範例表的兩列
+    /// - Note: 說明字串以 `LKAICLIText` 查出，另外確認它本身含兩個替代寫法，再確認整份說明含有它
+    @Test(arguments: LKAIOutputLanguage.allCases)
+    func helpMessage_各輸出語言_prompt說明寫明以破折號開頭時的替代寫法(language: LKAIOutputLanguage) {
+        // Given
+        let promptHelp = LKAICLIText.helpPrompt.string(in: language)
+
+        // When
+        let message = LKAIOutputLanguage.$current.withValue(language) {
+            LKAICommand.helpMessage(columns: LKAICommandTestSupport.helpColumns)
+        }
+
+        // Then
+        #expect(promptHelp.contains("--prompt="))
+        #expect(promptHelp.contains("--prompt-file"))
+        #expect(message.contains(promptHelp))
+    }
+
+    /// 驗證每一組能解析成功、而且不含 `-h` 與 `-v` 的引數，掃描出的輸出語言都等於解析出的 `--output-language`
+    ///
+    /// - Parameter arguments: 命令列引數
+    /// - Note: 這是回歸防護：確認 `LKAIOutputLanguage.scanned(from:)` 和解析器的結果一致；
+    ///   往後修改選項的寫法或 parsing 策略時，兩邊不同步就會失敗
+    @Test(arguments: [
+        [],
+        ["--output-language", "zh-TW"],
+        ["--output-language=zh-TW", "--stream"],
+        ["--output-language", "en-US", "--output-language", "zh-TW"],
+        ["--provider", "openai", "--output-language", "zh-TW", "-p", "x"],
+    ])
+    func scanned_可解析的引數_與解析出的輸出語言相同(arguments: [String]) throws {
+        // Given
+        let parsedCommand = try LKAICommand.parseAsRoot(arguments)
+        let command = try #require(parsedCommand as? LKAICommand)
+
+        // When
+        let scannedLanguage = LKAIOutputLanguage.scanned(from: arguments)
+
+        // Then
+        #expect(scannedLanguage == command.outputLanguage)
+    }
+
+    // spectra-scenario: cli-chat / Map the provider to its client
+    /// 驗證 `--provider` 的三種值，交給 `makeClient` 的輸入的供應商與金鑰都正確
     ///
     /// - Parameters:
-    ///   - argument: 指令沒有定義的選項或引數
-    ///   - expectedFirstLine: 標準錯誤的第一行，與 spec 範例的 stderr 第一行逐字相同
-    @Test(
-        arguments: zip(
-            ["--bogus", "foo"],
-            ["Error: Unknown option '--bogus'", "Error: Unexpected argument 'foo'"]
-        )
-    )
-    func lkai_未定義的輸入_錯誤只印到標準錯誤且退出碼為64(argument: String, expectedFirstLine: String) throws {
+    ///   - providerValue: `--provider` 的值
+    ///   - expectedProvider: 預期的供應商
+    /// - Note: 範例表的 client 型別與 `description` 由 `LKAIChatProviderTests` 驗證，這裡確認選項接到正確的供應商
+    @Test(arguments: [
+        ("anthropic", .anthropic),
+        ("openai", .openai),
+        ("google", .google),
+    ] as [(String, LKAIChatProvider)])
+    func execute_指定供應商_交給makeClient的輸入有對應的供應商與金鑰(
+        providerValue: String,
+        expectedProvider: LKAIChatProvider
+    ) async throws {
         // Given
+        let arguments = ["--provider", providerValue, "-m", "x", "-p", "hi", "--apiKey", "sk-test"]
 
         // When
-        let output = try runLKAI(arguments: [argument])
+        let inputs = try await executeCommand(arguments, client: makeSucceedingClient())
 
         // Then
-        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
-        let firstLine = try #require(lines.first)
-        #expect(firstLine == expectedFirstLine)
-        #expect(output.standardOutput.isEmpty)
-        #expect(output.terminationStatus == 64)
+        let input = try #require(inputs.first)
+        #expect(inputs.count == 1)
+        #expect(input.provider == expectedProvider)
+        #expect(input.apiKey.unredactedValue == "sk-test")
+    }
+
+    // spectra-scenario: cli-chat / Configure the timeout
+    // spectra-scenario: cli-chat / Configure the timeout / timeout values
+    /// 驗證沒給 `--timeout` 時請求逾時是 60 秒，給了就是該秒數
+    ///
+    /// - Parameters:
+    ///   - timeoutArguments: 要加在基本引數後面的 `--timeout` 引數；沒給時為空陣列
+    ///   - expectedInterval: 預期的請求逾時，單位為秒，對應範例表的三列
+    /// - Note: 逾時以交給 `makeClient` 的輸入所產生的 session 設定確認，不連網
+    @Test(arguments: [
+        ([], 60),
+        (["--timeout", "300"], 300),
+        (["--timeout", "1"], 1),
+    ] as [([String], TimeInterval)])
+    func execute_逾時選項_session設定的請求逾時等於範例表的值(
+        timeoutArguments: [String],
+        expectedInterval: TimeInterval
+    ) async throws {
+        // Given
+        let arguments = ["--provider", "openai", "-m", "x", "-p", "hi", "--apiKey", "sk-test"]
+            + timeoutArguments
+
+        // When
+        let inputs = try await executeCommand(arguments, client: makeSucceedingClient())
+
+        // Then
+        let input = try #require(inputs.first)
+        #expect(input.makeSessionConfiguration().timeoutIntervalForRequest == expectedInterval)
+    }
+
+    // spectra-scenario: cli-chat / Pass a prompt that begins with a dash
+    // spectra-scenario: cli-chat / Pass a prompt that begins with a dash / dash-prefixed prompt text
+    /// 驗證以 `-` 開頭的提示詞，在解析器接受的寫法下原樣成為請求的訊息文字
+    ///
+    /// - Parameters:
+    ///   - promptArguments: 提示詞的引數：`-p -`、`--prompt=- item`、`--prompt=--- a/file`
+    ///   - expectedText: 預期的訊息文字
+    /// - Note: 範例表中被解析器拒絕的兩列，由 `LKAICommandProcessTests` 以行程驗證
+    @Test(arguments: [
+        (["-p", "-"], "-"),
+        (["--prompt=- item"], "- item"),
+        (["--prompt=--- a/file"], "--- a/file"),
+    ] as [([String], String)])
+    func execute_以破折號開頭的提示詞_原樣成為訊息文字(
+        promptArguments: [String],
+        expectedText: String
+    ) async throws {
+        // Given
+        let arguments = ["--provider", "openai", "-m", "x", "--apiKey", "sk-test"] + promptArguments
+        let client = makeSucceedingClient()
+
+        // When
+        try await executeCommand(arguments, client: client)
+
+        // Then
+        let request = try #require(client.invokeReceivedRequests.first)
+        #expect(request.messages == [LKAIMessage(role: .user, text: expectedText)])
+    }
+
+    // spectra-scenario: cli-output-language / Send the same request in both languages
+    /// 驗證輸出語言是 `en-US` 或 `zh-TW`，送給 client 的請求都相同，而且都沒有系統指示
+    @Test
+    func execute_輸出語言不同_送出的請求相同且沒有系統指示() async throws {
+        // Given
+        let baseArguments = [
+            "--provider", "anthropic", "-m", "claude-opus-5-5", "-p", "hi", "--apiKey", "sk-test",
+        ]
+        let englishClient = makeSucceedingClient()
+        let chineseClient = makeSucceedingClient()
+
+        // When
+        let englishArguments = baseArguments + ["--output-language", "en-US"]
+        let chineseArguments = baseArguments + ["--output-language", "zh-TW"]
+        try await executeCommand(englishArguments, client: englishClient)
+        try await executeCommand(chineseArguments, client: chineseClient)
+
+        // Then
+        let englishRequest = try #require(englishClient.invokeReceivedRequests.first)
+        let chineseRequest = try #require(chineseClient.invokeReceivedRequests.first)
+        #expect(englishRequest == chineseRequest)
+        #expect(englishRequest.systemPrompt == nil)
+    }
+
+    // spectra-scenario: cli-chat / Build the request from the options
+    /// 驗證不給 `--max-output-tokens` 時，送給 client 的請求的 `maxOutputTokens` 是預設的 4096，
+    /// 模型與訊息來自 `-m` 與 `-p`，沒有系統指示
+    ///
+    /// - Note: 預期的請求以字面值組出，4096 是 spec 與 design 寫的預設值，不從受測的程式碼取值
+    @Test
+    func execute_沒給maxOutputTokens_請求的輸出上限是預設的4096() async throws {
+        // Given
+        let arguments = [
+            "--provider", "anthropic", "-m", "claude-opus-5-5", "-p", "Reply with OK.",
+            "--apiKey", "sk-test",
+        ]
+        let client = makeSucceedingClient()
+        let expectedRequest = LKAIChatRequest(
+            model: "claude-opus-5-5",
+            messages: [LKAIMessage(role: .user, text: "Reply with OK.")],
+            systemPrompt: nil,
+            maxOutputTokens: 4096
+        )
+
+        // When
+        try await executeCommand(arguments, client: client)
+
+        // Then
+        #expect(client.invokeReceivedRequests.first == expectedRequest)
+    }
+
+    // spectra-scenario: cli-chat / Redact the API key in the detail
+    // spectra-scenario: cli-output-language / Translate an error from the AI service
+    /// 驗證 `--output-language` 與 `--apiKey` 都從 `execute` 接到執行器：client 丟出的錯誤訊息含金鑰時，
+    /// 標準錯誤第一行是 `Error: ` 加 `zh-Hant` 的說明，第二行的金鑰換成 `[REDACTED]`，
+    /// 整段不含金鑰；`execute` 丟出的錯誤對應成退出碼 1（`ExitCode.failure`）
+    ///
+    /// - Note: 第一行的期望值以 `errorDescription(localization:)` 查出，不在測試裡寫死翻譯
+    /// - Note: `#require` 放在最後，前面的斷言失敗時也都會執行
+    @Test
+    func execute_輸出語言zhTW且錯誤訊息含金鑰_stderr是該語言的說明並遮蔽金鑰且退出碼為1() async throws {
+        // Given
+        let arguments = [
+            "--provider", "openai", "-m", "x", "-p", "hi", "--apiKey", "sk-secret-123",
+            "--output-language", "zh-TW",
+        ]
+        let chatError = LKAIError.invalidRequest(
+            message: "Incorrect API key provided: sk-secret-123"
+        )
+        let client = MockChatClient(invokeResult: .failure(chatError))
+        let recorder = ChatRunRecorder()
+        let expectedDescription = LKAIError.invalidRequest(message: nil)
+            .errorDescription(localization: "zh-Hant")
+        var actualError: (any Error)?
+
+        // When
+        do {
+            try await executeCommand(arguments, client: client, recorder: recorder)
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let lines = recorder.standardError
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        #expect(lines.first == "Error: \(expectedDescription)")
+        #expect(lines.dropFirst().first == "Details: Incorrect API key provided: [REDACTED]")
+        #expect(!recorder.standardError.contains("sk-secret-123"))
+        let thrownError = try #require(actualError)
+        #expect(LKAICommand.exitCode(for: thrownError) == ExitCode.failure)
+    }
+
+    // spectra-scenario: cli-chat / Report a failed write of the answer
+    /// 驗證標準輸出的第 1 次寫入以 `CocoaError(.fileWriteOutOfSpace)` 失敗時，
+    /// `execute` 丟出的錯誤對應成退出碼 1（`ExitCode.failure`）
+    ///
+    /// - Note: client 會成功回答，所以失敗只來自寫入；訊息的內容由 `LKAIChatRunnerTests` 驗證，
+    ///   這裡確認 `execute` 把寫入失敗接到退出碼
+    @Test
+    func execute_寫入標準輸出失敗_丟出的錯誤對應成退出碼1() async throws {
+        // Given
+        let arguments = ["--provider", "openai", "-m", "x", "-p", "hi", "--apiKey", "sk-test"]
+        let failingWrite: (index: Int, error: any Error) = (
+            index: 1,
+            error: CocoaError(.fileWriteOutOfSpace)
+        )
+        let recorder = ChatRunRecorder(failingStandardOutputWrite: failingWrite)
+        var actualError: (any Error)?
+
+        // When
+        do {
+            try await executeCommand(arguments, client: makeSucceedingClient(), recorder: recorder)
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let thrownError = try #require(actualError)
+        #expect(LKAICommand.exitCode(for: thrownError) == ExitCode.failure)
+    }
+
+    /// 驗證結果對應成退出碼：回答完成時 `execute` 不丟出，被截斷時丟出 `ExitCode(2)`，
+    /// 對話失敗時丟出 `ExitCode.failure`（1）
+    ///
+    /// - Parameter testCase: 一列範例：client 的 `invoke(_:)` 結果，以及預期的退出碼
+    /// - Note: 預期的退出碼 0 表示沒有丟出任何錯誤；丟出不是 `ExitCode` 的錯誤時，實際值是 -1
+    @Test(arguments: [
+        ExitCodeCase(
+            invokeResult: .success(
+                LKAIChatResponse(
+                    text: "OK",
+                    completion: LKAIChatCompletion(
+                        finishReason: .completed,
+                        usage: nil,
+                        respondingModel: nil
+                    )
+                )
+            ),
+            expectedCode: 0
+        ),
+        ExitCodeCase(
+            invokeResult: .success(
+                LKAIChatResponse(
+                    text: "Partial",
+                    completion: LKAIChatCompletion(
+                        finishReason: .maxOutputTokens,
+                        usage: nil,
+                        respondingModel: nil
+                    )
+                )
+            ),
+            expectedCode: 2
+        ),
+        ExitCodeCase(invokeResult: .failure(.invalidAPIKey), expectedCode: 1),
+    ])
+    func execute_對話結果_對應成退出碼(testCase: ExitCodeCase) async {
+        // Given
+        let arguments = ["--provider", "openai", "-m", "x", "-p", "hi", "--apiKey", "sk-test"]
+        let client = MockChatClient(invokeResult: testCase.invokeResult)
+        var actualError: (any Error)?
+
+        // When
+        do {
+            try await executeCommand(arguments, client: client)
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let actualCode = actualError.map { ($0 as? ExitCode)?.rawValue ?? -1 } ?? 0
+        #expect(actualCode == testCase.expectedCode)
+    }
+
+    /// 驗證加 `--stream` 時只呼叫 client 的 `stream(_:)`，沒加時只呼叫 `invoke(_:)`
+    ///
+    /// - Parameters:
+    ///   - extraArguments: 要加在基本引數後面的引數：`--stream` 或沒有
+    ///   - expectedStreamCalls: 預期 `stream(_:)` 被呼叫的次數
+    ///   - expectedInvokeCalls: 預期 `invoke(_:)` 被呼叫的次數
+    @Test(arguments: [
+        (["--stream"], 1, 0),
+        ([], 0, 1),
+    ] as [([String], Int, Int)])
+    func execute_是否加stream_只呼叫對應的方法(
+        extraArguments: [String],
+        expectedStreamCalls: Int,
+        expectedInvokeCalls: Int
+    ) async throws {
+        // Given
+        let arguments = ["--provider", "openai", "-m", "x", "-p", "hi", "--apiKey", "sk-test"]
+            + extraArguments
+        let client = makeSucceedingClient()
+
+        // When
+        try await executeCommand(arguments, client: client)
+
+        // Then
+        #expect(client.streamReceivedRequests.count == expectedStreamCalls)
+        #expect(client.invokeReceivedRequests.count == expectedInvokeCalls)
+    }
+
+    // spectra-scenario: cli-chat / Only a non-chat option is given
+    /// 驗證四個對話選項都沒給時，不論其他選項有沒有給，`execute` 都丟出說明請求，退出碼為成功，
+    /// 而且沒有建立 client
+    ///
+    /// - Parameter arguments: 命令列引數，不含 `--provider`、`-m`、`-p`、`-f`
+    /// - Note: 這是回歸防護：往後若四個選項都沒給時不再丟出說明請求（例如改成建立 client，
+    ///   或丟出輸入錯誤），這個測試會失敗
+    @Test(arguments: [
+        [],
+        ["--stream"],
+        ["--timeout", "5"],
+        ["--apiKey", "sk-test"],
+        ["--max-output-tokens", "10"],
+        ["--output-language", "zh-TW"],
+    ])
+    func execute_四個對話選項都沒給_丟出說明請求且不建立client(arguments: [String]) async throws {
+        // Given
+        let command = try makeCommand(arguments)
+        var didMakeClient = false
+        var actualError: (any Error)?
+
+        // When
+        do {
+            try await command.execute(
+                environment: [:],
+                makeClient: { _ in
+                    didMakeClient = true
+                    return MockChatClient()
+                },
+                output: ChatRunRecorder().output
+            )
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let error = try #require(actualError)
+        #expect(LKAICommand.fullMessage(for: error).contains("USAGE: lkai"))
+        #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
+        #expect(!didMakeClient)
     }
 }
 
@@ -186,22 +589,14 @@ struct LKAICommandTests {
 
 extension LKAICommandTests {
 
-    /// 只用來讓 `Bundle(for:)` 找出測試 bundle 的空型別，因為該 API 只接受 class
-    private final class BundleLocator {
+    /// 退出碼對應的一列範例：client 的 `invoke(_:)` 結果，以及預期的退出碼
+    struct ExitCodeCase: Sendable {
 
-    }
+        /// client 的 `invoke(_:)` 要回傳的結果
+        let invokeResult: Result<LKAIChatResponse, LKAIError>
 
-    /// 一次 `lkai` 行程結束後留下的標準輸出、標準錯誤與退出碼
-    struct CommandOutput {
-
-        /// 行程寫到標準輸出的全部文字
-        let standardOutput: String
-
-        /// 行程寫到標準錯誤的全部文字
-        let standardError: String
-
-        /// 行程的退出碼
-        let terminationStatus: Int32
+        /// 預期的退出碼；0 表示沒有丟出錯誤
+        let expectedCode: Int32
     }
 }
 
@@ -209,39 +604,58 @@ extension LKAICommandTests {
 
 private extension LKAICommandTests {
 
-    /// 以 `Process` 執行建置出的 `lkai`，標準輸出與標準錯誤各接一條 `Pipe` 分開收集
+    /// 解析命令列引數，轉成 `LKAICommand`
     ///
-    /// - Parameter arguments: 傳給 `lkai` 的命令列引數
-    /// - Returns: 行程結束後讀到的標準輸出、標準錯誤與退出碼
-    /// - Throws: 行程無法啟動或輸出讀取失敗時丟出
-    /// - Note: 執行檔取自測試 bundle 所在的資料夾；找不到時讓測試失敗，不略過
-    func runLKAI(arguments: [String]) throws -> CommandOutput {
-        let testBundleURL = Bundle(for: BundleLocator.self).bundleURL
-        let executableURL = testBundleURL.deletingLastPathComponent().appending(path: "lkai")
-        try #require(
-            FileManager.default.isExecutableFile(atPath: executableURL.path),
-            "找不到 lkai 執行檔：\(executableURL.path)"
+    /// - Parameter arguments: 命令列引數
+    /// - Returns: 解析出的指令
+    /// - Throws: 解析失敗時丟出解析器的錯誤；解析出的不是 `LKAICommand` 時讓測試失敗
+    func makeCommand(_ arguments: [String]) throws -> LKAICommand {
+        let parsedCommand = try LKAICommand.parseAsRoot(arguments)
+        return try #require(parsedCommand as? LKAICommand)
+    }
+
+    /// 組出 `invoke(_:)` 與 `stream(_:)` 都成功完成的替身 client
+    ///
+    /// - Returns: 兩種方式都回答 `OK`、結束原因為 `completed` 的替身 client
+    func makeSucceedingClient() -> MockChatClient {
+        let completion = LKAIChatCompletion(
+            finishReason: .completed,
+            usage: nil,
+            respondingModel: nil
         )
-
-        let process = Process()
-        let standardOutputPipe = Pipe()
-        let standardErrorPipe = Pipe()
-        process.executableURL = executableURL
-        process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = standardOutputPipe
-        process.standardError = standardErrorPipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        // 輸出只有幾行，行程結束後再讀不會塞滿 Pipe；沒有內容時以空資料處理
-        let standardOutputData = try standardOutputPipe.fileHandleForReading.readToEnd() ?? Data()
-        let standardErrorData = try standardErrorPipe.fileHandleForReading.readToEnd() ?? Data()
-        return CommandOutput(
-            standardOutput: String(decoding: standardOutputData, as: UTF8.self),
-            standardError: String(decoding: standardErrorData, as: UTF8.self),
-            terminationStatus: process.terminationStatus
+        return MockChatClient(
+            invokeResult: .success(LKAIChatResponse(text: "OK", completion: completion)),
+            streamEvents: [.textDelta("OK"), .finished(completion)]
         )
+    }
+
+    /// 解析引數後呼叫 `execute`，由替身 client 回答，輸出寫進記錄器，並記下 `makeClient` 收到的輸入
+    ///
+    /// - Parameters:
+    ///   - arguments: 命令列引數
+    ///   - client: 替身 client
+    ///   - environment: 傳給 `execute` 的環境變數，預設是空的
+    ///   - recorder: 記錄輸出的記錄器，預設每次建立新的一個；要檢查輸出，或要讓標準輸出的寫入失敗時，
+    ///     由呼叫端傳入
+    /// - Returns: `makeClient` 依序收到的輸入
+    /// - Throws: 解析失敗，或 `execute` 丟出錯誤時原樣丟出
+    @discardableResult
+    func executeCommand(
+        _ arguments: [String],
+        client: MockChatClient,
+        environment: [String: String] = [:],
+        recorder: ChatRunRecorder = ChatRunRecorder()
+    ) async throws -> [LKAIChatInput] {
+        let command = try makeCommand(arguments)
+        var receivedInputs: [LKAIChatInput] = []
+        try await command.execute(
+            environment: environment,
+            makeClient: { input in
+                receivedInputs.append(input)
+                return client
+            },
+            output: recorder.output
+        )
+        return receivedInputs
     }
 }

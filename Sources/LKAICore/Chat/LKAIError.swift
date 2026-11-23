@@ -223,6 +223,15 @@ extension LKAIError {
         }
         return .seconds(seconds)
     }
+
+    /// 以指定的語言給出這個錯誤的說明，內容與 `errorDescription` 相同，只是語言由呼叫端指定
+    ///
+    /// - Parameter localization: 語言資料夾的名稱，不含 `.lproj`，例如 `en`、`zh-Hant`
+    /// - Returns: 指定語言的說明；沒有該語言的資料夾時，改用 `LKAICore` 資源預設的查詢結果
+    /// - Note: 公開的 `errorDescription` 的語言跟隨 App；需要自己決定語言的呼叫端改用這個方法
+    package func errorDescription(localization: String) -> String {
+        LKAILocalization.string(forKey: localizationKey, in: .module, localization: localization)
+    }
 }
 
 // MARK: - LocalizedError

@@ -7,14 +7,16 @@
 
 /// 保管 API 金鑰的包裝型別，印出、記錄或 `dump(_:)` 時一律只顯示 `LKAIAPIKey(redacted)`
 ///
-/// - Note: 只有組 HTTP 請求的地方才讀 `unredactedValue`，其他地方不要碰原始值
+/// - Note: 只有三種用途可以讀 `unredactedValue`：組 HTTP 請求、把金鑰交給 client、
+///   遮蔽輸出中的金鑰；其他地方不要碰原始值
 /// - Note: `description`、`debugDescription` 都是 `LKAIAPIKey(redacted)`，`customMirror` 沒有子項目
 /// - Note: 多一層保護：之後有人在 client 的描述加上金鑰欄位，或忘了寫某個遵循，金鑰仍然只會顯示成遮蔽文字
 package struct LKAIAPIKey: Sendable {
 
     // MARK: - Properties
 
-    /// 建立時的原始金鑰，只給組 HTTP 請求用，例如放進請求標頭
+    /// 建立時的原始金鑰，只給三種用途讀取：組 HTTP 請求（例如放進請求標頭）、把金鑰交給 client，
+    /// 以及遮蔽輸出中的金鑰（要認得輸出文字裡的原始金鑰，才能把它換成遮蔽文字）
     package let unredactedValue: String
 
     // MARK: - Init

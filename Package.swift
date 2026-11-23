@@ -44,7 +44,8 @@ let package = Package(
             dependencies: [
                 "LKAIKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]
+            ],
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "LKAIKitCLITests",
