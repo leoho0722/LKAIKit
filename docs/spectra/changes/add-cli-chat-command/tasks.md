@@ -301,12 +301,23 @@
   - 驗證：
     - `swift test --filter LKAICommandTests` 通過。
     - 主對話暫時做三種修改，各確認至少一個新測試會失敗，然後還原：`execute` 傳給 runner 的 `language:` 改成 `.enUS`；`apiKey:` 改成空字串的金鑰；`maxOutputTokens` 的預設值改成 4095。
+  - 完成紀錄（主對話，2026-11-23）：
+    - 三個新測試都是回歸防護，`LKAIKitCLITests` 87 個測試通過，建置零警告。
+    - mutation check 四項都讓新測試失敗，之後已還原：
+      - `language:` 改成 `.enUS`：zh-TW 與金鑰的測試失敗。
+      - `apiKey:` 改成 `LKAIAPIKey("")`：同一個測試失敗。
+      - 預設值改成 4095：4096 的測試失敗。
+      - `execute` 的 `.failed` 改成 `return`（sonnet 建議）：寫入失敗的測試、既有的 `execute_對話結果_對應成退出碼`，以及 zh-TW 與金鑰的測試失敗。
 - [x] 9.3 [after: 9.1] 翻譯的防護（回歸防護；實作審查 opus W1、fable S5）（sonnet）：
   - `LKAICLITextTests` 加參數化測試：每個 `LKAICLIText` case 在 `LKAIOutputLanguage.allCases` 查到的字串兩兩不同。
   - `LKAIOutputLanguageTests` 加參數化測試：每個 `LKAIError` case 的 `errorDescription(localization: language.localization)`，在 `LKAIOutputLanguage.allCases` 之間兩兩不同。
   - 驗證：
     - `swift test --filter "LKAICLITextTests|LKAIOutputLanguageTests"` 通過。
     - 主對話暫時把 `LKAIOutputLanguage.zhTW` 的 `localization` 改成 `"zh-TW"`，確認兩個新測試都失敗，然後還原。這模擬語言資料夾名稱不符時，查詢靜默退回英文的情況。
+  - 完成紀錄（主對話，2026-11-23）：
+    - 兩個新測試都是回歸防護，通過。
+    - mutation check：`LKAIOutputLanguage.zhTW` 的 `localization` 改成 `"zh-TW"` 後，兩個新測試與既有的 `localization_各輸出語言_對應語言資料夾的名稱` 都失敗，之後已還原。
+    - sonnet 推測：機器的語言是正體中文時，退回的查詢可能取得 zh-Hant 的字串，這個 mutation 就會漏掉。實測結果：這台機器的偏好語言是 `zh-Hant-TW`、`en-TW`，退回的查詢得到的仍是 en 的字串，所以新測試抓得到。
 - [ ] 9.4 [after: 9.1] 其他測試的補強與修正（回歸防護）（sonnet）：
   - 補 cli-chat「Keep partial streamed text on failure」新增的順序（實作審查 opus S3）：`LKAIChatRunnerTests` 的 `run_stream中途失敗_stdout保留已收到的文字並補LF` 與 `run_stream沒有結束事件就結束_當成失敗並寫出細節`，以 `recorder.timeline` 斷言補的 LF 寫在第一個 stderr 寫入之前。
   - 補兩個情境，都寫在 `LKAIChatRunnerTests`：
