@@ -7,13 +7,13 @@
 - **`lkai` 根指令新增對話選項**（不新增子指令）：
   - `--provider <anthropic|openai|google>`：選擇供應商，分別對應 `LKAnthropicClient`、`LKOpenAIClient`、`LKGeminiClient`。
   - `-m, --model <model>`：本次使用的模型，必填，沒有預設值。
-  - `-p, --prompt <text>` 與 `-f, --prompt-file <path>`：兩者必須且只能給一個；檔案只接受副檔名 `.txt` 與 `.md`（不分大小寫），內容以 UTF-8 讀取。prompt 以一則使用者訊息送出，不加系統指示。內容以 `-` 開頭時，`-p <text>` 會被 swift-argument-parser 當成選項而失敗，說明會提示改用 `--prompt=<text>` 或 `--prompt-file`。
+  - `-p, --prompt <text>` 與 `-f, --prompt-file <path>`：兩者必須且只能給一個；檔案只接受副檔名 `.txt` 與 `.md`（不分大小寫），內容以 UTF-8 讀取。prompt 以一則使用者訊息送出，不加系統指示。內容以 `-` 開頭、後面還有其他字元時，`-p <text>` 會被 swift-argument-parser 當成選項而失敗（只有一個 `-` 時會被接受），說明會提示改用 `--prompt=<text>` 或 `--prompt-file`。
   - `--apiKey <key>`：API 金鑰（使用者指定的拼法）；沒有給時依供應商讀環境變數 `LKAI_ANTHROPIC_API_KEY`、`LKAI_OPENAI_API_KEY`、`LKAI_GEMINI_API_KEY`。
   - `--max-output-tokens <n>`：輸出上限，預設 4096，必須至少為 1。
   - `--timeout <seconds>`：多久沒有收到 AI 服務的任何資料就放棄，包括回應開始前與回答的兩段資料之間；預設 60，必須至少為 1。
   - `--stream`：邊收邊寫入 stdout；沒有給時等整段回答完成才寫入（invoke）。
   - `--output-language <en-US|zh-TW>`：CLI 自己的訊息用的語言，預設 `en-US`。
-- **`-v` 與 `--version` 都能查版號**：改用自己宣告的版本旗標，取代 swift-argument-parser 內建、只有 `--version` 的版本旗標。
+- **`-v` 與 `--version` 都能查版號**：改用自己宣告的版本旗標，取代 swift-argument-parser 內建、只有 `--version` 的版本旗標。和內建的 `--version` 一樣，與未定義的輸入一起給時仍印出版本，與 `-h` 一起給時印出說明。
 - **輸出與退出碼**：
   - stdout 只放回答的文字；錯誤、警告都寫到 stderr。
   - 退出碼：0 為完整回答；1 為 AI 服務回報錯誤、網路失敗或逾時、串流在結束前就停止，或回答無法寫到 stdout（例如導向檔案時磁碟已滿）；2 為回答沒有正常完成（例如達到輸出上限而被截斷），此時回答仍會印出，stderr 另有警告；64 為輸入有問題（沿用 swift-argument-parser 的驗證失敗退出碼）。

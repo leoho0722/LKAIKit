@@ -2,7 +2,7 @@
 
 - 第 1 到 7 組由 sonnet 在 `.worktrees/sonnet`（分支 `wt/cli-chat-sonnet`）依序實作，完成後合併回功能分支 `feat/add-cli-chat-command`。
 - 8.1 由 owner 同意後在功能分支上執行；8.2 由主對話做。建置、測試、反向檢查、commit 與合併都由主對話執行。
-- 第 9 組（實作審查後的修正）沿用同一個 worktree：9.1 到 9.5 由 sonnet 依序實作並合併回功能分支，9.6 由主對話做；之後送 fable 與 opus 複審修正的部分。複審的結論由 9.7（sonnet）與 9.8（主對話）處理，之後再複審一次。
+- 第 9 組（實作審查後的修正）沿用同一個 worktree：9.1 到 9.5 由 sonnet 依序實作並合併回功能分支，9.6 由主對話做；之後送 fable 與 opus 複審修正的部分。複審的結論由 9.7（sonnet）與 9.8（主對話）處理，之後再複審一次。封存前最終審查的結論由 9.9（sonnet）與 9.10（主對話）處理，之後再跑一次 `/spectra-verify`、`/spectra-review` 與兩位審查者。
 
 測試的做法：
 
@@ -427,6 +427,43 @@
   - 第三輪複審（2026-11-23，fable、opus）：
     - 兩位都回報 Critical 0、Warning 0，第二輪的各項都正確處理，spec、design、proposal、tasks 與實作一致。
     - 兩位提出同一項 Suggestion：`LKAICommandTestSupport` 型別說明中列出的使用者，沒有包含 9.7 之後才使用它的測試。主對話改成依用途說明，只改 `///`。
+
+- [ ] 9.9 [after: 9.8] 封存前最終審查後的修正（回歸防護）（sonnet）。來源是 `/spectra-verify`、`/spectra-review`、fable 與 opus 的封存前最終審查：
+  - 測試：
+    - `LKAICommandProcessTests` 新增 cli-root-command「Request the version together with undefined input」，以「version with undefined input」三列參數化：stdout 正好是版本加 LF、stderr 為空、退出碼 0。
+    - `LKAICommandProcessTests` 新增「Request help together with the version flag」，以「help with the version flag」三列參數化：stdout 有一行以 `USAGE: lkai ` 開頭、退出碼 0。
+    - `LKAICommandProcessTests` 新增一個測試：`--output-language zh-TW --provider bogus` 時，stderr 有一行以 `Help:` 開頭並含 `LKAICLIText.helpProvider.string(in: .zhTW)`，退出碼 64。2026-11-23 實測，這一行是 `Help:  --provider <provider>  要使用的 AI 服務。送出提示詞時必填。`。cli-output-language「Translated command text」的本文涵蓋這個行為，但沒有對應的 Scenario，所以不加標記（verify 建議 1）。
+    - `LKAICommandTests` 新增一個測試：`parseAsRoot(["-v", "--provider", "openai", "-m", "gpt-6-luna", "-p", "hi"])` 丟出的錯誤，`fullMessage` 等於 `LKAIKitInfo.version`、退出碼 0，直接證明流程在 `validate()` 就結束、`execute` 不會執行。標記 `cli-root-command / Request the version together with chat options`（verify 建議 2）。
+  - `///` 的修改：
+    - `LKAIChatRunner.reportFailure(_:)` 加一個 `- Note:`：細節除了遮蔽金鑰，都照原樣寫出；含 LF 或 CR 時會超過兩行。
+    - `run(_:mode:)` 中描述 `Details:` 的那一點，改成同樣的意思。
+    - `apiKey` 屬性改成：只用來遮蔽錯誤細節中的金鑰；回答原樣寫出，不遮蔽（fable S3）。
+    - 測試說明中「骨架」「實作前」的敘述，共 5 處：`LKAICommandProcessTests` 兩處、`LKAICommandTests` 一處、`LKAIChatProviderTests` 兩處。改成只說明測試長期的用途，例如「這是回歸防護：往後若……會失敗」（fable S5）。
+  - `docs/adding-a-provider.md`：
+    - 第 1 章「什麼時候更新」加上「修改 `LKAIKitCLI`（`lkai`）的 change」（fable S1）。
+    - 第 3 章「金鑰與隱私」：「只有 `makeURLRequest(for:)` 讀原始值 `unredactedValue`」，以及下一點的 grep 檢查，都改成現況。
+      - 原始值只在三個地方讀取：`LKAIAPIKey.swift`、各家的 `makeURLRequest(for:)`，以及 `LKAIKitCLI` 的兩處（`LKAICommand.run()` 把金鑰交給 client、`LKAIChatRunner` 遮蔽細節）。
+      - 出處是 `add-cli-chat-command`「API 金鑰：--apiKey 優先，其次是供應商的環境變數」。
+      - 2026-11-23 以清單原本的 grep 執行，多出的正是這兩處（fable W1）。
+    - 第 3 章「共用型別與 API 演進」中「增減 case」那一點，補上編譯器不會提醒、要手動更新的測試清單（fable S2、opus S3）：
+      - `LKAIError`：`LKAIErrorDetailsTests` 的範例表、`LKAIChatRunnerTests` 中 `run_invoke失敗_…` 的範例表、`LKAIOutputLanguageTests.errors`。
+      - `LKAIFinishReason`：一則 `warning.cli.*`（`LKAICLIText` 的 case 與兩種語言）與 `LKAIChatRunnerTests.finishReasonCases`。
+    - 第 5 章加四列：
+      - `04-add-gemini-provider` 的決策「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」中「只有 `makeURLRequest(for:)` 讀 `unredactedValue`」，以及它「完成後的狀態」中 `unredactedValue` 的 grep → `add-cli-chat-command`「API 金鑰：--apiKey 優先，其次是供應商的環境變數」。
+      - `add-swift-package-foundation` 的 Implementation Contract 中 `CommandConfiguration(... version: LKAIKitInfo.version)` → `add-cli-chat-command`「自訂 -v/--version 旗標取代內建的版本旗標」。
+      - `add-swift-package-foundation` 的決策「以行程層級測試驗證 lkai 的輸出分流」中「stdout 有一行剛好是 `USAGE: lkai`」 → `add-cli-chat-command`「說明輸出改以開頭比對用法那一行」。
+      - `add-swift-package-foundation` 驗收中「`LKAICommandTests` 的行程層級測試」 → `add-cli-chat-command`：行程測試改在 `LKAICommandProcessTests`，`LKAICommandTests` 是 in-process 的測試。
+    - 第 7 章加一列，出處 `add-cli-chat-command`、狀態「留給之後」：中文說明在一般寬度的終端機上超出畫面。swift-argument-parser 以字元數計算寬度、只在半形空格處折行，而中文字佔兩欄。2026-11-23 以 `COLUMNS=80` 實測，37 行中有 11 行超過 80 欄，最寬 120 欄。CI 只看退出碼與 stdout，不受影響（`/spectra-review`）。
+  - 驗證：
+    - `swift test --filter LKAIKitCLITests` 通過。
+    - `Sources/` 只有 `///` 的變更。
+    - 內容審查確認文件的每一處修改。
+- [ ] 9.10 [after: 9.9] 封存前最終審查後的驗收（主對話）：
+  - 修改 `docs/spectra/config.yaml`「API 演進規則」中更新清單的那一句：封存前要更新清單的 change，加上「修改 `LKAIKitCLI`（`lkai`）的 change」。使用者 2026-11-23 同意（fable S1）。
+  - 在 8.2 的說明輸出下方註明：退出碼 1 的說明在 9.5 已改寫。另外重新執行 `lkai -h` 與 `lkai --output-language zh-TW -h`，在本任務下方記錄退出碼 1 那一行的實際文字（verify 建議 3）。
+  - 檢查項目和 9.8 相同：乾淨建置與完整測試零警告、iOS 模擬器建置、反向檢查、`spectra coverage`。另外確認 `Sources/` 只有 `///` 的變更，所以不重跑實際 API 測試。
+  - 之後再跑一次 `/spectra-verify`、`/spectra-review`，並送 fable 與 opus 審查（使用者 2026-11-23 選擇）。
+  - 驗證：每一項的結果記錄在本任務下方。
 
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。

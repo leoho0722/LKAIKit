@@ -135,6 +135,11 @@
 - 對話選項全部宣告為 Optional（`--max-output-tokens`、`--timeout`、`--stream`、`--output-language` 有預設值），`-v` 才不會被缺少必填選項的錯誤擋下。
 - 理由：內建的版本旗標只有 `--version`，沒有設定可以加上 `-v`（Context）。
 - 解析器不接受的值（例如 `-v --provider bogus`）仍是解析錯誤、退出碼 64，因為值的轉換早於 `validate()`（Context）；cli-root-command 的「Version output」寫明這一點。
+- 未定義的選項或引數與版本旗標一起給時，印出版本、退出碼 0；`-h`、`--help` 與版本旗標一起給時，不論先後都印出說明。
+  - 原因：`validate()` 早於「未定義的輸入」的檢查；說明旗標在 swift-argument-parser 處理 `CleanExit` 時先被檢查。
+  - 2026-11-23 實測：`lkai -v --bogus`、`lkai -v foo`、`lkai --version --bogus` 都印出 `0.1.0`、退出碼 0；`lkai -v -h`、`lkai -h -v`、`lkai --version --help` 都印出說明、退出碼 0。
+  - 在 `main` 上，內建的 `--version` 也是這樣：`--version --bogus`、`--version foo` 印出版本、退出碼 0，`--version -h` 印出說明。所以這不是這個 change 造成的改變。
+  - 這和主 spec「Invalid input rejection」的退出碼 64 字面衝突。使用者 2026-11-23 選擇維持行為，在「Version output」寫明優先順序；cli-chat「Help when no chat option is given」也寫明讓位（封存前最終審查：opus S1、S2，fable S4）。
 - 考慮過的替代方案：保留內建的 `--version`，另外宣告 `-v`。兩者都叫 `version`，說明裡會出現兩列，而且行為由兩處決定，否決。
 
 ### 必填檢查放在 run()，未定義的輸入仍先被拒絕
@@ -396,7 +401,7 @@
 
 **範圍**：
 
-- 在範圍內：三份 spec、`LKAICore` 的兩個 `package` 宣告、`LKAIAPIKey` 的 `///`、`Package.swift` 的 `resources`、`docs/adding-a-provider.md` 的兩處。
+- 在範圍內：三份 spec、`LKAICore` 的兩個 `package` 宣告、`LKAIAPIKey` 的 `///`、`Package.swift` 的 `resources`、`docs/adding-a-provider.md`（第 1、3、5、7 章），以及 `docs/spectra/config.yaml` 中「什麼時候更新這份清單」的那一句（9.10）。
 - 不在範圍內：Goals / Non-Goals 的 Non-Goals；三家 client 與 `LKAIChatClientProtocol` 的任何修改。
 
 **完成後的狀態**：
@@ -433,3 +438,4 @@
 - [之後加第三種輸出語言時，CLI 的 String Catalog 有、`LKAICore` 的沒有，錯誤說明會靜默變成英文] → 9.3 加了防護：每個 `LKAICLIText` 與每個 `LKAIError` 的說明，在 `LKAIOutputLanguage.allCases` 之間都要兩兩不同；加語言而漏了任一個 bundle 的翻譯，或整個語言資料夾改名時，測試會失敗（實作審查 opus W1、fable S5：原本的測試以同一條查詢算期望值，整個 `zh-Hant.lproj` 不見時仍會通過）。
 - [替身 client 在 `LKAICoreTests`（`ScriptedChatClient`）與 CLI 測試各有一份] → CLI 測試只用公開的 `LKAIChatStream(_:)`，等於從 App 的角度驗證這個接縫，保留；出現第三份時再收進 `LKAITestSupport`。
 - [寫回答到 stdout 失敗時，stdout 可能已有部分回答] → 退出碼 1，stderr 的 `Error:` 與 `Details:` 說明原因；寫入失敗前寫出的內容不會收回。
+- [中文說明在一般寬度的終端機上超出畫面] → swift-argument-parser 以字元數計算寬度，只在半形空格處折行，但中文字在終端機上佔兩欄。2026-11-23 以 `COLUMNS=80` 實測，`lkai --output-language zh-TW -h` 共 37 行，其中 11 行的顯示寬度超過 80 欄，最寬 120 欄；英文說明只有固定的 `USAGE:` 那一行是 104 欄。CI 只看退出碼與 stdout，不受影響。記在 `docs/adding-a-provider.md` 第 7 章，留給之後（封存前最終審查：`/spectra-review`）。

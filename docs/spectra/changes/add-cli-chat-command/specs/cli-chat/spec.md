@@ -6,7 +6,7 @@ The cli-chat capability defines how the `lkai` root command turns command-line i
 
 ### Requirement: Help when no chat option is given
 
-When `lkai` runs without any of the options `--provider`, `-m`/`--model`, `-p`/`--prompt` and `-f`/`--prompt-file`, it SHALL print the usage information to stdout, SHALL print nothing to stderr, SHALL NOT send any chat request, and SHALL exit with status 0. Other options given alone, such as `--stream`, `--apiKey`, `--max-output-tokens`, `--timeout` or `--output-language`, SHALL NOT change this behavior.
+When `lkai` runs without any of the options `--provider`, `-m`/`--model`, `-p`/`--prompt` and `-f`/`--prompt-file`, it SHALL print the usage information to stdout, SHALL print nothing to stderr, SHALL NOT send any chat request, and SHALL exit with status 0. Other options given alone with values that swift-argument-parser accepts, such as `--stream`, `--apiKey`, `--max-output-tokens`, `--timeout` or `--output-language`, SHALL NOT change this behavior. When the version flag or the help flag is given, or swift-argument-parser rejects the input, the requirement that covers that case applies instead of this requirement.
 
 #### Scenario: Only a non-chat option is given
 
