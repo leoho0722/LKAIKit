@@ -11,7 +11,7 @@ import LKAIKit
 /// `lkai` 自己輸出的文字，raw value 是 `LKAIKitCLI` 的 String Catalog 裡的 key
 ///
 /// - Note: 每個 case 在 `en` 與 `zh-Hant` 都要有值，由 `CaseIterable` 讓測試逐一檢查
-/// - Note: 說明的 key 是 `cli.help.<項目>`，輸入錯誤是 `error.cli.<case>`；之後的警告是 `warning.cli.<case>`
+/// - Note: 說明的 key 是 `cli.help.<項目>`，輸入錯誤是 `error.cli.<case>`，警告是 `warning.cli.<case>`
 /// - Note: String Catalog 不寫供應商與環境變數的名稱，需要時以 `%@` 代入
 enum LKAICLIText: String, CaseIterable {
 
@@ -93,6 +93,12 @@ enum LKAICLIText: String, CaseIterable {
     ///
     /// - Note: 帶一個 `%@`，代入所選供應商讀取金鑰的環境變數名稱
     case errorMissingAPIKey = "error.cli.missingAPIKey"
+
+    /// 回答達到輸出上限而被截斷，提示調高 `--max-output-tokens`
+    case warningMaxOutputTokens = "warning.cli.maxOutputTokens"
+
+    /// 提示詞加回答塞滿模型的 context window 而被截斷，說明調高輸出上限沒用
+    case warningContextWindowExceeded = "warning.cli.contextWindowExceeded"
 }
 
 // MARK: - Internal Method

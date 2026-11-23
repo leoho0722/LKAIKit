@@ -414,6 +414,42 @@
           }
         }
       }
+    },
+    "warning.cli.contextWindowExceeded" : {
+      "comment" : "提示詞加回答塞滿模型的 context window 而被截斷時，顯示在 Warning: 之後；英文訊息要含 context window",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The answer was cut off because the prompt and the answer filled the model's context window. Raising --max-output-tokens does not help; shorten the prompt or use a model with a larger context window."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答被截斷，因為提示詞加上回答已經塞滿模型的上下文視窗。調高 --max-output-tokens 沒有用，請縮短提示詞，或改用上下文視窗更大的模型。"
+          }
+        }
+      }
+    },
+    "warning.cli.maxOutputTokens" : {
+      "comment" : "回答達到輸出上限而被截斷時，顯示在 Warning: 之後；訊息要含 --max-output-tokens",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The answer was cut off because it reached the output limit. Raise --max-output-tokens to allow a longer answer."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答因為達到輸出上限而被截斷。請調高 --max-output-tokens，讓回答可以更長。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
