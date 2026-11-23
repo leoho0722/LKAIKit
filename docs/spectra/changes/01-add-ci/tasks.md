@@ -30,7 +30,7 @@
     - spectra-exclude: lkai-setup-action / Report a service failure when run from PATH | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為；由 2.1 在本機照 action 的指令建置後，從 package 以外的資料夾實際執行確認
     - spectra-exclude: lkai-setup-action / The build fails | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為；由內容審查確認 set -euo pipefail 與寫入 GITHUB_PATH 的位置
     - spectra-exclude: lkai-setup-action / Use the action on a Linux runner | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為，也不另開 Linux job；由內容審查確認
-- [ ] 1.2 [after: 1.1] 依 design「CI 跑單元測試與 action 試跑」、「CI 在 xcode-27 runner 執行」與「第三方 action 以 commit SHA 固定」，新增 `.github/workflows/ci.yml`，交付 continuous-integration「Pull request workflow trigger and runner」、「Unit tests without real API keys」與「Setup action smoke check」（sonnet）：
+- [x] 1.2 [after: 1.1] 依 design「CI 跑單元測試與 action 試跑」、「CI 在 xcode-27 runner 執行」與「第三方 action 以 commit SHA 固定」，新增 `.github/workflows/ci.yml`，交付 continuous-integration「Pull request workflow trigger and runner」、「Unit tests without real API keys」與「Setup action smoke check」（sonnet）：
   - 形狀照 Implementation Contract 的「`ci.yml` 的形狀」。
   - 驗證：主對話審查內容，確認以下幾點：
     - 不引用任何 secret。

@@ -165,7 +165,7 @@
 - `concurrency: { group: ci-${{ github.event.pull_request.number }}, cancel-in-progress: true }`。
 - 一個 job：`runs-on: xcode-27`、`timeout-minutes: 30`。
 - step 依序是：
-  1. checkout，以 SHA 固定。
+  1. checkout，以 SHA 固定，並設定 `persist-credentials: false`：這個 job 不需要推送，而 `swift test` 會執行 PR 帶進來的程式碼，所以不把 token 留在 `.git/config`（任務 1.2 實作時加上的加固）。
   2. 印出 `swift --version` 與 `bash --version` 的第一行。
   3. `uses: ./`，`id: lkai`。這一步之前沒有任何建置。
   4. 試跑：在 `${{ runner.temp }}` 執行，`steps.lkai.outputs.version` 與 `steps.lkai.outputs.path` 以 `env` 傳入。依序檢查：
