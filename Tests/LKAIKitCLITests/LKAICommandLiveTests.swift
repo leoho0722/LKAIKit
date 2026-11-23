@@ -204,6 +204,8 @@ private extension LKAICommandLiveTests {
     ///   - apiKey: 這次使用的 API 金鑰
     /// - Returns: 各項檢查與失敗時的說明
     /// - Note: 說明只含退出碼與已遮蔽金鑰的標準錯誤，不含標準輸出；金鑰是空字串時不遮蔽
+    /// - Note: 是否以 LF（`\n`）結尾，以 UTF-8 的最後一個位元組判斷：CR（`\r`）加 LF 在 Swift 是一個
+    ///   `Character`，`hasSuffix("\n")` 對以 CR 加 LF 結尾的輸出是 false
     func makeChecks(of output: LKAICommandTestSupport.CommandOutput, apiKey: String) -> RunChecks {
         let redactedStandardError = apiKey.isEmpty
             ? output.standardError
@@ -215,7 +217,7 @@ private extension LKAICommandLiveTests {
             exitedWithZero: output.terminationStatus == 0,
             hasEmptyStandardError: output.standardError.isEmpty,
             hasAnswer: !answer.isEmpty,
-            endsWithLineFeed: output.standardOutput.hasSuffix("\n"),
+            endsWithLineFeed: output.standardOutput.utf8.last == UInt8(ascii: "\n"),
             leaksAPIKey: leaksAPIKey,
             diagnostics: "退出碼 \(output.terminationStatus)；標準錯誤（金鑰已遮蔽）：\(redactedStandardError)"
         )

@@ -39,7 +39,7 @@ struct LKAICommandProcessTests {
     }
 
     // spectra-scenario: cli-root-command / Request the version
-    /// 驗證 `--version` 只在標準輸出印出 `LKAIKitInfo.version` 加一個換行，標準錯誤為空，退出碼為 0
+    /// 驗證 `--version` 只在標準輸出印出 `LKAIKitInfo.version` 加一個 LF（`\n`），標準錯誤為空，退出碼為 0
     @Test
     func lkai_要求版本_版本只印到標準輸出且退出碼為0() throws {
         // Given
@@ -112,6 +112,24 @@ struct LKAICommandProcessTests {
         // Then
         #expect(output.standardOutput == expectedOutput)
         #expect(output.terminationStatus == 0)
+    }
+
+    /// 驗證版本旗標與解析器自己不接受的值一起給時，仍以退出碼 64 結束，標準輸出為空
+    ///
+    /// - Note: 依據 cli-root-command「Version output」的本文：版本旗標優先於對話選項的檢查，
+    ///   但解析器自己拒絕的值（這裡是 `--provider bogus`）仍以退出碼 64 結束；
+    ///   這條規則沒有對應的 Scenario，所以不加 `spectra-scenario` 標記
+    /// - Note: 這是回歸防護：值由解析器檢查，在 `validate()` 之前就失敗
+    @Test
+    func lkai_版本旗標加解析器不接受的值_仍以退出碼64結束且標準輸出為空() throws {
+        // Given
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(arguments: ["-v", "--provider", "bogus"])
+
+        // Then
+        #expect(output.standardOutput.isEmpty)
+        #expect(output.terminationStatus == 64)
     }
 
     // spectra-scenario: cli-output-language / Apply the language wherever the option appears
@@ -235,9 +253,11 @@ struct LKAICommandProcessTests {
     // spectra-scenario: cli-chat / Report the first failing rule
     // spectra-scenario: cli-chat / Report the first failing rule / validation rules in order
     /// 驗證十條輸入規則各自被破壞時，標準錯誤第一行以 `Error: ` 開頭並含範例表指定的詞，
-    /// 標準輸出為空，退出碼為 64
+    /// 標準錯誤有一行以 `Usage: lkai ` 開頭，標準輸出為空，退出碼為 64
     ///
     /// - Parameter testCase: 一列範例：傳給 `lkai` 的引數，以及錯誤訊息要含有的詞
+    /// - Note: 用法那一行以 `Usage: lkai ` 開頭，含結尾的空格；2026-11-23 實測，輸入錯誤時標準錯誤的
+    ///   第二行是 `Usage: lkai --provider <provider> ...`，說明畫面的 `USAGE:` 是全大寫，不是這一行
     /// - Note: 行程在新建的空資料夾內執行，第六列的 `missing.txt` 才一定不存在
     /// - Note: 預設的環境沒有 `LKAI_*_API_KEY`，第十列才會缺少金鑰
     @Test(arguments: [
@@ -287,8 +307,10 @@ struct LKAICommandProcessTests {
         // Then
         let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
         let firstLine = try #require(lines.first)
+        let hasUsageLine = lines.contains { $0.hasPrefix("Usage: lkai ") }
         #expect(firstLine.hasPrefix("Error: "))
         #expect(firstLine.contains(testCase.expectedToken))
+        #expect(hasUsageLine)
         #expect(output.standardOutput.isEmpty)
         #expect(output.terminationStatus == 64)
     }

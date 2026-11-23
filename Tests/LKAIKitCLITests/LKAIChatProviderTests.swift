@@ -81,6 +81,23 @@ struct LKAIChatProviderTests {
         #expect(actualName == expectedName)
     }
 
+    /// 驗證每個供應商讀取金鑰的環境變數名稱，都以 `LKAI_` 開頭、以 `_API_KEY` 結尾
+    ///
+    /// - Parameter provider: 供應商
+    /// - Note: `LKAICommandTestSupport.defaultEnvironment` 以這個樣式移除目前行程環境變數裡的金鑰；
+    ///   新供應商的名稱不符時，行程測試會帶著真的金鑰執行，原本應該在檢查階段失敗的情境可能送出真的請求
+    @Test(arguments: LKAIChatProvider.allCases)
+    func apiKeyEnvironmentName_各供應商_符合行程測試移除金鑰的樣式(provider: LKAIChatProvider) {
+        // Given
+
+        // When
+        let actualName = provider.apiKeyEnvironmentName
+
+        // Then
+        #expect(actualName.hasPrefix("LKAI_"))
+        #expect(actualName.hasSuffix("_API_KEY"))
+    }
+
     // spectra-scenario: cli-chat / Map the provider to its client
     // spectra-scenario: cli-chat / Map the provider to its client / provider values
     /// 驗證 `--provider` 的值對應到供應商：`anthropic`、`openai`、`google` 各對應一個，

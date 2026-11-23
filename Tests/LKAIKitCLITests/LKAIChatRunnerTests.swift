@@ -360,6 +360,58 @@ struct LKAIChatRunnerTests {
         #expect(outcome == .failed)
     }
 
+    // spectra-scenario: cli-chat / Keep a multi-line detail as received
+    /// 驗證細節含 LF（`\n`）時照原樣寫出，所以標準錯誤超過兩行：`Error: ` 加 `en` 的說明、
+    /// `Details: first`、`second`，每一行都以 LF 結尾；結果是 `.failed`
+    ///
+    /// - Note: 輸出語言是 `en-US`，不加 `--stream`，client 丟出 `invalidRequest`，訊息是 `first`、
+    ///   LF、`second`
+    /// - Note: 第一行的期望值以 `errorDescription(localization:)` 查出，不在測試裡寫死說明
+    @Test
+    func run_invoke細節含LF_stderr照原樣保留多行() async {
+        // Given
+        let recorder = ChatRunRecorder()
+        let error = LKAIError.invalidRequest(message: "first\nsecond")
+        let client = MockChatClient(invokeResult: .failure(error))
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+        let expectedDescription = LKAIError.invalidRequest(message: nil)
+            .errorDescription(localization: "en")
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .invoke)
+
+        // Then
+        #expect(recorder.standardError == "Error: \(expectedDescription)\nDetails: first\nsecond\n")
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-chat / Write an answer that repeats the key unchanged
+    /// 驗證回答的文字含 API 金鑰時，原樣寫到標準輸出，不遮蔽；標準錯誤為空，結果是 `.completed`
+    ///
+    /// - Note: spec 只保證 `lkai` 自己產生的文字（警告、錯誤說明與細節）不含金鑰；回答是 AI 的輸出，
+    ///   照原樣寫出，不當成 `lkai` 的訊息處理
+    /// - Note: 金鑰是 `sk-secret-123`，回答文字是 `key: sk-secret-123`，結束原因是 `completed`
+    @Test
+    func run_invoke回答含API金鑰_stdout原樣寫出且stderr為空() async {
+        // Given
+        let recorder = ChatRunRecorder()
+        let client = makeClient(answer: "key: sk-secret-123", finishReason: .completed)
+        let runner = makeRunner(
+            client: client,
+            recorder: recorder,
+            language: .enUS,
+            apiKey: "sk-secret-123"
+        )
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .invoke)
+
+        // Then
+        #expect(recorder.standardOutput == "key: sk-secret-123\n")
+        #expect(recorder.standardError.isEmpty)
+        #expect(outcome == .completed)
+    }
+
     // spectra-scenario: cli-chat / Report a timeout
     /// 驗證逾時（`URLError(.timedOut)`）在兩種輸出方式都是 `Details: URLError -1001`，
     /// 位在標準錯誤的第二行，結果是 `.failed`
@@ -417,11 +469,13 @@ struct LKAIChatRunnerTests {
 
     // spectra-scenario: cli-chat / Keep partial streamed text on failure
     /// 驗證 `--stream` 失敗時，標準輸出保留失敗前收到的文字，結尾不是 LF（`\n`）就補一個 LF，
-    /// 再寫標準錯誤，第一行以 `Error: ` 開頭；結果是 `.failed`
+    /// 補的 LF 先寫到標準輸出，再寫標準錯誤，第一行以 `Error: ` 開頭；結果是 `.failed`
     ///
     /// - Parameters:
     ///   - deltas: 失敗前依序交出的文字片段
     ///   - expectedOutput: 預期的標準輸出；第一列是 spec 的寫法，第二列是結尾已經是 LF 的情況
+    /// - Note: 順序以時間軸斷言：標準輸出的寫入都排在第一個標準錯誤寫入之前；第二列沒有補 LF，
+    ///   這一項只是確認沒有多寫
     @Test(arguments: [
         (["Hel"], "Hel\n"),
         (["Hel", "lo\n"], "Hello\n"),
@@ -444,6 +498,7 @@ struct LKAIChatRunnerTests {
 
         // Then
         #expect(recorder.standardOutput == expectedOutput)
+        #expect(standardOutputWritesPrecedeStandardError(in: recorder.timeline))
         #expect(recorder.standardError.hasPrefix("Error: "))
         #expect(outcome == .failed)
     }
@@ -471,11 +526,14 @@ struct LKAIChatRunnerTests {
     // spectra-scenario: cli-chat / Report a stream that ends without a finish event
     /// 驗證 `--stream` 沒有收到結束事件、也沒有錯誤就結束時，當成 `invalidResponse` 失敗：
     /// 已收到的文字保留並補 LF，標準錯誤第一行是 `Error: ` 加上 `invalidResponse` 的 `en` 說明，
-    /// 第二行是 `Details: Stream ended before a finish event`；結果是 `.failed`
+    /// 第二行是 `Details: Stream ended before a finish event`；補的 LF 先寫到標準輸出，再寫標準錯誤；
+    /// 結果是 `.failed`
     ///
     /// - Parameters:
     ///   - deltas: 結束前依序交出的文字片段，之後直接結束，沒有結束事件
     ///   - expectedOutput: 預期的標準輸出；第一列是 spec 的寫法，第二列是連文字都沒有的情況
+    /// - Note: 順序以時間軸斷言：標準輸出的寫入都排在第一個標準錯誤寫入之前；第二列沒有任何文字，
+    ///   所以沒有標準輸出的寫入
     @Test(arguments: [
         (["Hel"], "Hel\n"),
         ([], ""),
@@ -498,6 +556,7 @@ struct LKAIChatRunnerTests {
 
         // Then
         #expect(recorder.standardOutput == expectedOutput)
+        #expect(standardOutputWritesPrecedeStandardError(in: recorder.timeline))
         #expect(recorder.standardError == expectedStandardError)
         #expect(outcome == .failed)
     }
@@ -749,6 +808,35 @@ private extension LKAIChatRunnerTests {
                 return nil
             }
         }
+    }
+
+    /// 判斷標準輸出的寫入（含失敗的那一次）是不是都排在第一個標準錯誤寫入之前
+    ///
+    /// - Parameter timeline: 記錄器的時間軸
+    /// - Returns: 標準輸出的最後一次寫入排在標準錯誤的第一次寫入之前時為 true；
+    ///   其中一邊沒有寫入時沒有先後可比，也是 true，是否有寫入由其他斷言檢查
+    func standardOutputWritesPrecedeStandardError(
+        in timeline: [ChatRunRecorder.TimelineEntry]
+    ) -> Bool {
+        let lastStandardOutputWrite = timeline.lastIndex { entry in
+            switch entry {
+            case .writeStandardOutput, .failedWriteStandardOutput:
+                true
+
+            case .readEvent, .writeStandardError:
+                false
+            }
+        }
+        let firstStandardErrorWrite = timeline.firstIndex { entry in
+            guard case .writeStandardError = entry else {
+                return false
+            }
+            return true
+        }
+        guard let lastStandardOutputWrite, let firstStandardErrorWrite else {
+            return true
+        }
+        return lastStandardOutputWrite < firstStandardErrorWrite
     }
 
     /// 取出時間軸上讀取事件的序號

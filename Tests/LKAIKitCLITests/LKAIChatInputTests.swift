@@ -18,6 +18,18 @@ import Testing
 /// - Note: 需要檔案的測試各自建立暫存資料夾，結束時刪除，所以可以平行執行
 struct LKAIChatInputTests {
 
+    // MARK: - Properties
+
+    /// 保證不存在的提示詞檔案路徑：暫存資料夾內、名稱是 UUID 而且不會建立的資料夾裡的 `missing.txt`
+    ///
+    /// - Note: 不用相對路徑：相對路徑會依測試行程的工作目錄解析，package 根目錄剛好有同名檔案時，
+    ///   「檔案讀不了」的情境就不成立
+    /// - Note: 整個行程只產生一次，所以同一次執行內，所有用到的測試資料都是同一個路徑
+    private static let missingPromptFilePath = FileManager.default.temporaryDirectory
+        .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        .appending(path: "missing.txt")
+        .path
+
     // spectra-scenario: cli-chat / Build the request from the options
     /// 驗證依選項建立的輸入：模型原樣、只有一則使用者訊息、沒有系統指示、輸出上限照傳入的值，
     /// 供應商、金鑰與逾時也都是傳入的值
@@ -380,9 +392,12 @@ struct LKAIChatInputTests {
             expectedTokens: ["--prompt-file"]
         ),
         RuleCase(
-            arguments: InputArguments(prompt: nil, promptFile: "missing.txt"),
-            expectedError: .unreadablePromptFile(path: "missing.txt"),
-            expectedTokens: ["missing.txt"]
+            arguments: InputArguments(
+                prompt: nil,
+                promptFile: LKAIChatInputTests.missingPromptFilePath
+            ),
+            expectedError: .unreadablePromptFile(path: LKAIChatInputTests.missingPromptFilePath),
+            expectedTokens: [LKAIChatInputTests.missingPromptFilePath]
         ),
         RuleCase(
             arguments: InputArguments(prompt: " "),
@@ -501,8 +516,12 @@ struct LKAIChatInputTests {
             expectedError: .unsupportedPromptFile(path: "a.json")
         ),
         OrderCase(
-            arguments: InputArguments(prompt: nil, promptFile: "missing.txt", maxOutputTokens: 0),
-            expectedError: .unreadablePromptFile(path: "missing.txt")
+            arguments: InputArguments(
+                prompt: nil,
+                promptFile: LKAIChatInputTests.missingPromptFilePath,
+                maxOutputTokens: 0
+            ),
+            expectedError: .unreadablePromptFile(path: LKAIChatInputTests.missingPromptFilePath)
         ),
         OrderCase(
             arguments: InputArguments(prompt: " ", maxOutputTokens: 0),
