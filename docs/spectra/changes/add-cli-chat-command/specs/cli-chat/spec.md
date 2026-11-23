@@ -116,7 +116,7 @@ When the input passes validation, `lkai` SHALL send exactly one chat request thr
 
 ### Requirement: API key resolution
 
-`lkai` SHALL use the `--apiKey` value as the API key when it is not empty. Otherwise it SHALL use the value of the environment variable listed for the selected provider when that value is not empty. When neither is available, the input SHALL be rejected with a message that names both `--apiKey` and that environment variable. The help of `lkai` SHALL list the environment variable of every provider in both output languages. The text that `lkai` generates itself, namely the help, the input validation failures, the warnings and the `Error: ` and `Details: ` lines, SHALL NOT contain the API key. The answer text SHALL be written as received, without redaction, so an answer that repeats a key contained in the prompt reaches stdout unchanged.
+`lkai` SHALL use the `--apiKey` value as the API key when it is not empty. Otherwise it SHALL use the value of the environment variable listed for the selected provider when that value is not empty. When neither is available, the input SHALL be rejected with a message that names both `--apiKey` and that environment variable. The help of `lkai` SHALL list the environment variable of every provider in both output languages. The text that `lkai` writes itself, namely the help, the messages of the input validation failures, the warnings, and the `Error: ` and `Details: ` lines it writes for service failures and answer write failures, SHALL NOT contain the API key. The error messages that swift-argument-parser generates repeat an argument it cannot parse as given, so a key passed as a stray argument appears in that message. The answer text SHALL be written as received, without redaction, so an answer that repeats a key contained in the prompt reaches stdout unchanged.
 
 #### Scenario: Choose the API key source
 
@@ -311,7 +311,7 @@ When the finish event's reason is anything other than `completed`, `lkai` SHALL 
 
 ### Requirement: Service failure reporting
 
-When the chat call fails with an `LKAIError`, `lkai` SHALL write to stderr a first line that is `Error: ` followed by the error's description in the output language. When the error carries technical detail, it SHALL write a second line that is `Details: ` followed by the detail listed below, untranslated, with every occurrence of the API key in use replaced by `[REDACTED]`. Apart from that replacement, the detail SHALL be written as the provider gave it, so a detail that contains LF or CR characters spans more than one line of stderr. It SHALL NOT print the usage information, and SHALL exit with status 1. Without `--stream`, stdout SHALL be empty. With `--stream`, stdout SHALL contain only the text received before the failure, followed by the line terminator rule of "Stream output".
+When the chat call fails with an `LKAIError`, `lkai` SHALL write to stderr a first line that is `Error: ` followed by the error's description in the output language. When the error carries technical detail, it SHALL write a second line that is `Details: ` followed by the detail listed below, untranslated, with every occurrence of the API key in use replaced by `[REDACTED]`. Apart from that replacement, the detail SHALL be written as the provider gave it, so a detail that contains LF or CR characters spans more than one line of stderr. It SHALL NOT print the usage information, and SHALL exit with status 1. Without `--stream`, stdout SHALL be empty. With `--stream`, stdout SHALL contain only the text received before the failure, followed by the line terminator rule of "Stream output". When a write to stdout fails, "Answer write failure" applies instead of this requirement.
 
 #### Scenario: Report the error and its detail
 
@@ -407,3 +407,20 @@ When a write to stdout fails with an error while `lkai` writes the answer text, 
 - **THEN** stderr's first line starts with `Error: `
 - **AND** no line of stderr starts with `Warning: `
 - **AND** the process exits with status 1
+
+#### Scenario: Report a failed write of the trailing LF in a stream
+
+- **GIVEN** the output language `en-US`
+- **AND** a stream that yields the text deltas `Hel` and `lo`, then ends as listed
+- **AND** the write of the trailing LF to stdout fails with `CocoaError(.fileWriteOutOfSpace)`
+- **WHEN** `lkai --stream` handles the stream
+- **THEN** the writes attempted to stdout are `Hel`, `lo`, then an LF
+- **AND** stderr is exactly `Error: ` followed by the `en` answer write failure message, an LF, `Details: NSCocoaErrorDomain 640` and an LF
+- **AND** the process exits with status 1
+
+##### Example: stream endings
+
+| Stream ending |
+| ------------- |
+| a finish event with the reason `completed` |
+| fails with `serviceUnavailable(statusCode: 500, retryAfter: nil)` |

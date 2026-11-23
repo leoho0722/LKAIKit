@@ -2,7 +2,7 @@
 
 - 第 1 到 7 組由 sonnet 在 `.worktrees/sonnet`（分支 `wt/cli-chat-sonnet`）依序實作，完成後合併回功能分支 `feat/add-cli-chat-command`。
 - 8.1 由 owner 同意後在功能分支上執行；8.2 由主對話做。建置、測試、反向檢查、commit 與合併都由主對話執行。
-- 第 9 組（實作審查後的修正）沿用同一個 worktree：9.1 到 9.5 由 sonnet 依序實作並合併回功能分支，9.6 由主對話做；之後送 fable 與 opus 複審修正的部分。
+- 第 9 組（實作審查後的修正）沿用同一個 worktree：9.1 到 9.5 由 sonnet 依序實作並合併回功能分支，9.6 由主對話做；之後送 fable 與 opus 複審修正的部分。複審的結論由 9.7（sonnet）與 9.8（主對話）處理，之後再複審一次。
 
 測試的做法：
 
@@ -383,8 +383,34 @@
     - 金鑰：測試紀錄與手動執行的 stderr 都不含三把金鑰，已用 `grep -F` 逐把確認。
     - spec 情境：`spectra coverage` 回報 59 項都有測試標記，0 項排除，0 項缺少。另有 10 個標記指向主 spec cli-root-command 既有的情境，和 8.2 之後相同。
 
+- [ ] 9.7 [after: 9.6] 實作複審後的修正（回歸防護；實作複審 fable W1、S1 到 S3，opus S1 到 S4）（sonnet）：
+  - `LKAIChatRunnerTests` 加 cli-chat「Report a failed write of the trailing LF in a stream」的測試。
+    - 以「stream endings」的兩列參數化，標 spectra-scenario。
+    - 記錄器讓第 3 次 stdout 寫入失敗，也就是寫結尾 LF 的那一次。
+    - 斷言：嘗試寫入的內容是 `Hel`、`lo`、LF；stderr 整段是寫入失敗的兩行；Outcome 是 `.failed`。
+  - `///` 補上「寫回答到標準輸出失敗」：
+    - `LKAIChatRunner.Outcome.failed` 的說明。
+    - `LKAICommand.execute(environment:makeClient:output:)` 的 `- Throws:`。
+    - `LKAICLIText` 型別說明中 key 的格式：`error.cli.*` 也用於寫入失敗。
+    - `LKAIChatRunner.runStream(_:)` 補一個 Note：補 LF 時寫入失敗，優先於串流的錯誤，只回報寫入失敗。
+  - `makeTemporaryDirectory()` 收進 `LKAICommandTestSupport`。`LKAIChatInputTests`、`LKAICommandProcessTests`、`LKAICommandOutputTests` 刪掉各自的副本，改用共用的。
+  - `docs/adding-a-provider.md` 第 7 章 bundle 那一列補上：少帶 `LKAIKit_LKAIKitCLI.bundle` 時每次執行都中止，包括 `-v`（8.2 實測退出碼 133）。
+  - 驗證：
+    - `swift test --filter LKAIKitCLITests` 通過。
+    - 主對話做兩項 mutation check，之後還原：
+      - `runStream(_:)` 補 LF 的 `catch` 改成不處理、繼續往下：2026-11-23 實測時，現有測試全部通過，新測試要失敗。
+      - 改成先印服務錯誤：新測試的第二列要失敗。
+- [ ] 9.8 [after: 9.7] 複審修正後的驗收（主對話）：
+  - `swift package clean` 後的建置與完整測試零警告，記錄測試數。
+  - iOS 模擬器建置 `LKAIKit` scheme。
+  - 反向檢查。
+  - `spectra coverage` 回報 cli-chat 新情境有測試。
+  - 以 `git diff 29c5540..HEAD -- Sources/` 確認 9.7 在 `Sources/` 只改了 `///`，所以不重跑實際 API 測試。
+  - 之後送 fable 與 opus 複審 9.7。
+  - 驗證：每一項的結果記錄在本任務下方。
+
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。
-- fable S6：「detail lines」表在兩個測試檔各有一份；`makeTemporaryDirectory()`、`outputModes` 與「取第一行」的寫法重複。
+- fable S6：「detail lines」表在兩個測試檔各有一份；`outputModes` 與「取第一行」的寫法重複。`makeTemporaryDirectory()` 在 9.1 之後已經有三份，改由 9.7 收進共用的 support 檔（實作複審 fable S3）。
 - 理由：以上都沒有造成錯誤，再多一份時再整理。
 - 用語：「空白與換行」共八處，其中的「換行」指一行結束，符合用語規則，維持原樣。

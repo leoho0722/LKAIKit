@@ -216,7 +216,7 @@
 - 旗標名稱照使用者指定的 `--apiKey`（以 `.customLong("apiKey")` 宣告），和其他 kebab-case 的選項不同；輸入 `--api-key` 時，swift-argument-parser 會提示正確的名稱（Context）。
 - `--apiKey` 的說明寫明在 CI 中優先使用環境變數，因為命令列參數會留在 shell 的歷史紀錄與程序列表。
 - 金鑰存成 `LKAIAPIKey`。CLI 只在兩處讀 `unredactedValue`：把金鑰交給 client、遮蔽錯誤細節中的金鑰。
-- 金鑰的承諾只涵蓋 `lkai` 自己產生的文字：說明、輸入錯誤、警告、`Error:` 與 `Details:` 行。AI 的回答原樣寫出、不遮蔽，所以 prompt 含金鑰、回答又照抄時，金鑰會出現在 stdout。原本的 spec 寫「任何情況都不把金鑰寫到 stdout 或 stderr」，比實作寬；使用者 2026-11-23 選擇修改 spec 的文字，實作不變（實作審查 opus S7）。遮蔽 stream 的回答要處理金鑰被切在兩個片段之間的情況，所以不做。
+- 金鑰的承諾只涵蓋 `lkai` 自己寫出的文字：說明、輸入錯誤的訊息、警告，以及服務錯誤與寫入失敗的 `Error:`、`Details:` 行。swift-argument-parser 的錯誤訊息會原樣重複無法解析的引數：2026-11-23 實測 `lkai --provider openai -m x -p hi sk-fake-key-for-test` 的 stderr 第一行是 `Error: Unexpected argument 'sk-fake-key-for-test'`、退出碼 64，所以金鑰被誤當成多餘的引數時會出現在那則訊息中（實作複審 opus S4）。AI 的回答原樣寫出、不遮蔽，所以 prompt 含金鑰、回答又照抄時，金鑰會出現在 stdout。原本的 spec 寫「任何情況都不把金鑰寫到 stdout 或 stderr」，比實作寬；使用者 2026-11-23 選擇修改 spec 的文字，實作不變（實作審查 opus S7）。遮蔽 stream 的回答要處理金鑰被切在兩個片段之間的情況，所以不做。
 - `LKAIAPIKey` 的 `///` 改寫成允許讀取原始值的用途：組 HTTP 請求、把金鑰交給 client、遮蔽輸出中的金鑰。不點名 `lkai`：`LKAICore` 的說明不寫上層的使用者，實際的位置由「完成後的狀態」的反向檢查把關。
 
 ### 輸入檢查依 spec 的順序，只回報第一個錯誤
@@ -253,12 +253,12 @@
 ### 預設 invoke，--stream 才邊收邊寫
 
 - 使用者 2026-11-23 選擇 `--stream`，預設 invoke。
-- invoke：呼叫 `invoke(_:)`，完成後一次寫入。失敗時 stdout 是空的，CI 不會拿到半截的回答。
+- invoke：呼叫 `invoke(_:)`，完成後一次寫入。呼叫失敗時 stdout 是空的，CI 不會拿到半截的回答。
 - stream：迭代 `stream(_:)`，每收到一段文字就寫入，寫完才讀下一個事件。
 - stream 沒有收到結束事件、也沒有錯誤就結束時（例如來源被取消），比照 `LKAIChatClientProtocol.invoke(_:)` 的預設實作，當成 `invalidResponse(reason: "Stream ended before a finish event")`，走失敗的路徑、退出碼 1。兩種模式的結果因此一致。
 - 兩種方式送出的請求相同：三家的非串流呼叫本來就以串流送出、由 `LKAICore` 彙整。
 - 結尾的 LF：寫過文字、而且最後一個 UTF-8 位元組不是 LF 時，補一個 LF；stream 在失敗時也補。以位元組判斷，因為 CR LF 是一個 `Character`，`last == "\n"` 對 CRLF 結尾是 `false`（Context）。CI 讀 stdout 時，最後一行一定是完整的一行。
-- stdout 與 stderr 以 `FileHandle.write(contentsOf:)` 寫入，不經過 `print` 的緩衝，stream 的文字才會即時出現在 pipe 的另一端。寫入失敗以 `try?` 忽略，並在同一行註明理由：寫入失敗時已無處回報；改用會丟出 Objective-C 例外的 `write(_:)` 會讓行程崩潰。
+- stdout 與 stderr 以 `FileHandle.write(contentsOf:)` 寫入，不經過 `print` 的緩衝，stream 的文字才會即時出現在 pipe 的另一端。stderr 的寫入失敗以 `try?` 忽略，並在同一行註明理由：寫入失敗時已無處回報。stdout 的寫入失敗往上丟，見決策「寫回答到 stdout 失敗時以退出碼 1 結束」（第 9 組；實作複審 fable W1 指出這裡原本寫兩者都忽略）。改用會丟出 Objective-C 例外的 `write(_:)` 會讓行程崩潰。
 
 ### 退出碼：0 完成、1 服務錯誤、2 沒有正常完成、64 輸入錯誤
 
@@ -299,6 +299,9 @@
 - `Details:` 的格式取 `NSError` 的 `domain` 與 `code`，和 `URLError <code>` 一樣只放代碼，不放系統的說明文字：系統的說明文字會隨系統語言改變，CI 不易比對。
 - stderr 寫入失敗仍然忽略：已經沒有地方可以回報。
 - SIGPIPE 不處理：接收端已結束的 pipe 不會讓寫入丟出錯誤，行程直接被終止，退出碼 141 也不是 0，CI 看得出失敗；這和 Non-Goals「處理 SIGINT、SIGPIPE」一致。
+- 串流先以服務錯誤結束、補 LF 時又寫入失敗：只回報寫入失敗，服務錯誤不另外印出，cli-chat「Service failure reporting」寫明讓位給「Answer write failure」。
+  - 理由：只有磁碟恰好在最後一段文字與 1 位元組的 LF 之間寫滿時才會發生。之前的寫入若已失敗，會在寫文字時回報；`write(contentsOf:)` 失敗時丟出錯誤，不會只寫一部分就算成功。兩種回報的退出碼都是 1。
+  - 使用者 2026-11-23 選擇（實作複審 fable S2、opus S1 指出 spec 兩條 requirement 字面衝突）。
 
 ### --max-output-tokens 預設 4096
 
