@@ -180,6 +180,31 @@ struct LKAICommandProcessTests {
         #expect(output.terminationStatus == 0)
     }
 
+    // spectra-scenario: cli-root-command / Request help together with undefined input
+    // spectra-scenario: cli-root-command / Request help together with undefined input / help with undefined input
+    /// 驗證說明旗標與 `lkai` 沒有定義的選項或引數一起給時，不論先後都是說明優先：
+    /// 標準輸出有一行以 `USAGE: lkai `（含結尾空格）開頭，標準錯誤為空，退出碼為 0
+    ///
+    /// - Parameter arguments: 傳給 `lkai` 的命令列引數，對應範例表的三列
+    /// - Note: 未定義輸入的拒絕（`lkai_未定義的輸入_…`）在沒有說明旗標時才成立
+    @Test(arguments: [
+        ["-h", "--bogus"],
+        ["--help", "foo"],
+        ["--bogus", "-h"],
+    ])
+    func lkai_說明旗標加未定義的輸入_印出說明且退出碼為0(arguments: [String]) throws {
+        // Given
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(arguments: arguments)
+
+        // Then
+        let lines = output.standardOutput.split(separator: "\n")
+        #expect(lines.contains { $0.hasPrefix("USAGE: lkai ") })
+        #expect(output.standardError.isEmpty)
+        #expect(output.terminationStatus == 0)
+    }
+
     // spectra-scenario: cli-output-language / Apply the language wherever the option appears
     // spectra-scenario: cli-output-language / Apply the language wherever the option appears / option positions
     /// 驗證 `--output-language zh-TW` 不論出現在哪個位置、寫成哪一種形式，說明的簡介都是 `zh-Hant`，退出碼為 0
@@ -362,6 +387,38 @@ struct LKAICommandProcessTests {
         #expect(output.terminationStatus == 64)
     }
 
+    // spectra-scenario: cli-chat / Reject a blank prompt
+    // spectra-scenario: cli-chat / Reject a blank prompt / blank prompt sources
+    /// 驗證提示詞檔案只有空格與 LF（`\n`）時，標準錯誤第一行以 `Error: ` 開頭並含檔名 `blank.md`，
+    /// 標準輸出為空，退出碼為 64
+    ///
+    /// - Note: 這是範例表 blank prompt sources 的第二列；第一列（`--prompt` 只有空白）由
+    ///   `LKAIChatInputTests` 驗證
+    /// - Note: 行程以暫存資料夾為工作目錄，所以 `-f blank.md` 的相對路徑指到剛寫入的檔案；
+    ///   預設的環境沒有 `LKAI_*_API_KEY`，空白提示詞的檢查排在金鑰之前，錯誤才會指出 `blank.md`
+    @Test
+    func lkai_提示詞檔案只有空格與LF_錯誤含檔名且退出碼為64() throws {
+        // Given
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
+        let fileURL = directory.appending(path: "blank.md")
+        try "  \n \n".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(
+            arguments: ["--provider", "openai", "-m", "x", "-f", "blank.md"],
+            currentDirectory: directory
+        )
+
+        // Then
+        #expect(output.standardOutput.isEmpty)
+        #expect(output.terminationStatus == 64)
+        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let firstLine = try #require(lines.first)
+        #expect(firstLine.hasPrefix("Error: "))
+        #expect(firstLine.contains("blank.md"))
+    }
+
     // spectra-scenario: cli-chat / Keep the key out of error output
     /// 驗證輸入檢查失敗時，標準輸出與標準錯誤都不含 `--apiKey` 給的金鑰
     ///
@@ -413,7 +470,8 @@ struct LKAICommandProcessTests {
     // spectra-scenario: cli-chat / Only a non-chat option is given
     /// 驗證只給 `--stream` 這類不屬於對話的選項時，標準輸出印出用法，標準錯誤為空，退出碼為 0
     ///
-    /// - Note: 這是回歸防護：不帶對話選項時印出說明，在命令列介面改寫後就成立
+    /// - Note: 這是回歸防護：往後若只給不屬於對話的選項時不再印出用法（例如改成丟出輸入錯誤），
+    ///   這個測試會失敗
     @Test
     func lkai_只給stream_印出用法且退出碼為0() throws {
         // Given
@@ -431,7 +489,8 @@ struct LKAICommandProcessTests {
     /// 驗證 `--provider` 的值解析器不接受時，標準錯誤第一行以 `Error: ` 開頭並含該值，
     /// 標準輸出為空，退出碼為 64
     ///
-    /// - Note: 這是回歸防護：值由解析器檢查，在命令列介面改寫後就成立
+    /// - Note: 這是回歸防護：往後若 `--provider` 的值不再由解析器檢查（例如改成接受任何字串，
+    ///   到後面才丟出別的錯誤），這個測試會失敗
     @Test
     func lkai_provider的值不被接受_錯誤含該值且退出碼為64() throws {
         // Given
@@ -454,7 +513,8 @@ struct LKAICommandProcessTests {
     /// 內容含 `--provider` 的 `zh-Hant` 說明，退出碼為 64
     ///
     /// - Note: 2026-11-23 實測，這一行是 `Help:  --provider <provider>  要使用的 AI 服務。送出提示詞時必填。`；
-    ///   行程以 `COLUMNS=300` 執行，這一行不會被折斷
+    ///   `Help:` 行由 swift-argument-parser 直接接上選項說明，不依終端機寬度折行：
+    ///   2026-11-23 以 `COLUMNS=40` 實測，這一行仍是完整的一行
     /// - Note: 依據 cli-output-language「Translated command text」的本文：錯誤訊息附的選項說明也是
     ///   輸出語言的翻譯；這一點沒有對應的 Scenario，所以不加 `spectra-scenario` 標記
     /// - Note: 期望的說明以 `LKAICLIText` 查出，不在測試裡寫死翻譯
@@ -486,7 +546,8 @@ struct LKAICommandProcessTests {
     ///   - promptArguments: `-p` 加上以 `-` 開頭的提示詞，對應範例表中被拒絕的兩列
     ///   - expectedFirstLine: 標準錯誤的第一行
     /// - Note: 被接受的三列由 `LKAICommandTests` 驗證請求的訊息文字
-    /// - Note: 這是回歸防護：由解析器拒絕，在命令列介面改寫後就成立
+    /// - Note: 這是回歸防護：往後若以 `-` 開頭的提示詞改成被接受，或解析器的錯誤訊息改變寫法，
+    ///   這個測試會失敗
     @Test(arguments: [
         (["-p", "- item"], "Error: Missing value for '-p <prompt>'"),
         (["-p", "--- a/file"], "Error: Invalid option: --- a/file"),

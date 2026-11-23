@@ -327,12 +327,16 @@ struct LKAIChatInputTests {
 
     // spectra-scenario: cli-chat / Configure the timeout
     // spectra-scenario: cli-chat / Configure the timeout / timeout values
-    /// 驗證傳入的逾時秒數原樣成為 session 設定的請求逾時，1 是接受的下限
+    /// 驗證傳入的逾時秒數原樣成為 session 設定的請求逾時，1 是接受的下限；
+    /// 設定是 ephemeral：磁碟快取的容量是 0，cookie 的儲存不是共用的 `HTTPCookieStorage.shared`
     ///
     /// - Parameters:
     ///   - timeout: `--timeout` 的值
     ///   - expectedInterval: 預期的請求逾時，單位為秒
     /// - Note: 預設的 60 秒在 `LKAICommand` 宣告，這裡只確認傳入的值原樣設定
+    /// - Note: `urlCache?.diskCapacity` 與 `httpCookieStorage` 兩個斷言確認設定是 ephemeral，
+    ///   和逾時秒數無關，所以每一列都檢查；2026-11-23 實測，`.ephemeral` 的磁碟快取是 0、
+    ///   cookie 不共用，`.default` 的磁碟快取是 20000000、cookie 共用
     @Test(arguments: [(60, 60), (300, 300), (1, 1)] as [(Int, TimeInterval)])
     func makeSessionConfiguration_指定逾時_請求逾時等於該秒數(
         timeout: Int,
@@ -346,6 +350,8 @@ struct LKAIChatInputTests {
 
         // Then
         #expect(configuration.timeoutIntervalForRequest == expectedInterval)
+        #expect(configuration.urlCache?.diskCapacity == 0)
+        #expect(configuration.httpCookieStorage !== HTTPCookieStorage.shared)
     }
 
     // spectra-scenario: cli-chat / Report the first failing rule

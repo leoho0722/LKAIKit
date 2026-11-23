@@ -232,7 +232,7 @@ struct LKAICommandTests {
     /// 驗證每一組能解析成功、而且不含 `-h` 與 `-v` 的引數，掃描出的輸出語言都等於解析出的 `--output-language`
     ///
     /// - Parameter arguments: 命令列引數
-    /// - Note: 這是回歸防護：掃描在 `LKAIOutputLanguage` 已經完成，這個測試確認它和解析器的結果一致，
+    /// - Note: 這是回歸防護：確認 `LKAIOutputLanguage.scanned(from:)` 和解析器的結果一致；
     ///   往後修改選項的寫法或 parsing 策略時，兩邊不同步就會失敗
     @Test(arguments: [
         [],
