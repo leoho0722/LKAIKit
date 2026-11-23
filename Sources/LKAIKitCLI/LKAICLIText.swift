@@ -94,6 +94,9 @@ enum LKAICLIText: String, CaseIterable {
     /// - Note: 帶一個 `%@`，代入所選供應商讀取金鑰的環境變數名稱
     case errorMissingAPIKey = "error.cli.missingAPIKey"
 
+    /// 回答無法寫到標準輸出，例如把輸出導向的檔案已經寫滿
+    case errorAnswerWriteFailed = "error.cli.answerWriteFailed"
+
     /// 回答達到輸出上限而被截斷，提示調高 `--max-output-tokens`
     case warningMaxOutputTokens = "warning.cli.maxOutputTokens"
 

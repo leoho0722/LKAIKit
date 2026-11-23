@@ -13,6 +13,8 @@ import Synchronization
 /// 記錄一次對話執行寫出的文字，以及「讀取下一個事件」與「寫入文字」的先後順序
 ///
 /// - Note: 一個記錄器只對應一次執行；事件讀取的序號從 1 開始，依讀取的次數累計
+/// - Note: 可以設定讓標準輸出的第 n 次寫入失敗，模擬磁碟已滿等寫入錯誤；失敗的那次寫入
+///   也記在時間軸，但不算寫到標準輸出的文字
 /// - Note: 記錄放在 `Mutex` 裡，可以在並行下安全使用，所以不需要 `@unchecked Sendable`
 final class ChatRunRecorder: Sendable {
 
@@ -20,6 +22,22 @@ final class ChatRunRecorder: Sendable {
 
     /// 目前為止的全部記錄
     private let state = Mutex(State())
+
+    /// 要讓標準輸出的哪一次寫入失敗，以及丟出的錯誤；nil 表示每次都成功
+    ///
+    /// - Note: `index` 從 1 開始，數的是嘗試寫入標準輸出的次數，失敗的那一次也算；
+    ///   只有這一次失敗，之後的寫入照常成功，所以執行器失敗後若還繼續寫，時間軸會留下記錄
+    private let failingStandardOutputWrite: (index: Int, error: any Error)?
+
+    // MARK: - Init
+
+    /// 建立記錄器
+    ///
+    /// - Parameter failingStandardOutputWrite: 要讓標準輸出的哪一次寫入失敗，以及丟出的錯誤；
+    ///   省略時每次寫入都成功
+    init(failingStandardOutputWrite: (index: Int, error: any Error)? = nil) {
+        self.failingStandardOutputWrite = failingStandardOutputWrite
+    }
 }
 
 // MARK: - Nested Types
@@ -39,6 +57,11 @@ extension ChatRunRecorder {
         /// - Parameter text: 寫入的文字
         case writeStandardOutput(String)
 
+        /// 嘗試寫文字到標準輸出，但寫入失敗；這段文字不算寫到標準輸出的文字
+        ///
+        /// - Parameter text: 嘗試寫入的文字
+        case failedWriteStandardOutput(String)
+
         /// 寫了文字到標準錯誤
         ///
         /// - Parameter text: 寫入的文字
@@ -56,6 +79,9 @@ extension ChatRunRecorder {
 
         /// 到目前為止讀取事件的次數
         var readCount = 0
+
+        /// 到目前為止嘗試寫入標準輸出的次數，失敗的那次也算
+        var standardOutputWriteCount = 0
 
         /// 讀取與寫入的先後順序
         var timeline: [TimelineEntry] = []
@@ -85,10 +111,7 @@ extension ChatRunRecorder {
     var output: LKAICommandOutput {
         LKAICommandOutput(
             writeStandardOutput: { [self] text in
-                state.withLock {
-                    $0.standardOutput.append(text)
-                    $0.timeline.append(.writeStandardOutput(text))
-                }
+                try recordStandardOutputWrite(text)
             },
             writeStandardError: { [self] text in
                 state.withLock {
@@ -118,6 +141,26 @@ extension ChatRunRecorder {
 // MARK: - Private Method
 
 private extension ChatRunRecorder {
+
+    /// 記一次標準輸出的寫入：輪到要失敗的那一次時，只在時間軸記一筆失敗，再丟出設定的錯誤
+    ///
+    /// - Parameter text: 要寫到標準輸出的文字
+    /// - Throws: 這是設定要失敗的那一次時，丟出設定的錯誤
+    func recordStandardOutputWrite(_ text: String) throws {
+        let failure: (any Error)? = state.withLock { recorded in
+            recorded.standardOutputWriteCount += 1
+            if recorded.standardOutputWriteCount == failingStandardOutputWrite?.index {
+                recorded.timeline.append(.failedWriteStandardOutput(text))
+                return failingStandardOutputWrite?.error
+            }
+            recorded.standardOutput.append(text)
+            recorded.timeline.append(.writeStandardOutput(text))
+            return nil
+        }
+        if let failure {
+            throw failure
+        }
+    }
 
     /// 記一筆讀取，並交出下一個事件
     ///

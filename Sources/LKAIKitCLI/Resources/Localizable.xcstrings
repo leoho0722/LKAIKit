@@ -217,6 +217,24 @@
         }
       }
     },
+    "error.cli.answerWriteFailed" : {
+      "comment" : "回答無法寫到標準輸出時，顯示在 Error: 之後；不帶參數，不含環境變數名稱",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't write the answer to standard output."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將回答寫到標準輸出。"
+          }
+        }
+      }
+    },
     "error.cli.blankPrompt" : {
       "comment" : "--prompt 的內容是空字串或只有空白時顯示；訊息要含 --prompt",
       "extractionState" : "manual",

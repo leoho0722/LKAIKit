@@ -36,6 +36,16 @@ struct LKAIChatRunnerTests {
     /// 兩種輸出方式
     private static let outputModes: [LKAIChatRunner.OutputMode] = [.invoke, .stream]
 
+    /// 範例表 failing writes 的兩列：回答 `Hello`，失敗的是回答文字那一次，或結尾 LF（`\n`）那一次
+    private static let failingWriteCases = [
+        FailingWriteCase(failingIndex: 1, expectedAttempts: ["Hello"], expectedOutput: ""),
+        FailingWriteCase(
+            failingIndex: 2,
+            expectedAttempts: ["Hello", "\n"],
+            expectedOutput: "Hello"
+        ),
+    ]
+
     // spectra-scenario: cli-chat / Print the complete answer
     // spectra-scenario: cli-chat / Print the complete answer / trailing line terminator
     /// 驗證不加 `--stream` 時，回答完成後一次寫到標準輸出：結尾不是 LF（`\n`）才補一個 LF，
@@ -491,6 +501,117 @@ struct LKAIChatRunnerTests {
         #expect(recorder.standardError == expectedStandardError)
         #expect(outcome == .failed)
     }
+
+    // spectra-scenario: cli-chat / Report a failed write of the answer
+    // spectra-scenario: cli-chat / Report a failed write of the answer / failing writes
+    /// 驗證不加 `--stream` 時，標準輸出的寫入以 `CocoaError(.fileWriteOutOfSpace)` 失敗：
+    /// 失敗之後不再寫標準輸出，標準錯誤第一行是 `Error: ` 加 `en` 的寫入失敗訊息，
+    /// 第二行正好是 `Details: NSCocoaErrorDomain 640`，沒有其他行；結果是 `.failed`
+    ///
+    /// - Parameter testCase: 一列範例：失敗的是第幾次寫入，以及預期嘗試寫入與實際寫到的文字，
+    ///   對應範例表的兩列
+    /// - Note: 回答文字是 `Hello`，結束原因是 `completed`；失敗的那次寫入不算實際寫到標準輸出的文字
+    @Test(arguments: LKAIChatRunnerTests.failingWriteCases)
+    func run_invoke寫入失敗_stderr是寫入失敗訊息加Details且停止寫回答(
+        testCase: FailingWriteCase
+    ) async {
+        // Given
+        let recorder = makeFailingRecorder(failingIndex: testCase.failingIndex)
+        let client = makeClient(answer: "Hello", finishReason: .completed)
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+        let expectedStandardError = makeWriteFailureStandardError(language: .enUS)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .invoke)
+
+        // Then
+        let attemptedWrites = attemptedStandardOutputWrites(in: recorder.timeline)
+        #expect(attemptedWrites == testCase.expectedAttempts)
+        #expect(recorder.standardOutput == testCase.expectedOutput)
+        #expect(recorder.standardError == expectedStandardError)
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-chat / Stop reading the stream after a failed write
+    /// 驗證 `--stream` 寫第一段文字 `Hel` 就以 `CocoaError(.fileWriteOutOfSpace)` 失敗：
+    /// 只讀了第一個事件，失敗之後沒有任何標準輸出的寫入或寫入嘗試（沒有補 LF），
+    /// 標準錯誤第二行正好是 `Details: NSCocoaErrorDomain 640`；結果是 `.failed`
+    ///
+    /// - Note: 事件來源只在迭代器要下一個事件時才交出，所以時間軸上的讀取次數就是實際讀取的事件數
+    /// - Note: 串流依序交出 `Hel`、`lo`、結束原因為 `completed` 的結束事件，共三個事件
+    @Test
+    func run_stream第一段文字寫入失敗_只讀第一個事件且不補LF() async throws {
+        // Given
+        let recorder = makeFailingRecorder(failingIndex: 1)
+        let events: [LKAIChatStreamEvent] = [
+            .textDelta("Hel"),
+            .textDelta("lo"),
+            .finished(makeCompletion(.completed)),
+        ]
+        let client = MockChatClient(streamSource: recorder.makeStreamSource(events: events))
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .stream)
+
+        // Then
+        let timeline = recorder.timeline
+        #expect(readEventIndexes(in: timeline) == [1])
+        #expect(attemptedStandardOutputWrites(in: timeline) == ["Hel"])
+        #expect(recorder.standardOutput.isEmpty)
+        #expect(outcome == .failed)
+        let lines = recorder.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let secondLine = try #require(lines.dropFirst().first)
+        #expect(secondLine == "Details: NSCocoaErrorDomain 640")
+    }
+
+    // spectra-scenario: cli-chat / Report a failed write instead of a warning
+    /// 驗證結束原因是 `maxOutputTokens`、寫 `Partial` 以 `CocoaError(.fileWriteOutOfSpace)` 失敗時，
+    /// 兩種輸出方式都是：標準錯誤第一行以 `Error: ` 開頭，沒有任何一行以 `Warning: ` 開頭；
+    /// 結果是 `.failed`，不是 `.incomplete`
+    ///
+    /// - Parameter mode: 輸出方式，不加 `--stream` 或加 `--stream`
+    @Test(arguments: LKAIChatRunnerTests.outputModes)
+    func run_回答被截斷且寫入失敗_只有Error沒有Warning(mode: LKAIChatRunner.OutputMode) async throws {
+        // Given
+        let recorder = makeFailingRecorder(failingIndex: 1)
+        let client = makeClient(answer: "Partial", finishReason: .maxOutputTokens)
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: mode)
+
+        // Then
+        let lines = recorder.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let hasWarningLine = lines.contains { $0.hasPrefix("Warning: ") }
+        #expect(!hasWarningLine)
+        #expect(outcome == .failed)
+        let firstLine = try #require(lines.first)
+        #expect(firstLine.hasPrefix("Error: "))
+    }
+
+    /// 驗證輸出語言是 `zh-TW` 時，寫入失敗的標準錯誤第一行是 `Error: ` 加 `zh-Hant` 的寫入失敗訊息，
+    /// 第二行的 `Details:` 不翻譯；結果是 `.failed`
+    ///
+    /// - Parameter mode: 輸出方式，不加 `--stream` 或加 `--stream`
+    /// - Note: 期望值以 `LKAICLIText` 查出，不在測試裡寫死翻譯
+    @Test(arguments: LKAIChatRunnerTests.outputModes)
+    func run_輸出語言為zhTW且寫入失敗_錯誤說明是該語言的翻譯(
+        mode: LKAIChatRunner.OutputMode
+    ) async {
+        // Given
+        let recorder = makeFailingRecorder(failingIndex: 1)
+        let client = makeClient(answer: "Hello", finishReason: .completed)
+        let runner = makeRunner(client: client, recorder: recorder, language: .zhTW)
+        let expectedStandardError = makeWriteFailureStandardError(language: .zhTW)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: mode)
+
+        // Then
+        #expect(recorder.standardError == expectedStandardError)
+        #expect(outcome == .failed)
+    }
 }
 
 // MARK: - Nested Types
@@ -518,6 +639,19 @@ extension LKAIChatRunnerTests {
 
         /// 預期的標準錯誤第二行；沒有細節、標準錯誤只有一行時為 nil
         let expectedSecondLine: String?
+    }
+
+    /// 寫入失敗的一列範例：哪一次寫到標準輸出失敗，以及預期嘗試寫入與實際寫到的文字
+    struct FailingWriteCase: Sendable {
+
+        /// 失敗的是第幾次寫到標準輸出，從 1 開始
+        let failingIndex: Int
+
+        /// 預期嘗試寫到標準輸出的文字，依先後排列，失敗的那一次是最後一個
+        let expectedAttempts: [String]
+
+        /// 預期實際寫到標準輸出的全部文字，不含失敗的那一次
+        let expectedOutput: String
     }
 
     /// 遮蔽金鑰的一列範例：`invalidRequest` 的訊息，以及預期的第二行
@@ -577,6 +711,57 @@ private extension LKAIChatRunnerTests {
             language: language,
             apiKey: LKAIAPIKey(apiKey)
         )
+    }
+
+    /// 組出讓標準輸出的某一次寫入以 `CocoaError(.fileWriteOutOfSpace)` 失敗的記錄器
+    ///
+    /// - Parameter failingIndex: 失敗的是第幾次寫到標準輸出，從 1 開始
+    /// - Returns: 只有那一次寫入失敗的記錄器
+    func makeFailingRecorder(failingIndex: Int) -> ChatRunRecorder {
+        let failingWrite: (index: Int, error: any Error) = (
+            index: failingIndex,
+            error: CocoaError(.fileWriteOutOfSpace)
+        )
+        return ChatRunRecorder(failingStandardOutputWrite: failingWrite)
+    }
+
+    /// 組出寫入失敗時預期的標準錯誤：`Error: ` 加該語言的寫入失敗訊息，再一行 `Details:`
+    ///
+    /// - Parameter language: 輸出語言
+    /// - Returns: 兩行，各以 LF 結尾；`NSCocoaErrorDomain 640` 是 `CocoaError(.fileWriteOutOfSpace)`
+    ///   的 domain 與 code
+    func makeWriteFailureStandardError(language: LKAIOutputLanguage) -> String {
+        let message = LKAICLIText.errorAnswerWriteFailed.string(in: language)
+        return "Error: \(message)\nDetails: NSCocoaErrorDomain 640\n"
+    }
+
+    /// 取出時間軸上嘗試寫到標準輸出的文字，失敗的那一次也算
+    ///
+    /// - Parameter timeline: 記錄器的時間軸
+    /// - Returns: 依先後排列的文字
+    func attemptedStandardOutputWrites(in timeline: [ChatRunRecorder.TimelineEntry]) -> [String] {
+        timeline.compactMap { entry in
+            switch entry {
+            case .writeStandardOutput(let text), .failedWriteStandardOutput(let text):
+                return text
+
+            case .readEvent, .writeStandardError:
+                return nil
+            }
+        }
+    }
+
+    /// 取出時間軸上讀取事件的序號
+    ///
+    /// - Parameter timeline: 記錄器的時間軸
+    /// - Returns: 依先後排列的序號，每讀一次事件就有一個
+    func readEventIndexes(in timeline: [ChatRunRecorder.TimelineEntry]) -> [Int] {
+        timeline.compactMap { entry in
+            guard case .readEvent(let index) = entry else {
+                return nil
+            }
+            return index
+        }
     }
 
     /// 組出固定的對話請求；執行器要原樣交給 client，內容與結果無關
