@@ -18,7 +18,7 @@ context: |
     - 公開 struct 之後新增欄位時，`public init` 的新參數一律給預設值，讓 App 建立這些值的程式碼（例如測試替身）不必修改。
     - 公開 enum 的 case 增減 associated value，會破壞 App 建立與比對這個 case 的寫法（給新的 associated value 預設值只保住建立的寫法，保不住比對的寫法）；第一個 release tag 之後要加資料時，改用 struct 帶資料。
     - 供應商的 change 不得為了自己的格式修改 LKAICore 的共用公開型別；需要修改時另開 change 修改 `chat-client` spec。
-    - 新增供應商的 change 開始前，先讀 `docs/adding-a-provider.md`：逐列核對其中的供應商對照表，遵守其中的規則，並處理其中屬於該供應商的待辦。新增供應商的 change，以及修改 chat-client spec、任一供應商 spec 或共同流程的 change，封存前都要把新的查證結果與決定更新回這份清單。系統的行為以 spec 為準；封存的 design 只記錄當時的決定，與清單不同時以清單為準。以 SSE 串流回答的供應商一律遵循 `LKAIServerSentEventChatStreaming`，不自行建立 `Task`。
+    - 新增供應商的 change 開始前，先讀 `docs/adding-a-provider.md`：逐列核對其中的供應商對照表，遵守其中的規則，並處理其中屬於該供應商的待辦。新增供應商的 change、修改 chat-client spec、任一供應商 spec 或共同流程的 change，以及修改 `LKAIKitCLI`（`lkai`）的 change，封存前都要把新的查證結果與決定更新回這份清單。系統的行為以 spec 為準；封存的 design 只記錄當時的決定，與清單不同時以清單為準。以 SSE 串流回答的供應商一律遵循 `LKAIServerSentEventChatStreaming`，不自行建立 `Task`。
   使用方式：
     - library：主要供 iOS App 專案整合使用，例如 BuyLedger。
     - executableTarget：主要供 CI/CD 使用，不用於 App 專案。

@@ -250,6 +250,7 @@
       0.1.0
       ```
 
+    - 註（9.10 補記）：上面兩段說明中退出碼 1 那一行，是 9.5 改寫之前的文字；現行文字記在 9.10 下方。
     - 發佈的基準：
       - 只把 `.build/debug/lkai` 複製到 scratchpad 的空資料夾，執行 `./lkai -v`，以退出碼 133（SIGTRAP）中止。stderr 是 `LKAIKitCLI/resource_bundle_accessor.swift:44: Fatal error: unable to find bundle named LKAIKit_LKAIKitCLI`，和 design Context 的預期一致。
       - 把 `LKAIKit_LKAICore.bundle` 與 `LKAIKit_LKAIKitCLI.bundle` 一起複製後，`./lkai -v` 印出 `0.1.0`、退出碼 0。`./lkai --output-language zh-TW -h` 也以中文輸出，退出碼 0。
@@ -428,7 +429,7 @@
     - 兩位都回報 Critical 0、Warning 0，第二輪的各項都正確處理，spec、design、proposal、tasks 與實作一致。
     - 兩位提出同一項 Suggestion：`LKAICommandTestSupport` 型別說明中列出的使用者，沒有包含 9.7 之後才使用它的測試。主對話改成依用途說明，只改 `///`。
 
-- [ ] 9.9 [after: 9.8] 封存前最終審查後的修正（回歸防護）（sonnet）。來源是 `/spectra-verify`、`/spectra-review`、fable 與 opus 的封存前最終審查：
+- [x] 9.9 [after: 9.8] 封存前最終審查後的修正（回歸防護）（sonnet）。來源是 `/spectra-verify`、`/spectra-review`、fable 與 opus 的封存前最終審查：
   - 測試：
     - `LKAICommandProcessTests` 新增 cli-root-command「Request the version together with undefined input」，以「version with undefined input」三列參數化：stdout 正好是版本加 LF、stderr 為空、退出碼 0。
     - `LKAICommandProcessTests` 新增「Request help together with the version flag」，以「help with the version flag」三列參數化：stdout 有一行以 `USAGE: lkai ` 開頭、退出碼 0。
@@ -458,13 +459,28 @@
     - `swift test --filter LKAIKitCLITests` 通過。
     - `Sources/` 只有 `///` 的變更。
     - 內容審查確認文件的每一處修改。
-- [ ] 9.10 [after: 9.9] 封存前最終審查後的驗收（主對話）：
+- [x] 9.10 [after: 9.9] 封存前最終審查後的驗收（主對話）：
   - 修改 `docs/spectra/config.yaml`「API 演進規則」中更新清單的那一句：封存前要更新清單的 change，加上「修改 `LKAIKitCLI`（`lkai`）的 change」。使用者 2026-11-23 同意（fable S1）。
   - 在 8.2 的說明輸出下方註明：退出碼 1 的說明在 9.5 已改寫。另外重新執行 `lkai -h` 與 `lkai --output-language zh-TW -h`，在本任務下方記錄退出碼 1 那一行的實際文字（verify 建議 3）。
   - 檢查項目和 9.8 相同：乾淨建置與完整測試零警告、iOS 模擬器建置、反向檢查、`spectra coverage`。另外確認 `Sources/` 只有 `///` 的變更，所以不重跑實際 API 測試。
   - 之後再跑一次 `/spectra-verify`、`/spectra-review`，並送 fable 與 opus 審查（使用者 2026-11-23 選擇）。
   - 驗證：每一項的結果記錄在本任務下方。
 
+  - 執行紀錄（2026-11-23，主對話，功能分支在 9.9 合併之後，三個 `LKAI_*_API_KEY` 都沒有設定）：
+    - `docs/spectra/config.yaml`：「API 演進規則」中更新清單的那一句，已加上「修改 `LKAIKitCLI`（`lkai`）的 change」。`spectra instructions` 讀得到新的規則，contextRef 變成 `fnv1a64:190f7a83bef3c246:2776`。
+    - 退出碼 1 的現行說明，以 `COLUMNS=300` 執行 `lkai -h` 與 `lkai --output-language zh-TW -h` 的實際輸出：
+      - en：`1: The chat did not succeed: the AI service returned an error, the network failed or timed out, the stream stopped before it finished, or the answer could not be written to standard output.`
+      - zh-Hant：`1：對話沒有成功：AI 服務回報錯誤、網路失敗或逾時、串流在結束前停止，或回答無法寫到標準輸出。`
+    - 建置：`swift package clean` 後，`swift build`、`swift build --build-tests` 與 `swift test` 都以退出碼 0 結束，三份紀錄都沒有 `warning:`。
+    - 測試數：268 個測試、41 個 suite 全部通過，其中 `LKAIKitCLITests` 有 96 個。9 個實際 API 測試略過；4 個 known issue 和 8.2 相同。
+    - iOS：`build_sim` 建置 iPhone 17（iOS 26.5）的 `LKAIKit` scheme，SUCCEEDED，沒有 warning，也沒有 error。
+    - 反向檢查：和 9.6 的項目相同，全部符合。另外確認測試說明中已沒有「骨架」「實作前」。
+    - spec 情境：`spectra coverage` 回報 65 項都有測試標記，0 項排除，0 項缺少。
+    - 9.9 的 mutation check 兩項都讓新測試失敗，之後已還原：
+      - `validate()` 不再因版本旗標結束：兩個版本測試失敗。
+      - `scanned(from:)` 一律回傳 en-US：zh-TW 的 `Help:` 行測試失敗。
+    - 實際 API 測試：`git diff -U0 1bf56e3..HEAD -- Sources/` 中，`///` 以外的變更行數是 0，所以不重跑；9.6 的結果仍然有效。
+    - 之後依使用者的選擇，再跑一次 `/spectra-verify`、`/spectra-review`，並送 fable 與 opus 審查。
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。
 - fable S6：「detail lines」表在兩個測試檔各有一份；`outputModes` 與「取第一行」的寫法重複。`makeTemporaryDirectory()` 在 9.1 之後已經有三份，改由 9.7 收進共用的 support 檔（實作複審 fable S3）。
