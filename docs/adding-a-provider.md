@@ -60,6 +60,16 @@
     - `LKAIServerSentEvent+GeminiEvents.swift`：事件建構函式，組出替身要推送的 SSE 事件。
     - `LKGeminiClientTestSupport.swift`：測試共用的請求、建立 client 的 helper 與預期的結束事件。
   - 新增供應商要動的既有檔案：`Package.swift` 的三處（新 target、新測試 target、`LKAIKit` 的依賴）、`Sources/LKAIKit/Exports.swift`（重新匯出新 target）、`Tests/LKAIKitTests/ExportsTests.swift`（只 `import LKAIKit` 就能建立新 client 的測試）。
+  - 新增供應商時 `lkai` 也要跟著加 `--provider` 的值，要動的既有檔案（`add-cli-chat-command`「新增供應商時 CLI 要跟著加 --provider 的值」）：
+    - `Sources/LKAIKitCLI/LKAIChatProvider.swift`：新的 case、`apiKeyEnvironmentName` 的分支與 `makeClient(apiKey:urlSession:)` 的分支。
+    - `Tests/LKAIKitCLITests/LKAIChatProviderTests.swift`：client 型別與 `description`、環境變數名稱、`rawValue` 與 `allCases` 的各列。
+    - 其他逐家列出供應商的 CLI 測試（`Tests/LKAIKitCLITests/` 內）：
+      - `LKAIChatInputTests` 的 `init_沒給apiKey_讀所選供應商的環境變數`：各家一列，測試內的 `environment` 也要加上新供應商的變數。
+      - `LKAIChatInputTests` 的 `init_違反一條規則_丟出該規則的錯誤且訊息含指定的詞`：每家缺少金鑰各一列，訊息要寫出該家的環境變數。
+      - `LKAICommandTests` 的 `execute_指定供應商_交給makeClient的輸入有對應的供應商與金鑰`：各家一列。
+    - cli-chat spec 的「provider values」與「environment variables」兩張表。
+    - `Tests/LKAIKitCLITests/LKAICommandLiveTests.swift`：加一個測試函式，只在新供應商的環境變數有設定時執行，模型與 library 的實際 API 測試相同。
+    - String Catalog 不必修改：說明中的環境變數清單由 `LKAIChatProvider.allCases` 產生，字串裡沒有寫任何供應商或環境變數的名稱。
 
 **串流的共同流程**
 
@@ -75,6 +85,7 @@
 - 公開 enum 標 `@nonexhaustive`；公開 struct 新增欄位時 `init` 的新參數給預設值；公開 enum 的 case 增減 associated value，會破壞 App 建立與比對這個 case 的寫法（給新的 associated value 預設值只保住建立的寫法），第一個 release tag 之後要加資料時改用 struct。（`config.yaml` 的 API 演進規則；第一份「公開 enum 標為 @nonexhaustive，公開 struct 新增欄位時 init 參數給預設值」；`03-revise-chat-client-contract`「服務不可用的錯誤帶上等待時間，不給預設值」）
 - token 用量依 `LKAIUsage` 的統一口徑：`inputTokens` 包含讀自快取的部分，`outputTokens` 包含思考或推理的部分。供應商的欄位口徑不同時，在 client 內換算。（第一份「token 用量以統一口徑放進共用型別」）
 - 實際產生回應的模型取自供應商的回報，不用請求的模型代替；沒有回報時為 nil。（第一份「實際回應的模型放進共用結果」）
+- `LKAICore` 的 `LKAIError`、`LKAIFinishReason` 與 `LKAIChatStreamEvent` 增減 case 時，`lkai` 會因為窮舉而編譯失敗：它對這三個 enum 的 `switch` 都列出每個 case、不寫 `@unknown default`（同一個 package，編譯器把它們當成可以窮舉），所以新增的 case 一定會被處理。其中 `LKAIError` 與 `LKAIFinishReason` 的 case 也列在 cli-chat spec 的「detail lines」與「finish reasons」兩張表，要一併更新。（`add-cli-chat-command`「同一個 package 的 @nonexhaustive enum 一律窮舉」）
 
 **錯誤**
 
@@ -199,5 +210,5 @@
 | 04 | `LKOpenAIStreamEvent` 的 `Response` 不論事件種類，都會解碼 `error` 與 `incomplete_details` | 留給之後 | `response.completed` 帶形狀不同的 `error` 時，已完成的回答會以 `.invalidResponse` 結束，和 Gemini 以條件式解碼避開的情況同類；OpenAI 的文件寫明成功時 `error` 是 null，證據比 Gemini 強，所以不在 `04-add-gemini-provider` 的範圍；出現實例時，比照 Gemini 改成只在用得到時才解碼（第 3 章） |
 | 04 | 多輪對話沒有把思考步驟送回（fable 指出） | 留給之後 | 文件寫思考步驟「MUST」照原樣送回，實測只送文字也成功，而 `LKAIMessage` 只有角色與文字，帶不了思考簽章。多輪對話出現 400，或開始支援工具呼叫時再處理；那時要擴充 `LKAIMessage`，屬於修改 chat-client spec 的 change |
 | 04 | 三家測試的 `makeClient(events:)` 只差 client 型別（fable 指出） | 留給之後 | 可在 `LKAITestSupport` 加一個「推送事件後結束」的替身工廠，由下一家供應商的 change 處理 |
-| 04 | 供應商在 4xx 的 `message`，或不認得的串流代碼的 `message` 中回顯金鑰時，`.invalidRequest` 與 `.invalidResponse` 的描述會含金鑰（`/spectra-verify` 與 `/spectra-review` 指出） | 留給之後 | spec「API key secrecy」的「any error it reports」嚴格來說涵蓋這種情況。實測的金鑰錯誤都是 401 或 Google 通用格式，不保留 `message`；OpenAI 是同樣的寫法。要處理時，一起修改三家的 spec 寫法或錯誤描述 |
+| 04 | 供應商在 4xx 的 `message`，或不認得的串流代碼的 `message` 中回顯金鑰時，`.invalidRequest` 與 `.invalidResponse` 的描述會含金鑰（`/spectra-verify` 與 `/spectra-review` 指出） | 留給之後 | spec「API key secrecy」的「any error it reports」嚴格來說涵蓋這種情況。實測的金鑰錯誤都是 401 或 Google 通用格式，不保留 `message`；OpenAI 是同樣的寫法。`lkai` 先在 CLI 這一側處理：印出 `Details:` 行時，把使用中的金鑰換成 `[REDACTED]`（`add-cli-chat-command`「錯誤印通用說明加上 Details 行，細節中的金鑰換成 [REDACTED]」）；library 的處理仍留給之後。要處理時，一起修改三家的 spec 寫法或錯誤描述 |
 | 04 | `failed` 時仍解碼 `usage` 與 `model`（`/spectra-review` 指出） | 留給之後 | 見 `04-add-gemini-provider`「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」。之後動到 `Interaction` 的解碼時，評估改成只在用得到時才解碼，並在 spec 寫明 `failed` 帶著格式不符的 `usage` 時的結果 |
