@@ -216,6 +216,204 @@
           }
         }
       }
+    },
+    "error.cli.blankPrompt" : {
+      "comment" : "--prompt 的內容是空字串或只有空白時顯示；訊息要含 --prompt",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The --prompt text is empty or contains only whitespace."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--prompt 的內容是空的，或只有空白。"
+          }
+        }
+      }
+    },
+    "error.cli.blankPromptFile" : {
+      "comment" : "提示詞檔案的內容是空的或只有空白時顯示；%@ 代入檔案路徑，訊息要含路徑",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The prompt file is empty or contains only whitespace: %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提示詞檔案是空的，或只有空白：%@"
+          }
+        }
+      }
+    },
+    "error.cli.conflictingPrompts" : {
+      "comment" : "--prompt 與 --prompt-file 同時給了時顯示；訊息要含 --prompt-file",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use either --prompt or --prompt-file, not both."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--prompt 與 --prompt-file 只能擇一使用，不能同時給。"
+          }
+        }
+      }
+    },
+    "error.cli.invalidMaxOutputTokens" : {
+      "comment" : "--max-output-tokens 小於 1 時顯示；訊息要含 --max-output-tokens",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--max-output-tokens must be at least 1."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--max-output-tokens 必須至少為 1。"
+          }
+        }
+      }
+    },
+    "error.cli.invalidTimeout" : {
+      "comment" : "--timeout 小於 1 時顯示；訊息要含 --timeout",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--timeout must be at least 1 second."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--timeout 必須至少為 1 秒。"
+          }
+        }
+      }
+    },
+    "error.cli.missingAPIKey" : {
+      "comment" : "沒有給 --apiKey，所選供應商的環境變數也沒有值時顯示；%@ 代入環境變數名稱，訊息要含 --apiKey",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No API key is available. Pass --apiKey, or set the environment variable %@."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可用的 API 金鑰。請以 --apiKey 傳入，或設定環境變數 %@。"
+          }
+        }
+      }
+    },
+    "error.cli.missingModel" : {
+      "comment" : "沒有給 --model，或給的是空字串時顯示；訊息要含 --model",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Specify the model to use with --model."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請以 --model 指定要使用的模型。"
+          }
+        }
+      }
+    },
+    "error.cli.missingPrompt" : {
+      "comment" : "--prompt 與 --prompt-file 都沒給時顯示；訊息要含 --prompt",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provide a prompt with --prompt or --prompt-file."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請以 --prompt 或 --prompt-file 提供提示詞。"
+          }
+        }
+      }
+    },
+    "error.cli.missingProvider" : {
+      "comment" : "沒有給 --provider 時顯示；訊息要含 --provider",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Specify the AI service to use with --provider."
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請以 --provider 指定要使用的 AI 服務。"
+          }
+        }
+      }
+    },
+    "error.cli.unreadablePromptFile" : {
+      "comment" : "提示詞檔案找不到、是資料夾或不是 UTF-8 時顯示；%@ 代入檔案路徑，訊息要含路徑",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cannot read the file given to --prompt-file as UTF-8 text: %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法以 UTF-8 讀取 --prompt-file 指定的檔案：%@"
+          }
+        }
+      }
+    },
+    "error.cli.unsupportedPromptFile" : {
+      "comment" : "提示詞檔案的副檔名不是 txt 或 md 時顯示；%@ 代入檔案路徑，訊息要含 --prompt-file",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--prompt-file accepts only .txt and .md files: %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "--prompt-file 只接受 .txt 或 .md 檔案：%@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -15,7 +15,13 @@ struct LKAICLITextTests {
     // MARK: - Properties
 
     /// 字串內有 `%@`、需要代入參數的 case；新增帶 `%@` 的 case 時要加進來
-    private static let parameterizedTexts: [LKAICLIText] = [.helpDiscussion]
+    private static let parameterizedTexts: [LKAICLIText] = [
+        .helpDiscussion,
+        .errorUnsupportedPromptFile,
+        .errorUnreadablePromptFile,
+        .errorBlankPromptFile,
+        .errorMissingAPIKey,
+    ]
 
     // spectra-scenario: cli-output-language / Provide both translations for every CLI string
     /// 驗證每個 case 在 `en` 與 `zh-Hant` 都查到不為空、也不等於 key 本身的字串

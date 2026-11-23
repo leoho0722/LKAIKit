@@ -11,7 +11,7 @@ import LKAIKit
 /// `lkai` 自己輸出的文字，raw value 是 `LKAIKitCLI` 的 String Catalog 裡的 key
 ///
 /// - Note: 每個 case 在 `en` 與 `zh-Hant` 都要有值，由 `CaseIterable` 讓測試逐一檢查
-/// - Note: 說明的 key 是 `cli.help.<項目>`；之後的輸入錯誤是 `error.cli.<case>`，警告是 `warning.cli.<case>`
+/// - Note: 說明的 key 是 `cli.help.<項目>`，輸入錯誤是 `error.cli.<case>`；之後的警告是 `warning.cli.<case>`
 /// - Note: String Catalog 不寫供應商與環境變數的名稱，需要時以 `%@` 代入
 enum LKAICLIText: String, CaseIterable {
 
@@ -52,6 +52,47 @@ enum LKAICLIText: String, CaseIterable {
 
     /// `-v`、`--version` 的說明
     case helpVersion = "cli.help.version"
+
+    /// 沒有給 `--provider`
+    case errorMissingProvider = "error.cli.missingProvider"
+
+    /// 沒有給 `--model`，或給的是空字串
+    case errorMissingModel = "error.cli.missingModel"
+
+    /// `--prompt` 與 `--prompt-file` 同時給了
+    case errorConflictingPrompts = "error.cli.conflictingPrompts"
+
+    /// `--prompt` 與 `--prompt-file` 都沒給
+    case errorMissingPrompt = "error.cli.missingPrompt"
+
+    /// 提示詞檔案的副檔名不是 `txt` 或 `md`
+    ///
+    /// - Note: 帶一個 `%@`，代入檔案路徑
+    case errorUnsupportedPromptFile = "error.cli.unsupportedPromptFile"
+
+    /// 提示詞檔案讀不了：找不到、是資料夾，或內容不是 UTF-8
+    ///
+    /// - Note: 帶一個 `%@`，代入檔案路徑
+    case errorUnreadablePromptFile = "error.cli.unreadablePromptFile"
+
+    /// `--prompt` 的內容是空字串，或只有空白與換行
+    case errorBlankPrompt = "error.cli.blankPrompt"
+
+    /// 提示詞檔案的內容是空字串，或只有空白與換行
+    ///
+    /// - Note: 帶一個 `%@`，代入檔案路徑
+    case errorBlankPromptFile = "error.cli.blankPromptFile"
+
+    /// `--max-output-tokens` 小於 1
+    case errorInvalidMaxOutputTokens = "error.cli.invalidMaxOutputTokens"
+
+    /// `--timeout` 小於 1
+    case errorInvalidTimeout = "error.cli.invalidTimeout"
+
+    /// 沒有給 `--apiKey`，所選供應商的環境變數也沒有值
+    ///
+    /// - Note: 帶一個 `%@`，代入所選供應商讀取金鑰的環境變數名稱
+    case errorMissingAPIKey = "error.cli.missingAPIKey"
 }
 
 // MARK: - Internal Method
