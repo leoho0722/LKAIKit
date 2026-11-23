@@ -5,16 +5,16 @@
 //  Created by Leo Ho on 2026/11/23.
 //
 
+import Foundation
 import LKAIKit
 import Testing
 
 @testable import LKAIKitCLI
 
-/// `LKAIChatRunner` 的單元測試：回答完成與被截斷時，標準輸出與標準錯誤寫什麼、寫的時機，
-/// 以及回傳的結果
+/// `LKAIChatRunner` 的單元測試：回答完成、被截斷與失敗時，標準輸出與標準錯誤寫什麼、
+/// 寫的時機，以及回傳的結果
 ///
 /// - Note: 以 `MockChatClient` 替代真實的 client，以 `ChatRunRecorder` 記錄輸出，不連網
-/// - Note: 失敗的路徑（`LKAIError`、沒有結束事件就結束）由之後的任務補測試
 struct LKAIChatRunnerTests {
 
     // MARK: - Properties
@@ -221,6 +221,276 @@ struct LKAIChatRunnerTests {
         #expect(client.streamReceivedRequests == [request])
         #expect(client.invokeReceivedRequests.isEmpty)
     }
+
+    // spectra-scenario: cli-chat / Report the error and its detail
+    // spectra-scenario: cli-chat / Report the error and its detail / detail lines
+    /// 驗證不加 `--stream` 時 client 丟出 `LKAIError`：標準輸出為空，標準錯誤第一行是 `Error: `
+    /// 加上該錯誤的 `en` 說明，第二行是範例表的細節行，沒有細節時標準錯誤只有一行；結果是 `.failed`
+    ///
+    /// - Parameter testCase: 一列範例：client 丟出的錯誤，以及預期的第二行；沒有第二行時為 nil
+    /// - Note: 範例表之外多加一列：細節是空字串時不印 `Details:` 行
+    /// - Note: 第一行的期望值以 `errorDescription(localization:)` 查出，不在測試裡寫死說明
+    @Test(arguments: [
+        DetailLineCase(
+            error: .invalidRequest(message: "model not found"),
+            expectedSecondLine: "Details: model not found"
+        ),
+        DetailLineCase(error: .invalidRequest(message: nil), expectedSecondLine: nil),
+        DetailLineCase(error: .invalidRequest(message: ""), expectedSecondLine: nil),
+        DetailLineCase(error: .refused(detail: "cyber"), expectedSecondLine: "Details: cyber"),
+        DetailLineCase(error: .refused(detail: nil), expectedSecondLine: nil),
+        DetailLineCase(
+            error: .invalidResponse(reason: "Stream ended before a finish event"),
+            expectedSecondLine: "Details: Stream ended before a finish event"
+        ),
+        DetailLineCase(
+            error: .transport(underlying: URLError(.timedOut)),
+            expectedSecondLine: "Details: URLError -1001"
+        ),
+        DetailLineCase(
+            error: .rateLimited(retryAfter: .seconds(30)),
+            expectedSecondLine: "Details: retry after 30 seconds"
+        ),
+        DetailLineCase(error: .rateLimited(retryAfter: nil), expectedSecondLine: nil),
+        DetailLineCase(
+            error: .serviceUnavailable(statusCode: 503, retryAfter: nil),
+            expectedSecondLine: "Details: status 503"
+        ),
+        DetailLineCase(
+            error: .serviceUnavailable(statusCode: 529, retryAfter: .seconds(10)),
+            expectedSecondLine: "Details: status 529, retry after 10 seconds"
+        ),
+        DetailLineCase(error: .invalidAPIKey, expectedSecondLine: nil),
+        DetailLineCase(error: .permissionDenied, expectedSecondLine: nil),
+        DetailLineCase(error: .quotaExceeded, expectedSecondLine: nil),
+        DetailLineCase(error: .cancelled, expectedSecondLine: nil),
+    ])
+    func run_invoke失敗_stderr是錯誤說明加上範例表的細節行且stdout為空(
+        testCase: DetailLineCase
+    ) async {
+        // Given
+        let recorder = ChatRunRecorder()
+        let client = MockChatClient(invokeResult: .failure(testCase.error))
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+        let expectedDescription = testCase.error.errorDescription(localization: "en")
+        let expectedFirstLine = "Error: \(expectedDescription)\n"
+        let expectedSecondLine = testCase.expectedSecondLine.map { $0 + "\n" } ?? ""
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .invoke)
+
+        // Then
+        #expect(recorder.standardError == expectedFirstLine + expectedSecondLine)
+        #expect(recorder.standardOutput.isEmpty)
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-chat / Redact the API key in the detail
+    /// 驗證細節裡出現的 API 金鑰，在兩種輸出方式都換成 `[REDACTED]`，標準錯誤不含金鑰
+    ///
+    /// - Parameters:
+    ///   - testCase: 一列範例：client 丟出的 `invalidRequest` 的訊息，以及預期的第二行
+    ///   - mode: 輸出方式，不加 `--stream` 或加 `--stream`
+    /// - Note: 金鑰是 `sk-secret-123`；第二列是範例之外多加的：同一個金鑰出現兩次，兩次都要換掉
+    @Test(
+        arguments: [
+            RedactionCase(
+                message: "Incorrect API key provided: sk-secret-123",
+                expectedSecondLine: "Details: Incorrect API key provided: [REDACTED]"
+            ),
+            RedactionCase(
+                message: "sk-secret-123 and sk-secret-123",
+                expectedSecondLine: "Details: [REDACTED] and [REDACTED]"
+            ),
+        ],
+        LKAIChatRunnerTests.outputModes
+    )
+    func run_細節含API金鑰_換成REDACTED且stderr不含金鑰(
+        testCase: RedactionCase,
+        mode: LKAIChatRunner.OutputMode
+    ) async throws {
+        // Given
+        let recorder = ChatRunRecorder()
+        let error = LKAIError.invalidRequest(message: testCase.message)
+        let client = MockChatClient(
+            invokeResult: .failure(error),
+            streamEvents: [],
+            streamError: error
+        )
+        let runner = makeRunner(client: client, recorder: recorder)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: mode)
+
+        // Then
+        let lines = recorder.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let secondLine = try #require(lines.dropFirst().first)
+        #expect(secondLine == testCase.expectedSecondLine)
+        #expect(!recorder.standardError.contains("sk-secret-123"))
+        #expect(outcome == .failed)
+    }
+
+    /// 驗證 API 金鑰是空字串時不做遮蔽，細節照原樣印出
+    ///
+    /// - Note: 空字串當成要換掉的文字，會在細節的每個位置都插入 `[REDACTED]`，所以空字串要略過
+    @Test
+    func run_金鑰是空字串_細節照原樣印出() async throws {
+        // Given
+        let recorder = ChatRunRecorder()
+        let client = MockChatClient(invokeResult: .failure(.invalidRequest(message: "bad request")))
+        let runner = makeRunner(client: client, recorder: recorder, apiKey: "")
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .invoke)
+
+        // Then
+        let lines = recorder.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let secondLine = try #require(lines.dropFirst().first)
+        #expect(secondLine == "Details: bad request")
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-chat / Report a timeout
+    /// 驗證逾時（`URLError(.timedOut)`）在兩種輸出方式都是 `Details: URLError -1001`，
+    /// 位在標準錯誤的第二行，結果是 `.failed`
+    ///
+    /// - Parameter mode: 輸出方式，不加 `--stream` 或加 `--stream`
+    @Test(arguments: LKAIChatRunnerTests.outputModes)
+    func run_逾時_第二行是URLError代碼且結果為失敗(mode: LKAIChatRunner.OutputMode) async throws {
+        // Given
+        let recorder = ChatRunRecorder()
+        let error = LKAIError.transport(underlying: URLError(.timedOut))
+        let client = MockChatClient(
+            invokeResult: .failure(error),
+            streamEvents: [],
+            streamError: error
+        )
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: mode)
+
+        // Then
+        let lines = recorder.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let secondLine = try #require(lines.dropFirst().first)
+        #expect(secondLine == "Details: URLError -1001")
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-output-language / Translate an error from the AI service
+    /// 驗證輸出語言是 `zh-TW` 時，`invalidAPIKey` 的標準錯誤第一行是 `Error: ` 加上 `zh-Hant` 的說明，
+    /// 沒有第二行，結果是 `.failed`
+    ///
+    /// - Parameter mode: 輸出方式，不加 `--stream` 或加 `--stream`
+    /// - Note: 期望值以 `errorDescription(localization:)` 查出，不在測試裡寫死翻譯
+    @Test(arguments: LKAIChatRunnerTests.outputModes)
+    func run_輸出語言為zhTW_錯誤說明是該語言的翻譯(mode: LKAIChatRunner.OutputMode) async {
+        // Given
+        let recorder = ChatRunRecorder()
+        let error = LKAIError.invalidAPIKey
+        let client = MockChatClient(
+            invokeResult: .failure(error),
+            streamEvents: [],
+            streamError: error
+        )
+        let runner = makeRunner(client: client, recorder: recorder, language: .zhTW)
+        let expectedDescription = error.errorDescription(localization: "zh-Hant")
+        let expectedStandardError = "Error: \(expectedDescription)\n"
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: mode)
+
+        // Then
+        #expect(recorder.standardError == expectedStandardError)
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-chat / Keep partial streamed text on failure
+    /// 驗證 `--stream` 失敗時，標準輸出保留失敗前收到的文字，結尾不是 LF（`\n`）就補一個 LF，
+    /// 再寫標準錯誤，第一行以 `Error: ` 開頭；結果是 `.failed`
+    ///
+    /// - Parameters:
+    ///   - deltas: 失敗前依序交出的文字片段
+    ///   - expectedOutput: 預期的標準輸出；第一列是 spec 的寫法，第二列是結尾已經是 LF 的情況
+    @Test(arguments: [
+        (["Hel"], "Hel\n"),
+        (["Hel", "lo\n"], "Hello\n"),
+    ] as [([String], String)])
+    func run_stream中途失敗_stdout保留已收到的文字並補LF(
+        deltas: [String],
+        expectedOutput: String
+    ) async {
+        // Given
+        let recorder = ChatRunRecorder()
+        let error = LKAIError.serviceUnavailable(statusCode: 500, retryAfter: nil)
+        let client = MockChatClient(
+            streamEvents: deltas.map { LKAIChatStreamEvent.textDelta($0) },
+            streamError: error
+        )
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .stream)
+
+        // Then
+        #expect(recorder.standardOutput == expectedOutput)
+        #expect(recorder.standardError.hasPrefix("Error: "))
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-chat / Fail a stream before any text
+    /// 驗證 `--stream` 在沒有任何文字之前就失敗時，標準輸出為空，標準錯誤第一行以 `Error: ` 開頭；
+    /// 結果是 `.failed`
+    @Test
+    func run_stream一開始就失敗_stdout為空且stderr有錯誤() async {
+        // Given
+        let recorder = ChatRunRecorder()
+        let error = LKAIError.serviceUnavailable(statusCode: 500, retryAfter: nil)
+        let client = MockChatClient(streamEvents: [], streamError: error)
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .stream)
+
+        // Then
+        #expect(recorder.standardOutput.isEmpty)
+        #expect(recorder.standardError.hasPrefix("Error: "))
+        #expect(outcome == .failed)
+    }
+
+    // spectra-scenario: cli-chat / Report a stream that ends without a finish event
+    /// 驗證 `--stream` 沒有收到結束事件、也沒有錯誤就結束時，當成 `invalidResponse` 失敗：
+    /// 已收到的文字保留並補 LF，標準錯誤第一行是 `Error: ` 加上 `invalidResponse` 的 `en` 說明，
+    /// 第二行是 `Details: Stream ended before a finish event`；結果是 `.failed`
+    ///
+    /// - Parameters:
+    ///   - deltas: 結束前依序交出的文字片段，之後直接結束，沒有結束事件
+    ///   - expectedOutput: 預期的標準輸出；第一列是 spec 的寫法，第二列是連文字都沒有的情況
+    @Test(arguments: [
+        (["Hel"], "Hel\n"),
+        ([], ""),
+    ] as [([String], String)])
+    func run_stream沒有結束事件就結束_當成失敗並寫出細節(
+        deltas: [String],
+        expectedOutput: String
+    ) async {
+        // Given
+        let recorder = ChatRunRecorder()
+        let client = MockChatClient(streamEvents: deltas.map { LKAIChatStreamEvent.textDelta($0) })
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+        let reason = "Stream ended before a finish event"
+        let expectedDescription = LKAIError.invalidResponse(reason: reason)
+            .errorDescription(localization: "en")
+        let expectedStandardError = "Error: \(expectedDescription)\nDetails: \(reason)\n"
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .stream)
+
+        // Then
+        #expect(recorder.standardOutput == expectedOutput)
+        #expect(recorder.standardError == expectedStandardError)
+        #expect(outcome == .failed)
+    }
 }
 
 // MARK: - Nested Types
@@ -238,6 +508,26 @@ extension LKAIChatRunnerTests {
 
         /// 英文警告一定要含有的詞
         let expectedToken: String
+    }
+
+    /// 細節行的一列範例：client 丟出的錯誤，以及預期的第二行
+    struct DetailLineCase: Sendable {
+
+        /// client 丟出的錯誤
+        let error: LKAIError
+
+        /// 預期的標準錯誤第二行；沒有細節、標準錯誤只有一行時為 nil
+        let expectedSecondLine: String?
+    }
+
+    /// 遮蔽金鑰的一列範例：`invalidRequest` 的訊息，以及預期的第二行
+    struct RedactionCase: Sendable {
+
+        /// client 丟出的 `invalidRequest` 的訊息，含有 API 金鑰
+        let message: String
+
+        /// 預期的標準錯誤第二行，金鑰已換成 `[REDACTED]`
+        let expectedSecondLine: String
     }
 }
 
@@ -273,17 +563,19 @@ private extension LKAIChatRunnerTests {
     ///   - client: 替身 client
     ///   - recorder: 記錄輸出的記錄器
     ///   - language: 輸出語言，預設是 `en-US`
+    ///   - apiKey: 這次使用的 API 金鑰，預設是 `sk-secret-123`
     /// - Returns: 受測的執行器
     func makeRunner(
         client: MockChatClient,
         recorder: ChatRunRecorder,
-        language: LKAIOutputLanguage = .enUS
+        language: LKAIOutputLanguage = .enUS,
+        apiKey: String = "sk-secret-123"
     ) -> LKAIChatRunner {
         LKAIChatRunner(
             client: client,
             output: recorder.output,
             language: language,
-            apiKey: LKAIAPIKey("sk-secret-123")
+            apiKey: LKAIAPIKey(apiKey)
         )
     }
 
