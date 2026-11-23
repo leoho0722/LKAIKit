@@ -144,6 +144,7 @@
 | --- | --- |
 | `action.yml` | 見下方「`action.yml` 的形狀」 |
 | `.github/workflows/ci.yml` | 見下方「`ci.yml` 的形狀」 |
+| `.github/actionlint.yaml` | `self-hosted-runner.labels` 宣告 `xcode-27`：actionlint 1.7.12 的清單還沒收錄這個 GitHub-hosted 標籤，不宣告會誤報（實作審查後加上） |
 | `docs/adding-a-provider.md` | 第 7 章 bundle 一列的「處理」改成已處理，寫出決策「lkai 留在 release 建置資料夾執行，不複製」與它的驗收方式；第 3 章開頭說明出處的地方補一句編號的說明（任務 1.3） |
 
 **`action.yml` 的形狀**：
@@ -156,6 +157,7 @@
   - 以 `env` 傳入 `github.action_path`，不在 `run` 中直接展開 `${{ }}`。
   - `set -euo pipefail`。
   - 依序 `swift build -c release --product lkai --package-path "$path"`、`swift build -c release --product lkai --package-path "$path" --show-bin-path`、`"$bin/lkai" -v`。
+  - `lkai -v` 的輸出不是單行（含 LF 或 CR）時，印出 `::error::` 並失敗。版號會寫進 `GITHUB_OUTPUT`，多出來的行會被當成另一個輸出（任務 1.1 實作時加上的加固）。
   - 全部成功後，才寫 `GITHUB_PATH` 與 `GITHUB_OUTPUT`。
 
 **`ci.yml` 的形狀**：
@@ -191,7 +193,7 @@
 
 **範圍**：
 
-- 包含：`ci.yml`、`action.yml`、`docs/adding-a-provider.md` 第 7 章的一列與第 3 章開頭說明出處的一句。
+- 包含：`ci.yml`、`action.yml`、`.github/actionlint.yaml`、`docs/adding-a-provider.md` 第 7 章的一列與第 3 章開頭說明出處的一句。
 - 不包含：發版的一切（`02-add-release-automation`）、`Package.swift` 與 `Sources/`、`lkai` 的行為、branch protection、Linux 支援、建置快取。
 
 ## Risks / Trade-offs

@@ -43,7 +43,7 @@
   - 測試範圍的排除（TDD）：
     - spectra-exclude: continuous-integration / Open a pull request | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.2 的 PR 確認
     - spectra-exclude: continuous-integration / Open a pull request that changes only Spectra documents | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由內容審查確認沒有 paths 或 paths-ignore
-    - spectra-exclude: continuous-integration / Push a new commit while a run is in progress | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由內容審查確認 concurrency 的設定，2.2 推第二個 commit 時觀察
+    - spectra-exclude: continuous-integration / Push a new commit while a run is in progress | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；只以內容審查確認 concurrency 的設定（以 PR 編號分組、cancel-in-progress: true），2.2 的幾次 push 沒有重疊，沒有實際觀察到取消
     - spectra-exclude: continuous-integration / Run the unit tests on a pull request | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.1 在本機執行 swift test、2.2 在 CI 上確認
     - spectra-exclude: continuous-integration / A unit test fails | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由內容審查確認 swift test 的退出碼會讓 job 失敗
     - spectra-exclude: continuous-integration / Smoke check the setup action | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.2 在 CI 上確認
@@ -67,6 +67,7 @@
   - `swift test` 通過。
   - 驗證：以上指令的結果記在任務回報中。
   - 執行紀錄（2026-11-24，本機 M1、Xcode 27.2）：
+    - 實作審查後新增 `.github/actionlint.yaml`，把 `xcode-27` 宣告為已知的標籤，直接執行 `actionlint .github/workflows/ci.yml` 的退出碼是 0；下面是加入設定之前的紀錄。
     - `brew install actionlint`（1.7.12，連同依賴 `shellcheck`）。`actionlint .github/workflows/ci.yml` 只回報 `label "xcode-27" is unknown`：1.7.12 內建的標籤清單還沒有 2026-10-15 GA 的 `xcode-27`（GitHub Changelog 與 runner-images README 都列有這個標籤），屬於誤報，由 2.2 的實際執行確認；以 `-ignore 'label "xcode-27" is unknown'` 重跑沒有其他錯誤，`run` 區塊的 shellcheck 也通過。
     - 照 `action.yml` 的指令以 `--package-path` 指向 repo 建置：`--show-bin-path` 印出 `.build/out/Products/Release`，`lkai -v` 是 `0.1.0`。
     - 在 package 以外的資料夾從 `PATH` 執行：`lkai -v` 印出 `0.1.0`、退出碼 0；以被拒絕的金鑰執行 `lkai --provider anthropic -m claude-opus-5-5 -p hi`，退出碼 1，stderr 第一行是 `Error: The API key is invalid.`，stdout 是空的，輸出不含金鑰。
@@ -90,3 +91,4 @@
       - 暫時的 step：以 `uses: leoho0722/LKAIKit@feat/01-add-ci` 引用時，action 在 `/Users/runner/work/_actions/leoho0722/LKAIKit/feat/01-add-ci/` 建置（不在 workspace 中），`path` 輸出與 `PATH` 上的 `lkai` 都是那一份，版號 `0.1.0`。
       - `swift test`：7 個測試 target 共 270 個測試通過，9 個需要真實 API Key 的測試函式顯示為略過。
     - 移除暫時的 step 後（commit c8fba2f，`ci.yml` 和加入前相同）的第二次 CI（run 45286073982）：成功，job 2 分 0 秒。
+    - 三次 CI 的時間沒有重疊（UTC 23:04:12–23:06:52、23:07:55–23:10:00、23:10:44–23:12:49），所以沒有觀察到「新的 commit 取消執行中的 run」；這個情境只以內容審查確認（/spectra-verify 與實作審查指出，2026-11-24）。
