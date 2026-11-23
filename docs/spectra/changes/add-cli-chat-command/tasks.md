@@ -289,7 +289,7 @@
       - stdout 改回 `try?`：`writeStandardOutput_檔案是唯讀_丟出錯誤` 失敗。
     - 主對話補上 ios-dev-kit 要求的 `try?` 同行理由（`cf86fd4`）。
     - 串流先以 `LKAIError` 失敗、補 LF 時又寫入失敗：依 spec「Answer write failure」只回報寫入失敗，原本的服務錯誤不印出，退出碼都是 1。spec 與 design 沒有另外規定，維持現狀。
-- [ ] 9.2 [after: 9.1] 經 `execute` 的測試（回歸防護；實作審查的 `/spectra-verify` W1、fable W1）（sonnet）：
+- [x] 9.2 [after: 9.1] 經 `execute` 的測試（回歸防護；實作審查的 `/spectra-verify` W1、fable W1）（sonnet）：
   - `LKAICommandTests` 的 `executeCommand` 增加可由呼叫端傳入的 `ChatRunRecorder`，預設建立新的一個。
   - 不給 `--max-output-tokens` 時，請求的 `maxOutputTokens` 是 4096，標 `cli-chat / Build the request from the options`。
   - 以 `--output-language zh-TW --apiKey sk-secret-123` 執行，替身的 `invoke(_:)` 丟出訊息含 `sk-secret-123` 的 `.invalidRequest`。斷言：
@@ -301,7 +301,7 @@
   - 驗證：
     - `swift test --filter LKAICommandTests` 通過。
     - 主對話暫時做三種修改，各確認至少一個新測試會失敗，然後還原：`execute` 傳給 runner 的 `language:` 改成 `.enUS`；`apiKey:` 改成空字串的金鑰；`maxOutputTokens` 的預設值改成 4095。
-- [ ] 9.3 [after: 9.1] 翻譯的防護（回歸防護；實作審查 opus W1、fable S5）（sonnet）：
+- [x] 9.3 [after: 9.1] 翻譯的防護（回歸防護；實作審查 opus W1、fable S5）（sonnet）：
   - `LKAICLITextTests` 加參數化測試：每個 `LKAICLIText` case 在 `LKAIOutputLanguage.allCases` 查到的字串兩兩不同。
   - `LKAIOutputLanguageTests` 加參數化測試：每個 `LKAIError` case 的 `errorDescription(localization: language.localization)`，在 `LKAIOutputLanguage.allCases` 之間兩兩不同。
   - 驗證：
