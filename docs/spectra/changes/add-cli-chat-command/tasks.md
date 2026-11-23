@@ -117,11 +117,138 @@
 
 ## 8. 驗收
 
-- [ ] 8.1 [after: 6.1, 7.1] owner 同意後，主對話以 Keychain 的金鑰執行實際 API 測試：以 `security find-generic-password -s <service> -w` 分別從 `lkai-anthropic-api-key`、`lkai-openai-api-key`、`lkai-gemini-api-key` 取得 `LKAI_ANTHROPIC_API_KEY`、`LKAI_OPENAI_API_KEY`、`LKAI_GEMINI_API_KEY`，執行 `swift test --filter LKAICommandLiveTests`，在功能分支上、第 1 到 7 組都合併之後執行。另外依 design「實際 API 測試以三家 × 兩種輸出方式執行，由 owner 手動跑」，以任一家加上 `--timeout 1` 手動執行 `lkai` 一次並記錄結果。驗證：六個測試通過，輸出不含金鑰；兩者的結果與用量記錄在本任務下方。
+- [x] 8.1 [after: 6.1, 7.1] owner 同意後，主對話以 Keychain 的金鑰執行實際 API 測試：以 `security find-generic-password -s <service> -w` 分別從 `lkai-anthropic-api-key`、`lkai-openai-api-key`、`lkai-gemini-api-key` 取得 `LKAI_ANTHROPIC_API_KEY`、`LKAI_OPENAI_API_KEY`、`LKAI_GEMINI_API_KEY`，執行 `swift test --filter LKAICommandLiveTests`，在功能分支上、第 1 到 7 組都合併之後執行。另外依 design「實際 API 測試以三家 × 兩種輸出方式執行，由 owner 手動跑」，以任一家加上 `--timeout 1` 手動執行 `lkai` 一次並記錄結果。驗證：六個測試通過，輸出不含金鑰；兩者的結果與用量記錄在本任務下方。
   - 執行紀錄（2026-11-23，主對話，功能分支合併到 6918a64 之後；owner 先前指示金鑰在 Keychain 時由主對話直接執行）：
     - `swift test --filter LKAICommandLiveTests`：Gemini 的兩個案例（invoke、`--stream`）通過；Anthropic 與 OpenAI 的四個案例失敗，`lkai` 以退出碼 1 結束，stderr 為 `Error: The API key is invalid.`。輸出與測試紀錄都不含三把金鑰（`grep -F` 計數皆為 0）。
     - 判斷：以同樣的金鑰執行 library 的 `LKAnthropicClientLiveTests` 與 `LKOpenAIClientLiveTests`，四個測試都以 `.invalidAPIKey` 失敗，所以是 Keychain 中 `lkai-anthropic-api-key` 與 `lkai-openai-api-key` 的金鑰已被供應商拒絕（長度 106、164 字元，不是 128 字元截斷），不是 CLI 的問題；CLI 在金鑰無效時的行為符合 cli-chat「Service failure reporting」。
     - `--timeout`：以 Gemini 手動執行 `lkai --provider google -m gemini-3.5-flash-lite -p "Reply with the single word OK." --timeout 1`，退出碼 1，stderr 為 `Error: Couldn't connect to the service. Check your network connection.` 與 `Details: URLError -1001`，證明 `--timeout` 有接到連線上；同一指令改成 `--timeout 60` 時 stdout 為 `OK`、退出碼 0。
     - 用量：`lkai` 不輸出 token 用量；這次實際產生 token 的請求是 Gemini 的 3 次（兩個測試案例與 `--timeout 60` 那一次），Anthropic 與 OpenAI 的請求都在驗證金鑰時被拒絕。
-    - 待 owner 更新兩把金鑰後重跑本任務；Anthropic 與 OpenAI 的四個案例通過後才勾選。
-- [ ] 8.2 [after: 7.1, 8.1] 合併後的整體驗收（主對話）：依 design Implementation Contract 的「完成後的狀態」與「驗收」逐項執行，包括零警告的乾淨建置與完整測試、iOS 模擬器建置 `LKAIKit` scheme、反向檢查、`lkai -h`、`lkai --output-language zh-TW -h`、`lkai -v` 的實際輸出，以及把 `lkai` 單獨複製到 scratchpad 的暫存資料夾執行 `-v` 的結果。驗證：每一項的結果記錄在本任務下方。
+    - 重跑紀錄（2026-11-23，owner 更新 `lkai-anthropic-api-key` 與 `lkai-openai-api-key` 之後，功能分支在 58dcc1b）：`swift test --filter LKAICommandLiveTests` 退出碼 0，三個測試函式、六個案例（三家 × invoke、`--stream`）全部通過，最慢的 OpenAI 在 3.6 秒內完成。輸出不含三把金鑰（`grep -F` 逐把確認）。這次實際產生 token 的請求是三家各 2 次，共 6 次。
+- [x] 8.2 [after: 7.1, 8.1] 合併後的整體驗收（主對話）：依 design Implementation Contract 的「完成後的狀態」與「驗收」逐項執行，包括零警告的乾淨建置與完整測試、iOS 模擬器建置 `LKAIKit` scheme、反向檢查、`lkai -h`、`lkai --output-language zh-TW -h`、`lkai -v` 的實際輸出，以及把 `lkai` 單獨複製到 scratchpad 的暫存資料夾執行 `-v` 的結果。驗證：每一項的結果記錄在本任務下方。
+  - 執行紀錄（2026-11-23，主對話，功能分支在 58dcc1b 加上 8.1 的紀錄；三個 `LKAI_*_API_KEY` 都沒有設定）：
+    - 建置：`swift package clean` 後，`swift build`、`swift build --build-tests` 與 `swift test` 都以退出碼 0 結束，三份紀錄都沒有 `warning:`。測試紀錄中含 `error:` 的行，都是參數化測試名稱中的參數標籤（例如 `(language:error:)`），不是編譯錯誤。
+    - 測試數：247 個測試、40 個 suite，全部通過。其中 9 個實際 API 測試因為沒有環境變數而略過：library 6 個、`LKAICommandLiveTests` 3 個。`LKAITestSupportTests` 的 4 個 known issue 是以 `withKnownIssue` 刻意驗證的預期失敗，本分支沒有修改這個目錄。
+    - iOS：以 XcodeBuildMCP 執行 `build_sim`，先查 session defaults：workspace 是 `.swiftpm/xcode/package.xcworkspace`，scheme 是 `LKAIKit`，模擬器是 iPhone 17（iOS 26.5）。結果是 SUCCEEDED，沒有 warning，也沒有 error。
+    - 反向檢查（`Sources/`，排除 `///` 行）：
+      - `LKAICommand.swift` 沒有 `version:`。
+      - `Sources/LKAIKitCLI/` 沒有 `print(`、`@unknown default` 與 `HTTP status`。
+      - `ProcessInfo.processInfo.environment`、`URLSession(` 與 `LKAICommandOutput(` 各出現一次，都在 `LKAICommand.run()`。`LKAICommandOutput(` 的 `standardOutput:` 引數換到下一行，所以以呼叫的開頭比對。`URLSession(` 那一行含有 `makeSessionConfiguration()`。
+      - `URLSessionConfiguration` 與 `.ephemeral` 只在 `LKAIChatInput.makeSessionConfiguration()` 出現，`.ephemeral` 只出現一次。
+      - 只有 `LKAICommand.swift` 有 `import ArgumentParser`。
+      - `LKAICommandOutput.swift` 沒有 `static`。
+      - `unredactedValue` 只出現在 `LKAIAPIKey.swift`、三家的 `makeURLRequest(for:)` 內，以及 `LKAICommand.run()` 與 `LKAIChatRunner` 的遮蔽各一處。
+      - `git diff main...HEAD -- Sources/LKAICore` 新增的宣告只有三個 `package` 宣告：`LKAILocalization`、`string(forKey:in:localization:)` 與 `errorDescription(localization:)`。`public` 沒有新增，也沒有刪除。
+      - `Package.swift` 中 `LKAIKitCLI` 的依賴仍只有 `LKAIKit` 與 `ArgumentParser`。
+      - String Catalog 中 `LKAI_` 出現 0 次。
+    - 手動確認：以 `.build/debug/lkai`、`COLUMNS=80` 執行，三個指令的退出碼都是 0。
+    - `lkai -h`：
+
+      ```text
+      OVERVIEW: Send a prompt to an AI service and print the answer, for CI/CD
+      workflows.
+
+      Sends the prompt to an AI service as one request and prints the answer to
+      standard output. Errors and warnings go to standard error.
+
+      Without --apiKey, the API key is read from the environment variable of the
+      selected provider, one of: LKAI_ANTHROPIC_API_KEY, LKAI_OPENAI_API_KEY,
+      LKAI_GEMINI_API_KEY
+
+      Exit codes:
+      0: The answer is complete.
+      1: The AI service returned an error, the request timed out, or the stream
+      stopped before it finished.
+      2: The answer did not finish normally, for example because it reached
+      --max-output-tokens. The answer is still printed.
+      64: The input is invalid.
+
+      USAGE: lkai --provider <provider> --model <model> (--prompt <prompt> | --prompt-file <path>) [<options>]
+             lkai --version
+
+      OPTIONS:
+        --provider <provider>   The AI service to use. Required to send a prompt.
+                                (values: anthropic, openai, google)
+        -m, --model <model>     The name of the model to use, passed to the service
+                                as given. Required to send a prompt.
+        -p, --prompt <prompt>   The prompt text. Use either --prompt or
+                                --prompt-file. If the text starts with -, write
+                                --prompt=<text> or use --prompt-file instead.
+        -f, --prompt-file <path>
+                                The path of a .txt or .md file that holds the prompt,
+                                read as UTF-8. Use either --prompt or --prompt-file.
+        --apiKey <apiKey>       The API key. If not given, the environment variable
+                                of the selected provider is used. In CI, prefer the
+                                environment variable: command-line arguments stay in
+                                the shell history and the process list.
+        --max-output-tokens <max-output-tokens>
+                                The maximum number of tokens in the answer. Models
+                                that think before answering count their thinking
+                                tokens too. (default: 4096)
+        --timeout <timeout>     How many seconds to wait without receiving any data
+                                from the AI service before giving up. The timer
+                                restarts each time data arrives. (default: 60)
+        --stream                Print the answer as it arrives instead of after it is
+                                complete. If the call fails, part of the answer may
+                                already be printed.
+        --output-language <output-language>
+                                The language of lkai's own messages: help text, input
+                                errors and warnings. Text generated by the argument
+                                parser stays in English. The language of the AI's
+                                answer is not affected. (values: en-US, zh-TW;
+                                default: en-US)
+        -v, --version           Show the version number and exit.
+        -h, --help              Show help information.
+
+      ```
+
+    - `lkai --output-language zh-TW -h`：
+
+      ```text
+      OVERVIEW: 將提示詞送給 AI 服務並印出回答，適合用在 CI/CD 流程。
+
+      將提示詞作為一次請求送給 AI 服務，回答印到標準輸出，錯誤與警告印到標準錯誤。
+
+      沒有給 --apiKey 時，從所選供應商的環境變數讀取 API 金鑰，可用的環境變數：LKAI_ANTHROPIC_API_KEY,
+      LKAI_OPENAI_API_KEY, LKAI_GEMINI_API_KEY
+
+      退出碼：
+      0：回答完整。
+      1：AI 服務回報錯誤、連線逾時，或串流在結束前停止。
+      2：回答沒有正常完成，例如達到 --max-output-tokens；回答仍會印出。
+      64：輸入有誤。
+
+      USAGE: lkai --provider <provider> --model <model> (--prompt <prompt> | --prompt-file <path>) [<options>]
+             lkai --version
+
+      OPTIONS:
+        --provider <provider>   要使用的 AI 服務。送出提示詞時必填。 (values: anthropic, openai,
+                                google)
+        -m, --model <model>     要使用的模型名稱，原樣交給 AI 服務。送出提示詞時必填。
+        -p, --prompt <prompt>   提示詞的文字，與 --prompt-file 擇一使用。內容以 - 開頭時，請改寫成
+                                --prompt=<text>，或改用 --prompt-file。
+        -f, --prompt-file <path>
+                                存放提示詞的 .txt 或 .md 檔案路徑，以 UTF-8 讀取，與 --prompt 擇一使用。
+        --apiKey <apiKey>       API 金鑰。沒有給時，讀取所選供應商的環境變數。在 CI 中請優先使用環境變數，因為命令列引數會留在
+                                shell 的歷史紀錄與程序清單中。
+        --max-output-tokens <max-output-tokens>
+                                回答最多可使用的 token 數。會先思考的模型，思考用的 token 也會計入。 (default:
+                                4096)
+        --timeout <timeout>     多久沒有收到 AI 服務的任何資料就放棄，單位為秒。每收到資料就重新計時。 (default: 60)
+        --stream                邊收邊印出回答，不等回答完成。呼叫失敗時，可能已經印出部分回答。
+        --output-language <output-language>
+                                lkai 自己的訊息使用的語言，包含說明、輸入錯誤與警告；引數解析器產生的文字固定為英文。不影響 AI
+                                回答的語言。 (values: en-US, zh-TW; default: en-US)
+        -v, --version           顯示版本號碼並結束。
+        -h, --help              Show help information.
+
+      ```
+
+    - `lkai -v`：
+
+      ```text
+      0.1.0
+      ```
+
+    - 發佈的基準：
+      - 只把 `.build/debug/lkai` 複製到 scratchpad 的空資料夾，執行 `./lkai -v`，以退出碼 133（SIGTRAP）中止。stderr 是 `LKAIKitCLI/resource_bundle_accessor.swift:44: Fatal error: unable to find bundle named LKAIKit_LKAIKitCLI`，和 design Context 的預期一致。
+      - 把 `LKAIKit_LKAICore.bundle` 與 `LKAIKit_LKAIKitCLI.bundle` 一起複製後，`./lkai -v` 印出 `0.1.0`、退出碼 0。`./lkai --output-language zh-TW -h` 也以中文輸出，退出碼 0。
