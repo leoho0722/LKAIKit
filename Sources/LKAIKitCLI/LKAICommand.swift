@@ -6,9 +6,11 @@
 //
 
 import ArgumentParser
+import Foundation
 import LKAIKit
 
-/// `lkai` 命令列工具的根指令，給 CI/CD 流程呼叫，宣告所有對話選項；目前不論給什麼輸入，都印出說明
+/// `lkai` 命令列工具的根指令，給 CI/CD 流程呼叫：宣告對話選項，檢查輸入後送出一次對話請求，
+/// 並把結果對應成退出碼
 ///
 /// - Note: 說明的簡介、補充說明與每個選項的說明，都以 `LKAIOutputLanguage.current` 的語言查 `LKAICLIText`
 /// - Note: 只有這個檔案依賴 ArgumentParser
@@ -112,6 +114,27 @@ extension LKAICommand: AsyncParsableCommand {
         }
     }
 
+    /// 執行對話：用真正的環境變數、`URLSession` 與標準輸出入執行 `execute(environment:makeClient:output:)`
+    ///
+    /// - Throws: `execute(environment:makeClient:output:)` 丟出的錯誤
+    /// - Note: 這是唯一讀目前行程的環境變數、建立 `URLSession` 與建立寫到 `FileHandle` 的輸出的地方，
+    ///   其餘的流程都由 `execute` 的參數注入，測試才能換成替身
+    func run() async throws {
+        try await execute(
+            environment: ProcessInfo.processInfo.environment,
+            makeClient: { input in
+                input.provider.makeClient(
+                    apiKey: input.apiKey.unredactedValue,
+                    urlSession: URLSession(configuration: input.makeSessionConfiguration())
+                )
+            },
+            output: LKAICommandOutput(
+                standardOutput: .standardOutput,
+                standardError: .standardError
+            )
+        )
+    }
+
     /// 先掃描命令列取得輸出語言，在那個語言的範圍內解析、執行與結束
     ///
     /// - Note: 說明與解析錯誤的文字在解析時就要產生，等不到解析出的 `--output-language`，
@@ -131,6 +154,68 @@ extension LKAICommand: AsyncParsableCommand {
             } catch {
                 exit(withError: error)
             }
+        }
+    }
+}
+
+// MARK: - Internal Method
+
+extension LKAICommand {
+
+    /// 檢查輸入、送出請求並寫出結果，再把結果對應成退出碼
+    ///
+    /// - Parameters:
+    ///   - environment: 目前行程的環境變數，只讀取所選供應商讀取金鑰的那一個
+    ///   - makeClient: 依檢查過的輸入建立 client；正式執行時建立真正的 client，測試時換成替身
+    ///   - output: 回答、警告與錯誤寫到的地方
+    /// - Throws: 四個對話選項都沒給時丟出 `CleanExit.helpRequest`；輸入不合法時丟出 `ValidationError`
+    ///   （退出碼 64，並印出用法）；回答沒有正常完成時丟出 `ExitCode(2)`，對話失敗時丟出
+    ///   `ExitCode.failure`（1）；回答完整時不丟出，退出碼為 0
+    /// - Note: `--provider`、`--model`、`--prompt`、`--prompt-file` 只要給了任何一個，就算要對話；
+    ///   其他選項單獨給時仍印出說明
+    /// - Note: 輸入不合法與之後的訊息，都用解析出的 `outputLanguage`，不讀 `LKAIOutputLanguage.current`
+    /// - Note: 加 `--stream` 時邊收邊寫，沒加時等整段回答完成再一次寫出
+    func execute(
+        environment: [String: String],
+        makeClient: (LKAIChatInput) -> any LKAIChatClientProtocol,
+        output: LKAICommandOutput
+    ) async throws {
+        guard provider != nil || model != nil || prompt != nil || promptFile != nil else {
+            throw CleanExit.helpRequest(self)
+        }
+
+        let input: LKAIChatInput
+        do throws(LKAIChatInputError) {
+            input = try LKAIChatInput(
+                provider: provider,
+                model: model,
+                prompt: prompt,
+                promptFile: promptFile,
+                apiKey: apiKey,
+                maxOutputTokens: maxOutputTokens,
+                timeout: timeout,
+                environment: environment
+            )
+        } catch {
+            throw ValidationError(error.message(in: outputLanguage))
+        }
+
+        let runner = LKAIChatRunner(
+            client: makeClient(input),
+            output: output,
+            language: outputLanguage,
+            apiKey: input.apiKey
+        )
+        let outcome = await runner.run(input.request, mode: stream ? .stream : .invoke)
+        switch outcome {
+        case .completed:
+            return
+
+        case .incomplete:
+            throw ExitCode(2)
+
+        case .failed:
+            throw ExitCode.failure
         }
     }
 }

@@ -78,12 +78,14 @@ extension LKAICommandTestSupport {
     /// - Parameters:
     ///   - arguments: 傳給 `lkai` 的命令列引數
     ///   - environment: 行程的環境變數，整份交給行程；預設是 `defaultEnvironment`
+    ///   - currentDirectory: 行程的工作目錄；省略時沿用測試行程的工作目錄
     /// - Returns: 行程結束後讀到的標準輸出、標準錯誤與退出碼
     /// - Throws: 行程無法啟動或輸出讀取失敗時丟出
     /// - Note: 執行檔取自測試 bundle 所在的資料夾；找不到時讓測試失敗，不略過
     static func runLKAI(
         arguments: [String],
-        environment: [String: String] = LKAICommandTestSupport.defaultEnvironment
+        environment: [String: String] = LKAICommandTestSupport.defaultEnvironment,
+        currentDirectory: URL? = nil
     ) throws -> CommandOutput {
         let testBundleURL = Bundle(for: BundleLocator.self).bundleURL
         let executableURL = testBundleURL.deletingLastPathComponent().appending(path: "lkai")
@@ -98,6 +100,7 @@ extension LKAICommandTestSupport {
         process.executableURL = executableURL
         process.arguments = arguments
         process.environment = environment
+        process.currentDirectoryURL = currentDirectory
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = standardOutputPipe
         process.standardError = standardErrorPipe

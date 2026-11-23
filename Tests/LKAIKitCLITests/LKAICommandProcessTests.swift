@@ -231,4 +231,215 @@ struct LKAICommandProcessTests {
         // Then
         #expect(output.standardOutput.contains(expectedAbstract), comment)
     }
+
+    // spectra-scenario: cli-chat / Report the first failing rule
+    // spectra-scenario: cli-chat / Report the first failing rule / validation rules in order
+    /// 驗證十條輸入規則各自被破壞時，標準錯誤第一行以 `Error: ` 開頭並含範例表指定的詞，
+    /// 標準輸出為空，退出碼為 64
+    ///
+    /// - Parameter testCase: 一列範例：傳給 `lkai` 的引數，以及錯誤訊息要含有的詞
+    /// - Note: 行程在新建的空資料夾內執行，第六列的 `missing.txt` 才一定不存在
+    /// - Note: 預設的環境沒有 `LKAI_*_API_KEY`，第十列才會缺少金鑰
+    @Test(arguments: [
+        ValidationCase(arguments: ["-m", "x", "-p", "hi"], expectedToken: "--provider"),
+        ValidationCase(arguments: ["--provider", "openai", "-p", "hi"], expectedToken: "--model"),
+        ValidationCase(
+            arguments: ["--provider", "openai", "-m", "x", "-p", "hi", "-f", "a.txt"],
+            expectedToken: "--prompt-file"
+        ),
+        ValidationCase(arguments: ["--provider", "openai", "-m", "x"], expectedToken: "--prompt"),
+        ValidationCase(
+            arguments: ["--provider", "openai", "-m", "x", "-f", "a.json"],
+            expectedToken: "--prompt-file"
+        ),
+        ValidationCase(
+            arguments: ["--provider", "openai", "-m", "x", "-f", "missing.txt"],
+            expectedToken: "missing.txt"
+        ),
+        ValidationCase(
+            arguments: ["--provider", "openai", "-m", "x", "-p", " "],
+            expectedToken: "--prompt"
+        ),
+        ValidationCase(
+            arguments: ["--provider", "openai", "-m", "x", "-p", "hi", "--max-output-tokens", "0"],
+            expectedToken: "--max-output-tokens"
+        ),
+        ValidationCase(
+            arguments: ["--provider", "openai", "-m", "x", "-p", "hi", "--timeout", "0"],
+            expectedToken: "--timeout"
+        ),
+        ValidationCase(
+            arguments: ["--provider", "openai", "-m", "x", "-p", "hi"],
+            expectedToken: "LKAI_OPENAI_API_KEY"
+        ),
+    ])
+    func lkai_違反輸入規則_錯誤訊息含指定的詞且退出碼為64(testCase: ValidationCase) throws {
+        // Given
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(
+            arguments: testCase.arguments,
+            currentDirectory: directory
+        )
+
+        // Then
+        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let firstLine = try #require(lines.first)
+        #expect(firstLine.hasPrefix("Error: "))
+        #expect(firstLine.contains(testCase.expectedToken))
+        #expect(output.standardOutput.isEmpty)
+        #expect(output.terminationStatus == 64)
+    }
+
+    // spectra-scenario: cli-chat / Keep the key out of error output
+    /// 驗證輸入檢查失敗時，標準輸出與標準錯誤都不含 `--apiKey` 給的金鑰
+    ///
+    /// - Note: 金鑰是 `sk-secret-123`，`--max-output-tokens 0` 讓檢查在金鑰之前失敗，
+    ///   錯誤訊息只寫出選項名稱，不回顯任何選項的值
+    @Test
+    func lkai_輸入檢查失敗_輸出不含金鑰且退出碼為64() throws {
+        // Given
+        let arguments = [
+            "--provider", "openai", "-m", "gpt-6-luna", "-p", "hi",
+            "--apiKey", "sk-secret-123", "--max-output-tokens", "0",
+        ]
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(arguments: arguments)
+
+        // Then
+        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let firstLine = try #require(lines.first)
+        #expect(firstLine.hasPrefix("Error: "))
+        #expect(firstLine.contains("--max-output-tokens"))
+        #expect(!output.standardOutput.contains("sk-secret-123"))
+        #expect(!output.standardError.contains("sk-secret-123"))
+        #expect(output.terminationStatus == 64)
+    }
+
+    // spectra-scenario: cli-output-language / Translate a validation failure
+    /// 驗證輸出語言是 `zh-TW` 時，輸入檢查失敗的訊息是 `zh-Hant`：標準錯誤第一行正好是 `Error: `
+    /// 加上缺少 `--provider` 的 `zh-Hant` 訊息，退出碼為 64
+    ///
+    /// - Note: 期望的訊息以 `LKAIChatInputError` 查出，不在測試裡寫死翻譯
+    @Test
+    func lkai_輸出語言為zhTW的輸入檢查失敗_訊息是正體中文且退出碼為64() throws {
+        // Given
+        let expectedFirstLine = "Error: " + LKAIChatInputError.missingProvider.message(in: .zhTW)
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(
+            arguments: ["--output-language", "zh-TW", "-m", "x", "-p", "hi"]
+        )
+
+        // Then
+        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let firstLine = try #require(lines.first)
+        #expect(firstLine == expectedFirstLine)
+        #expect(output.terminationStatus == 64)
+    }
+
+    // spectra-scenario: cli-chat / Help when no chat option is given
+    /// 驗證只給 `--stream` 這類不屬於對話的選項時，標準輸出印出用法，標準錯誤為空，退出碼為 0
+    ///
+    /// - Note: 這是回歸防護：不帶對話選項時印出說明，在命令列介面改寫後就成立
+    @Test
+    func lkai_只給stream_印出用法且退出碼為0() throws {
+        // Given
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(arguments: ["--stream"])
+
+        // Then
+        #expect(output.standardOutput.contains("USAGE: lkai"))
+        #expect(output.standardError.isEmpty)
+        #expect(output.terminationStatus == 0)
+    }
+
+    // spectra-scenario: cli-chat / Reject a value the parser does not accept
+    /// 驗證 `--provider` 的值解析器不接受時，標準錯誤第一行以 `Error: ` 開頭並含該值，
+    /// 標準輸出為空，退出碼為 64
+    ///
+    /// - Note: 這是回歸防護：值由解析器檢查，在命令列介面改寫後就成立
+    @Test
+    func lkai_provider的值不被接受_錯誤含該值且退出碼為64() throws {
+        // Given
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(
+            arguments: ["--provider", "bogus", "-m", "x", "-p", "hi"]
+        )
+
+        // Then
+        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let firstLine = try #require(lines.first)
+        #expect(firstLine.hasPrefix("Error: "))
+        #expect(firstLine.contains("bogus"))
+        #expect(output.standardOutput.isEmpty)
+        #expect(output.terminationStatus == 64)
+    }
+
+    // spectra-scenario: cli-chat / Pass a prompt that begins with a dash
+    // spectra-scenario: cli-chat / Pass a prompt that begins with a dash / dash-prefixed prompt text
+    /// 驗證以 `-` 開頭的提示詞，以獨立的引數傳給 `-p` 時被解析器拒絕：標準錯誤第一行與範例表逐字相同，
+    /// 退出碼為 64
+    ///
+    /// - Parameters:
+    ///   - promptArguments: `-p` 加上以 `-` 開頭的提示詞，對應範例表中被拒絕的兩列
+    ///   - expectedFirstLine: 標準錯誤的第一行
+    /// - Note: 被接受的三列由 `LKAICommandTests` 驗證請求的訊息文字
+    /// - Note: 這是回歸防護：由解析器拒絕，在命令列介面改寫後就成立
+    @Test(arguments: [
+        (["-p", "- item"], "Error: Missing value for '-p <prompt>'"),
+        (["-p", "--- a/file"], "Error: Invalid option: --- a/file"),
+    ] as [([String], String)])
+    func lkai_以破折號開頭的提示詞當獨立引數_被拒絕且退出碼為64(
+        promptArguments: [String],
+        expectedFirstLine: String
+    ) throws {
+        // Given
+        let arguments = ["--provider", "openai", "-m", "x"] + promptArguments
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(arguments: arguments)
+
+        // Then
+        let lines = output.standardError.split(separator: "\n", omittingEmptySubsequences: false)
+        let firstLine = try #require(lines.first)
+        #expect(firstLine == expectedFirstLine)
+        #expect(output.terminationStatus == 64)
+    }
+}
+
+// MARK: - Nested Types
+
+extension LKAICommandProcessTests {
+
+    /// 輸入規則被破壞的一列範例：傳給 `lkai` 的引數，以及錯誤訊息要含有的詞
+    struct ValidationCase: Sendable {
+
+        /// 傳給 `lkai` 的命令列引數
+        let arguments: [String]
+
+        /// 標準錯誤第一行要含有的詞：選項名稱、檔案路徑或環境變數名稱
+        let expectedToken: String
+    }
+}
+
+// MARK: - Private Method
+
+private extension LKAICommandProcessTests {
+
+    /// 建立這個測試專用的暫存資料夾，名稱不重複，測試才能平行執行
+    ///
+    /// - Returns: 新建的空資料夾位置；呼叫端用完要刪除
+    /// - Throws: 建立資料夾失敗時丟出
+    func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
 }
