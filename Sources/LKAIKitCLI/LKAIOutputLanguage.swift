@@ -23,6 +23,7 @@ enum LKAIOutputLanguage: String, CaseIterable, Sendable {
     ///
     /// - Note: 用 `$current.withValue(_:operation:)` 在作用域內綁定，不直接賦值
     /// - Note: 說明與解析階段的文字產生時，沒有地方可以傳入語言，所以讀這個值
+    /// - Note: 只給說明與解析階段讀；解析之後一律用解析出的 `outputLanguage`，不讀這個值
     @TaskLocal static var current: LKAIOutputLanguage = .enUS
 }
 
@@ -56,7 +57,8 @@ extension LKAIOutputLanguage {
     /// - Note: 值不合法時解析器會以退出碼 64 拒絕這次輸入，那次執行的所有文字都用 `.enUS`
     /// - Note: 說明與解析錯誤的文字在解析之前就要產生，等不到解析器的結果，所以要自己先掃描
     /// - Note: 下列情況要跟著修改這個方法，否則掃描的結果和解析器不同：為 `--output-language`
-    ///   加短名稱、改變任一選項的 parsing 策略、加位置引數或子指令；加子指令時，
+    ///   加任何其他名稱（短名稱或第二個長名稱）、自訂 `init?(argument:)`（例如不分大小寫，
+    ///   或接受別名）、改變任一選項的 parsing 策略、加位置引數或子指令；加子指令時，
     ///   `--output-language` 要以 `@OptionGroup` 讓每個子指令都接受
     static func scanned(from arguments: [String]) -> LKAIOutputLanguage {
         let optionName = "--output-language"

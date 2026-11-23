@@ -44,13 +44,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sends the prompt to an AI service as one request and prints the answer to standard output. Errors and warnings go to standard error.\n\nWithout --apiKey, the API key is read from the environment variable of the selected provider, one of: %@\n\nExit codes:\n0: The answer is complete.\n1: The AI service returned an error, the request timed out, or the stream stopped before it finished.\n2: The answer did not finish normally, for example because it reached --max-output-tokens. The answer is still printed.\n64: The input is invalid."
+            "value" : "Sends the prompt to an AI service as one request and prints the answer to standard output. Errors and warnings go to standard error.\n\nWithout --apiKey, the API key is read from the environment variable of the selected provider, one of: %@\n\nExit codes:\n0: The answer is complete.\n1: The chat did not succeed: the AI service returned an error, the network failed or timed out, the stream stopped before it finished, or the answer could not be written to standard output.\n2: The answer did not finish normally, for example because it reached --max-output-tokens. The answer is still printed.\n64: The input is invalid."
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "將提示詞作為一次請求送給 AI 服務，回答印到標準輸出，錯誤與警告印到標準錯誤。\n\n沒有給 --apiKey 時，從所選供應商的環境變數讀取 API 金鑰，可用的環境變數：%@\n\n退出碼：\n0：回答完整。\n1：AI 服務回報錯誤、連線逾時，或串流在結束前停止。\n2：回答沒有正常完成，例如達到 --max-output-tokens；回答仍會印出。\n64：輸入有誤。"
+            "value" : "將提示詞作為一次請求送給 AI 服務，回答印到標準輸出，錯誤與警告印到標準錯誤。\n\n沒有給 --apiKey 時，從所選供應商的環境變數讀取 API 金鑰，可用的環境變數：%@\n\n退出碼：\n0：回答完整。\n1：對話沒有成功：AI 服務回報錯誤、網路失敗或逾時、串流在結束前停止，或回答無法寫到標準輸出。\n2：回答沒有正常完成，例如達到 --max-output-tokens；回答仍會印出。\n64：輸入有誤。"
           }
         }
       }

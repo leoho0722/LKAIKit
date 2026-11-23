@@ -64,6 +64,10 @@ struct LKAICommand {
     var stream = false
 
     /// `--output-language`：`lkai` 自己的訊息使用的語言
+    ///
+    /// - Note: 說明與解析錯誤的文字要在解析之前產生，由 `LKAIOutputLanguage.scanned(from:)` 先掃描命令列。
+    ///   改這個選項的名稱、parsing 策略，或值的轉換時，要同步修改 `scanned(from:)`，
+    ///   並在 `LKAICommandTests` 的 `scanned_可解析的引數_與解析出的輸出語言相同` 加一組引數
     @Option(help: ArgumentHelp(LKAICLIText.helpOutputLanguage.string(in: .current)))
     var outputLanguage: LKAIOutputLanguage = .enUS
 
@@ -232,6 +236,9 @@ extension LKAIChatProvider: ExpressibleByArgument {
 
 /// 讓 `--output-language` 接受 `LKAIOutputLanguage`；`String` raw value 加上 `CaseIterable`，
 /// 預設實作就提供轉換、`(values: …)` 與以 raw value 顯示的 `(default: …)`
+///
+/// - Note: 值的轉換改成自訂時，要同步修改 `LKAIOutputLanguage.scanned(from:)`，
+///   做法見 `LKAICommand.outputLanguage` 的說明
 extension LKAIOutputLanguage: ExpressibleByArgument {
 
 }

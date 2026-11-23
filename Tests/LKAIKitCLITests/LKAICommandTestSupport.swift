@@ -11,7 +11,7 @@ import Testing
 /// `lkai` 的測試共用 helper：以行程執行建置出的 `lkai`，以及說明文字固定的寬度
 ///
 /// - Note: 給 in-process 的 `LKAICommandTests`、以行程執行的 `LKAICommandProcessTests`
-///   與之後的實際 API 測試共用
+///   與 `LKAICommandLiveTests` 共用
 /// - Note: 和對話替身（`MockChatClient`、`ChatRunRecorder`）是不同的檔案
 enum LKAICommandTestSupport {
 
@@ -22,7 +22,8 @@ enum LKAICommandTestSupport {
     /// - Note: 說明依終端機寬度折行，比對整段的簡介或選項說明時，結果會隨執行的終端機與 CI 改變，
     ///   所以固定寬度：行程以環境變數 `COLUMNS` 設定，in-process 的測試把它傳給
     ///   `helpMessage(columns:)`、`fullMessage(for:columns:)`
-    /// - Note: 目前最長的一行是 `--apiKey` 的英文說明，約 200 個字元，加上選項欄的縮排仍小於這個寬度；
+    /// - Note: 目前最長的一行是 `--output-language` 的英文說明，含框架附加的可選值與預設值；
+    ///   2026-11-23 以 `COLUMNS=300` 實測，這一行是 244 字元，仍小於這個寬度；
     ///   新增更長的說明時要一併調大
     static let helpColumns = 300
 }
