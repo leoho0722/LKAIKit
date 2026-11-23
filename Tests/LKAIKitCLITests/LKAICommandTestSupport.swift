@@ -8,7 +8,8 @@
 import Foundation
 import Testing
 
-/// `lkai` 的測試共用 helper：以行程執行建置出的 `lkai`，以及說明文字固定的寬度
+/// `lkai` 的測試共用 helper：以行程執行建置出的 `lkai`、說明文字固定的寬度，
+/// 以及測試共用的暫存資料夾
 ///
 /// - Note: 給 in-process 的 `LKAICommandTests`、以行程執行的 `LKAICommandProcessTests`
 ///   與 `LKAICommandLiveTests` 共用
@@ -117,5 +118,16 @@ extension LKAICommandTestSupport {
             standardError: String(decoding: standardErrorData, as: UTF8.self),
             terminationStatus: process.terminationStatus
         )
+    }
+
+    /// 建立測試專用的暫存資料夾，名稱不重複，測試才能平行執行
+    ///
+    /// - Returns: 新建的空資料夾位置；呼叫端用完要刪除
+    /// - Throws: 建立資料夾失敗時丟出
+    static func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 }

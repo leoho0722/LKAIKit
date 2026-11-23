@@ -54,7 +54,7 @@ extension LKAIChatRunner {
         /// 回答沒有正常完成，結束原因是 `maxOutputTokens` 或 `contextWindowExceeded`；回答仍已印出
         case incomplete
 
-        /// 對話失敗，沒有得到完整的結果
+        /// 對話失敗，或寫回答到標準輸出失敗，沒有得到完整的結果
         case failed
     }
 }
@@ -205,6 +205,9 @@ private extension LKAIChatRunner {
     /// - Returns: 這次執行的結果；串流失敗、沒有收到結束事件就結束，或寫到標準輸出失敗，為 `.failed`
     /// - Note: 失敗時，已經收到的文字保留在標準輸出，先補 LF 再寫標準錯誤
     /// - Note: 寫一段文字失敗時，立刻結束迭代：不再讀下一個事件，也不補 LF
+    /// - Note: 串流已經以錯誤結束、補 LF 時又寫入失敗，只回報寫入失敗，不另外印出串流的錯誤：
+    ///   cli-chat「Service failure reporting」讓位給「Answer write failure」，design 決策
+    ///   「寫回答到 stdout 失敗時以退出碼 1 結束」也是這樣定的
     func runStream(_ request: LKAIChatRequest) async -> Outcome {
         var lastByte: UInt8?
         var completion: LKAIChatCompletion?

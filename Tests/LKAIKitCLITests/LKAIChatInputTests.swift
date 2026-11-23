@@ -113,7 +113,7 @@ struct LKAIChatInputTests {
     @Test
     func init_提示詞檔案_訊息文字等於檔案內容且含結尾的LF() throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
         let fileContent = "# Title\nBody\n"
         let filePath = try writeFile(named: "prompt.md", content: fileContent, in: directory)
@@ -135,7 +135,7 @@ struct LKAIChatInputTests {
     @Test(arguments: ["notes.txt", "README.MD", "docs/plan.Md"])
     func init_副檔名是txt或md不分大小寫_接受檔案並讀出內容(relativePath: String) throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
         let filePath = try writeFile(named: relativePath, content: "Body\n", in: directory)
         let arguments = InputArguments(prompt: nil, promptFile: filePath)
@@ -156,7 +156,7 @@ struct LKAIChatInputTests {
     @Test(arguments: ["prompt.markdown", "prompt", "prompt.txt.bak"])
     func init_副檔名不是txt或md_丟出unsupportedPromptFile帶傳入的路徑(relativePath: String) throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
         let filePath = try writeFile(named: relativePath, content: "Body\n", in: directory)
         let arguments = InputArguments(prompt: nil, promptFile: filePath)
@@ -206,7 +206,7 @@ struct LKAIChatInputTests {
     @Test
     func init_提示詞檔案只有空白與LF_丟出blankPrompt帶路徑且訊息含檔名() throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
         let filePath = try writeFile(named: "blank.md", content: "  \n \n", in: directory)
         let arguments = InputArguments(prompt: nil, promptFile: filePath)
@@ -472,7 +472,7 @@ struct LKAIChatInputTests {
     @Test(arguments: UnreadableFile.allCases)
     func init_提示詞檔案讀不了_丟出unreadablePromptFile帶傳入的路徑(file: UnreadableFile) throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
         let filePath = try file.preparePath(in: directory)
         let arguments = InputArguments(prompt: nil, promptFile: filePath)
@@ -690,17 +690,6 @@ private extension LKAIChatInputTests {
             timeout: arguments.timeout,
             environment: arguments.environment
         )
-    }
-
-    /// 建立這個測試專用的暫存資料夾，名稱不重複，測試才能平行執行
-    ///
-    /// - Returns: 新建的資料夾位置；呼叫端用完要刪除
-    /// - Throws: 建立資料夾失敗時丟出
-    func makeTemporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 
     /// 在資料夾內寫入一個 UTF-8 文字檔，需要時一併建立上層資料夾

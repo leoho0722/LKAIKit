@@ -173,8 +173,8 @@ extension LKAICommand {
     ///   - makeClient: 依檢查過的輸入建立 client；正式執行時建立真正的 client，測試時換成替身
     ///   - output: 回答、警告與錯誤寫到的地方
     /// - Throws: 四個對話選項都沒給時丟出 `CleanExit.helpRequest`；輸入不合法時丟出 `ValidationError`
-    ///   （退出碼 64，並印出用法）；回答沒有正常完成時丟出 `ExitCode(2)`，對話失敗時丟出
-    ///   `ExitCode.failure`（1）；回答完整時不丟出，退出碼為 0
+    ///   （退出碼 64，並印出用法）；回答沒有正常完成時丟出 `ExitCode(2)`，對話失敗，
+    ///   或寫回答到標準輸出失敗時，丟出 `ExitCode.failure`（1）；回答完整時不丟出，退出碼為 0
     /// - Note: `--provider`、`--model`、`--prompt`、`--prompt-file` 只要給了任何一個，就算要對話；
     ///   其他選項單獨給時仍印出說明
     /// - Note: 輸入不合法與之後的訊息，都用解析出的 `outputLanguage`，不讀 `LKAIOutputLanguage.current`

@@ -295,7 +295,7 @@ struct LKAICommandProcessTests {
     ])
     func lkai_違反輸入規則_錯誤訊息含指定的詞且退出碼為64(testCase: ValidationCase) throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
 
         // When
@@ -447,21 +447,5 @@ extension LKAICommandProcessTests {
 
         /// 標準錯誤第一行要含有的詞：選項名稱、檔案路徑或環境變數名稱
         let expectedToken: String
-    }
-}
-
-// MARK: - Private Method
-
-private extension LKAICommandProcessTests {
-
-    /// 建立這個測試專用的暫存資料夾，名稱不重複，測試才能平行執行
-    ///
-    /// - Returns: 新建的空資料夾位置；呼叫端用完要刪除
-    /// - Throws: 建立資料夾失敗時丟出
-    func makeTemporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 }

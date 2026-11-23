@@ -36,6 +36,25 @@ struct LKAIChatRunnerTests {
     /// 兩種輸出方式
     private static let outputModes: [LKAIChatRunner.OutputMode] = [.invoke, .stream]
 
+    /// 範例表 stream endings 的兩列：串流交出 `Hel`、`lo` 之後，以結束原因 `completed` 的結束事件結束，
+    /// 或以 `serviceUnavailable(statusCode: 500, retryAfter: nil)` 失敗
+    private static let streamEndingCases = [
+        StreamEndingCase(
+            events: [
+                .textDelta("Hel"),
+                .textDelta("lo"),
+                .finished(
+                    LKAIChatCompletion(finishReason: .completed, usage: nil, respondingModel: nil)
+                ),
+            ],
+            streamError: nil
+        ),
+        StreamEndingCase(
+            events: [.textDelta("Hel"), .textDelta("lo")],
+            streamError: .serviceUnavailable(statusCode: 500, retryAfter: nil)
+        ),
+    ]
+
     /// 範例表 failing writes 的兩列：回答 `Hello`，失敗的是回答文字那一次，或結尾 LF（`\n`）那一次
     private static let failingWriteCases = [
         FailingWriteCase(failingIndex: 1, expectedAttempts: ["Hello"], expectedOutput: ""),
@@ -671,6 +690,36 @@ struct LKAIChatRunnerTests {
         #expect(recorder.standardError == expectedStandardError)
         #expect(outcome == .failed)
     }
+
+    // spectra-scenario: cli-chat / Report a failed write of the trailing LF in a stream
+    // spectra-scenario: cli-chat / Report a failed write of the trailing LF in a stream / stream endings
+    /// 驗證 `--stream` 寫結尾的 LF（`\n`）以 `CocoaError(.fileWriteOutOfSpace)` 失敗時，兩種串流結束方式都是：
+    /// 嘗試寫到標準輸出的內容正好是 `Hel`、`lo`、LF；標準錯誤正好是 `Error: ` 加 `en` 的寫入失敗訊息、
+    /// LF、`Details: NSCocoaErrorDomain 640`、LF；結果是 `.failed`
+    ///
+    /// - Parameter testCase: 一列範例：串流交出 `Hel`、`lo` 之後的結束方式，對應範例表 stream endings 的兩列
+    /// - Note: 第二列固定了使用者 2026-11-23 的決定：串流先以服務錯誤結束、補 LF 時又寫入失敗，
+    ///   優先於串流的錯誤，只回報寫入失敗，不另外印出服務錯誤
+    /// - Note: 第 3 次寫到標準輸出的就是結尾的 LF，前兩次是 `Hel`、`lo`
+    @Test(arguments: LKAIChatRunnerTests.streamEndingCases)
+    func run_stream補LF時寫入失敗_只回報寫入失敗且結果為失敗(testCase: StreamEndingCase) async {
+        // Given
+        let recorder = makeFailingRecorder(failingIndex: 3)
+        let client = MockChatClient(
+            streamEvents: testCase.events,
+            streamError: testCase.streamError
+        )
+        let runner = makeRunner(client: client, recorder: recorder, language: .enUS)
+        let expectedStandardError = makeWriteFailureStandardError(language: .enUS)
+
+        // When
+        let outcome = await runner.run(makeRequest(), mode: .stream)
+
+        // Then
+        #expect(attemptedStandardOutputWrites(in: recorder.timeline) == ["Hel", "lo", "\n"])
+        #expect(recorder.standardError == expectedStandardError)
+        #expect(outcome == .failed)
+    }
 }
 
 // MARK: - Nested Types
@@ -711,6 +760,16 @@ extension LKAIChatRunnerTests {
 
         /// 預期實際寫到標準輸出的全部文字，不含失敗的那一次
         let expectedOutput: String
+    }
+
+    /// 串流結束方式的一列範例：`Hel`、`lo` 之後的事件，以及讓串流失敗的錯誤
+    struct StreamEndingCase: Sendable {
+
+        /// 串流依序交出的事件；有結束事件時，它是最後一個
+        let events: [LKAIChatStreamEvent]
+
+        /// 交完事件後讓串流失敗的錯誤；nil 表示串流正常結束
+        let streamError: LKAIError?
     }
 
     /// 遮蔽金鑰的一列範例：`invalidRequest` 的訊息，以及預期的第二行

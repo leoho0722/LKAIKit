@@ -49,7 +49,7 @@ struct LKAICommandOutputTests {
     @Test
     func writeStandardOutput_檔案是唯讀_丟出錯誤() throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
         let fileURL = directory.appending(path: "target.txt")
         let readOnlyHandle = try makeReadOnlyHandle(at: fileURL, content: "原有內容")
@@ -79,7 +79,7 @@ struct LKAICommandOutputTests {
     @Test
     func writeStandardError_檔案是唯讀_不丟出錯誤也不中止() throws {
         // Given
-        let directory = try makeTemporaryDirectory()
+        let directory = try LKAICommandTestSupport.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) } // 清理失敗可忽略，因為只是暫存資料夾
         let fileURL = directory.appending(path: "target.txt")
         let originalContent = "原有內容"
@@ -115,17 +115,6 @@ private extension LKAICommandOutputTests {
     func readAll(from pipe: Pipe) throws -> String {
         let data = try pipe.fileHandleForReading.readToEnd() ?? Data()
         return String(decoding: data, as: UTF8.self)
-    }
-
-    /// 建立這個測試專用的暫存資料夾，名稱不重複，測試才能平行執行
-    ///
-    /// - Returns: 新建的資料夾位置；呼叫端用完要刪除
-    /// - Throws: 建立資料夾失敗時丟出
-    func makeTemporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 
     /// 建立一個檔案，再以唯讀開啟，寫入這個 `FileHandle` 一定會失敗

@@ -11,7 +11,8 @@ import LKAIKit
 /// `lkai` 自己輸出的文字，raw value 是 `LKAIKitCLI` 的 String Catalog 裡的 key
 ///
 /// - Note: 每個 case 在 `en` 與 `zh-Hant` 都要有值，由 `CaseIterable` 讓測試逐一檢查
-/// - Note: 說明的 key 是 `cli.help.<項目>`，輸入錯誤是 `error.cli.<case>`，警告是 `warning.cli.<case>`
+/// - Note: 說明的 key 是 `cli.help.<項目>`，警告是 `warning.cli.<case>`；`error.cli.<case>` 用於輸入錯誤，
+///   也用於寫回答到標準輸出失敗的訊息（`error.cli.answerWriteFailed`）
 /// - Note: String Catalog 不寫供應商與環境變數的名稱，需要時以 `%@` 代入
 enum LKAICLIText: String, CaseIterable {
 
