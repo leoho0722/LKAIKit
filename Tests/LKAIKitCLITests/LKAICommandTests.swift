@@ -143,10 +143,11 @@ struct LKAICommandTests {
         #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
     }
 
-    // spectra-scenario: cli-output-language / Translated command text
     /// 驗證輸出語言是 `zh-TW` 時，說明的簡介與 `--provider` 的說明都是 `zh-Hant` 的翻譯
     ///
     /// - Note: 以 `LKAIOutputLanguage.$current` 綁定語言，說明以固定的寬度產生，期望值以 `LKAICLIText` 查出
+    /// - Note: 驗證 cli-output-language「Translated command text」本文中選項說明的翻譯，沒有對應的 Scenario，
+    ///   所以不加 `spectra-scenario` 標記
     @Test
     func helpMessage_輸出語言為zhTW_簡介與provider說明是正體中文() {
         // Given
