@@ -263,6 +263,34 @@ struct LKAIErrorTests {
         #expect(description != error.localizationKey)
     }
 
+    /// 驗證 `errorDescription(localization:)` 在 `en` 與 `zh-Hant` 給出的說明，
+    /// 都等於直接從該語言的資料夾查到的說明
+    ///
+    /// - Parameters:
+    ///   - language: 語言資料夾的名稱，不含 `.lproj`
+    ///   - error: 要查說明的錯誤
+    /// - Note: 期望值的查法和上一個測試相同，直接取 `.lproj` 子 bundle，不經過 `LKAILocalization`
+    @Test(arguments: ["en", "zh-Hant"], LKAIErrorTests.errorKinds)
+    func errorDescription_指定語言_等於該語言資料夾直接查到的說明(
+        language: String,
+        error: LKAIError
+    ) throws {
+        // Given
+        let bundlePath = try #require(Bundle.module.path(forResource: language, ofType: "lproj"))
+        let languageBundle = try #require(Bundle(path: bundlePath))
+        let expectedDescription = languageBundle.localizedString(
+            forKey: error.localizationKey,
+            value: nil,
+            table: nil
+        )
+
+        // When
+        let actualDescription = error.errorDescription(localization: language)
+
+        // Then
+        #expect(actualDescription == expectedDescription)
+    }
+
     /// 驗證每種錯誤的 `errorDescription` 都有內容：不是 nil、不是空字串，也不是查不到時原樣回傳的 key
     ///
     /// - Parameter error: 要讀取說明的錯誤
