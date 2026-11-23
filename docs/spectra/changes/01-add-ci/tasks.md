@@ -16,7 +16,7 @@
 
 ## 1. Action 與 CI
 
-- [ ] 1.1 依 design「Composite action 從 action 所在的原始碼建構 lkai，不採用 container action」、「lkai 留在 release 建置資料夾執行，不複製」與「action 只要求 macOS runner，不寫 runner 標籤」，新增 repo 根目錄的 `action.yml`，交付 lkai-setup-action「Setup action interface」、「Build lkai from the action source」與「macOS runner only」（sonnet）：
+- [x] 1.1 依 design「Composite action 從 action 所在的原始碼建構 lkai，不採用 container action」、「lkai 留在 release 建置資料夾執行，不複製」與「action 只要求 macOS runner，不寫 runner 標籤」，新增 repo 根目錄的 `action.yml`，交付 lkai-setup-action「Setup action interface」、「Build lkai from the action source」與「macOS runner only」（sonnet）：
   - 形狀照 Implementation Contract 的「`action.yml` 的形狀」。
   - 驗證：主對話逐條對照形狀審查內容，確認以下幾點：
     - 兩個 `swift build` 都有 `-c release`。
@@ -24,6 +24,12 @@
     - 建置失敗時不寫 `GITHUB_PATH`。
     - 錯誤訊息只說需要 macOS runner、不寫標籤。
   - 建置指令在 2.1 於本機照樣執行；CI 中的實際執行在 2.2 確認。「Use the action on a Linux runner」只以內容審查確認，不另外開 Linux job。
+  - 測試範圍的排除（TDD）：
+    - spectra-exclude: lkai-setup-action / Read the action outputs | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為；由 1.2 的試跑檢查 version 與 path，2.2 在 CI 上確認
+    - spectra-exclude: lkai-setup-action / Use the action from another repository | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為；由 2.2 暫時以 uses: leoho0722/LKAIKit@feat/01-add-ci 引用確認
+    - spectra-exclude: lkai-setup-action / Report a service failure when run from PATH | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為；由 2.1 在本機照 action 的指令建置後，從 package 以外的資料夾實際執行確認
+    - spectra-exclude: lkai-setup-action / The build fails | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為；由內容審查確認 set -euo pipefail 與寫入 GITHUB_PATH 的位置
+    - spectra-exclude: lkai-setup-action / Use the action on a Linux runner | 專案的測試環境（swift test）無法執行 GitHub Actions 的 composite action，觀察不到這個行為，也不另開 Linux job；由內容審查確認
 - [ ] 1.2 [after: 1.1] 依 design「CI 跑單元測試與 action 試跑」、「CI 在 xcode-27 runner 執行」與「第三方 action 以 commit SHA 固定」，新增 `.github/workflows/ci.yml`，交付 continuous-integration「Pull request workflow trigger and runner」、「Unit tests without real API keys」與「Setup action smoke check」（sonnet）：
   - 形狀照 Implementation Contract 的「`ci.yml` 的形狀」。
   - 驗證：主對話審查內容，確認以下幾點：
@@ -34,6 +40,14 @@
     - 試跑比對 `lkai -v` 與 `version` 輸出，並檢查 `path` 輸出是可執行檔、最後一段是 `lkai`、以 `-v` 執行印出同樣的版號。
     - `steps.lkai.outputs.*` 以 `env` 傳入。
   - actionlint 在 2.1 執行；實際執行在 2.2 確認。
+  - 測試範圍的排除（TDD）：
+    - spectra-exclude: continuous-integration / Open a pull request | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.2 的 PR 確認
+    - spectra-exclude: continuous-integration / Open a pull request that changes only Spectra documents | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由內容審查確認沒有 paths 或 paths-ignore
+    - spectra-exclude: continuous-integration / Push a new commit while a run is in progress | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由內容審查確認 concurrency 的設定，2.2 推第二個 commit 時觀察
+    - spectra-exclude: continuous-integration / Run the unit tests on a pull request | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.1 在本機執行 swift test、2.2 在 CI 上確認
+    - spectra-exclude: continuous-integration / A unit test fails | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由內容審查確認 swift test 的退出碼會讓 job 失敗
+    - spectra-exclude: continuous-integration / Smoke check the setup action | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.2 在 CI 上確認
+    - spectra-exclude: continuous-integration / The action looks for lkai in the debug build directory | 專案的測試環境（swift test）無法執行 GitHub Actions 的 workflow，觀察不到這個行為；由 2.1 在 scratch 的乾淨 clone 中實測
 - [ ] 1.3 依 design「lkai 留在 release 建置資料夾執行，不複製」，改寫 `docs/adding-a-provider.md` 第 7 章「`lkai` 要和 `LKAIKit_LKAICore.bundle`、`LKAIKit_LKAIKitCLI.bundle` 放在同一個資料夾」一列，讓之後修改的人知道 bundle 的問題怎麼處理（sonnet）：
   - 處理方式改為已處理：action 不複製 `lkai`，從 release 的建置資料夾執行。
   - 寫出這個 change 的驗收方式（lkai-setup-action「Report a service failure when run from PATH」）。
