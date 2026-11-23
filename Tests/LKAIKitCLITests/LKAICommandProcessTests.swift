@@ -341,7 +341,7 @@ struct LKAICommandProcessTests {
         #expect(output.terminationStatus == 64)
     }
 
-    // spectra-scenario: cli-chat / Help when no chat option is given
+    // spectra-scenario: cli-chat / Only a non-chat option is given
     /// 驗證只給 `--stream` 這類不屬於對話的選項時，標準輸出印出用法，標準錯誤為空，退出碼為 0
     ///
     /// - Note: 這是回歸防護：不帶對話選項時印出說明，在命令列介面改寫後就成立

@@ -419,7 +419,7 @@ struct LKAICommandTests {
         #expect(client.invokeReceivedRequests.count == expectedInvokeCalls)
     }
 
-    // spectra-scenario: cli-chat / Help when no chat option is given
+    // spectra-scenario: cli-chat / Only a non-chat option is given
     /// 驗證四個對話選項都沒給時，不論其他選項有沒有給，`execute` 都丟出說明請求，退出碼為成功，
     /// 而且沒有建立 client
     ///

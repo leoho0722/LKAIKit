@@ -118,4 +118,10 @@
 ## 8. 驗收
 
 - [ ] 8.1 [after: 6.1, 7.1] owner 同意後，主對話以 Keychain 的金鑰執行實際 API 測試：以 `security find-generic-password -s <service> -w` 分別從 `lkai-anthropic-api-key`、`lkai-openai-api-key`、`lkai-gemini-api-key` 取得 `LKAI_ANTHROPIC_API_KEY`、`LKAI_OPENAI_API_KEY`、`LKAI_GEMINI_API_KEY`，執行 `swift test --filter LKAICommandLiveTests`，在功能分支上、第 1 到 7 組都合併之後執行。另外依 design「實際 API 測試以三家 × 兩種輸出方式執行，由 owner 手動跑」，以任一家加上 `--timeout 1` 手動執行 `lkai` 一次並記錄結果。驗證：六個測試通過，輸出不含金鑰；兩者的結果與用量記錄在本任務下方。
+  - 執行紀錄（2026-11-23，主對話，功能分支合併到 6918a64 之後；owner 先前指示金鑰在 Keychain 時由主對話直接執行）：
+    - `swift test --filter LKAICommandLiveTests`：Gemini 的兩個案例（invoke、`--stream`）通過；Anthropic 與 OpenAI 的四個案例失敗，`lkai` 以退出碼 1 結束，stderr 為 `Error: The API key is invalid.`。輸出與測試紀錄都不含三把金鑰（`grep -F` 計數皆為 0）。
+    - 判斷：以同樣的金鑰執行 library 的 `LKAnthropicClientLiveTests` 與 `LKOpenAIClientLiveTests`，四個測試都以 `.invalidAPIKey` 失敗，所以是 Keychain 中 `lkai-anthropic-api-key` 與 `lkai-openai-api-key` 的金鑰已被供應商拒絕（長度 106、164 字元，不是 128 字元截斷），不是 CLI 的問題；CLI 在金鑰無效時的行為符合 cli-chat「Service failure reporting」。
+    - `--timeout`：以 Gemini 手動執行 `lkai --provider google -m gemini-3.5-flash-lite -p "Reply with the single word OK." --timeout 1`，退出碼 1，stderr 為 `Error: Couldn't connect to the service. Check your network connection.` 與 `Details: URLError -1001`，證明 `--timeout` 有接到連線上；同一指令改成 `--timeout 60` 時 stdout 為 `OK`、退出碼 0。
+    - 用量：`lkai` 不輸出 token 用量；這次實際產生 token 的請求是 Gemini 的 3 次（兩個測試案例與 `--timeout 60` 那一次），Anthropic 與 OpenAI 的請求都在驗證金鑰時被拒絕。
+    - 待 owner 更新兩把金鑰後重跑本任務；Anthropic 與 OpenAI 的四個案例通過後才勾選。
 - [ ] 8.2 [after: 7.1, 8.1] 合併後的整體驗收（主對話）：依 design Implementation Contract 的「完成後的狀態」與「驗收」逐項執行，包括零警告的乾淨建置與完整測試、iOS 模擬器建置 `LKAIKit` scheme、反向檢查、`lkai -h`、`lkai --output-language zh-TW -h`、`lkai -v` 的實際輸出，以及把 `lkai` 單獨複製到 scratchpad 的暫存資料夾執行 `-v` 的結果。驗證：每一項的結果記錄在本任務下方。
