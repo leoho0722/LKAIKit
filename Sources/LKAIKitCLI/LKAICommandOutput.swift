@@ -39,7 +39,7 @@ struct LKAICommandOutput: Sendable {
             try standardOutput.write(contentsOf: Data(text.utf8))
         }
         writeStandardError = { text in
-            try? standardError.write(contentsOf: Data(text.utf8))
+            try? standardError.write(contentsOf: Data(text.utf8)) // 失敗可忽略，因為已經沒有地方可以回報
         }
     }
 
