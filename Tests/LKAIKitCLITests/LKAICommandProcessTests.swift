@@ -132,6 +132,54 @@ struct LKAICommandProcessTests {
         #expect(output.terminationStatus == 64)
     }
 
+    // spectra-scenario: cli-root-command / Request the version together with undefined input
+    // spectra-scenario: cli-root-command / Request the version together with undefined input / version with undefined input
+    /// 驗證版本旗標與 `lkai` 沒有定義的選項或引數一起給時，版本旗標優先：標準輸出正好是
+    /// `LKAIKitInfo.version` 加一個 LF（`\n`），標準錯誤為空，退出碼為 0
+    ///
+    /// - Parameter arguments: 傳給 `lkai` 的命令列引數，對應範例表的三列
+    /// - Note: 內建的 `--version` 本來就優先於未定義輸入的拒絕，`-v` 沿用同樣的行為
+    @Test(arguments: [
+        ["-v", "--bogus"],
+        ["-v", "foo"],
+        ["--version", "--bogus"],
+    ])
+    func lkai_版本旗標加未定義的輸入_只印出版本且退出碼為0(arguments: [String]) throws {
+        // Given
+        let expectedOutput = "\(LKAIKitInfo.version)\n"
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(arguments: arguments)
+
+        // Then
+        #expect(output.standardOutput == expectedOutput)
+        #expect(output.standardError.isEmpty)
+        #expect(output.terminationStatus == 0)
+    }
+
+    // spectra-scenario: cli-root-command / Request help together with the version flag
+    // spectra-scenario: cli-root-command / Request help together with the version flag / help with the version flag
+    /// 驗證說明旗標與版本旗標一起給時，不論先後都是說明優先：標準輸出有一行以 `USAGE: lkai `
+    /// （含結尾空格）開頭，退出碼為 0
+    ///
+    /// - Parameter arguments: 傳給 `lkai` 的命令列引數，對應範例表的三列
+    @Test(arguments: [
+        ["-v", "-h"],
+        ["-h", "-v"],
+        ["--version", "--help"],
+    ])
+    func lkai_說明旗標加版本旗標_印出說明且退出碼為0(arguments: [String]) throws {
+        // Given
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(arguments: arguments)
+
+        // Then
+        let lines = output.standardOutput.split(separator: "\n")
+        #expect(lines.contains { $0.hasPrefix("USAGE: lkai ") })
+        #expect(output.terminationStatus == 0)
+    }
+
     // spectra-scenario: cli-output-language / Apply the language wherever the option appears
     // spectra-scenario: cli-output-language / Apply the language wherever the option appears / option positions
     /// 驗證 `--output-language zh-TW` 不論出現在哪個位置、寫成哪一種形式，說明的簡介都是 `zh-Hant`，退出碼為 0
@@ -210,8 +258,7 @@ struct LKAICommandProcessTests {
     /// 驗證輸出語言是 `zh-TW` 時，解析錯誤仍是英文：標準錯誤第一行剛好是 `Error: Unknown option '--bogus'`，
     /// 標準輸出為空，退出碼為 64
     ///
-    /// - Note: 這是回歸防護：骨架已經接受 `--output-language`，所以實作前就會通過；
-    ///   往後若有人把解析器的錯誤也翻譯，這個測試會失敗
+    /// - Note: 這是回歸防護：往後若把解析器的錯誤也翻譯，這個測試會失敗
     @Test
     func lkai_輸出語言為zhTW的解析錯誤_訊息維持英文且退出碼為64() throws {
         // Given
@@ -234,7 +281,7 @@ struct LKAICommandProcessTests {
     ///
     /// - Note: 只有系統偏好語言以 `zh-Hant` 開頭時，才驗得到「中文系統仍用英文」這個前提；
     ///   前提是否成立記在斷言的說明裡，前提不成立時測試照樣執行，不失敗也不略過
-    /// - Note: 這不是實作前會失敗的測試：骨架的簡介本來就是英文，往後若說明改成跟隨系統語言才會失敗
+    /// - Note: 這是回歸防護：往後若說明改成跟隨系統語言，簡介在中文系統上變成中文，這個測試會失敗
     @Test
     func lkai_沒有給輸出語言_說明的簡介是英文且不受系統語言影響() throws {
         // Given
@@ -400,6 +447,33 @@ struct LKAICommandProcessTests {
         #expect(firstLine.hasPrefix("Error: "))
         #expect(firstLine.contains("bogus"))
         #expect(output.standardOutput.isEmpty)
+        #expect(output.terminationStatus == 64)
+    }
+
+    /// 驗證輸出語言是 `zh-TW`、`--provider` 的值被解析器拒絕時，標準錯誤有一行以 `Help:` 開頭，
+    /// 內容含 `--provider` 的 `zh-Hant` 說明，退出碼為 64
+    ///
+    /// - Note: 2026-11-23 實測，這一行是 `Help:  --provider <provider>  要使用的 AI 服務。送出提示詞時必填。`；
+    ///   行程以 `COLUMNS=300` 執行，這一行不會被折斷
+    /// - Note: 依據 cli-output-language「Translated command text」的本文：錯誤訊息附的選項說明也是
+    ///   輸出語言的翻譯；這一點沒有對應的 Scenario，所以不加 `spectra-scenario` 標記
+    /// - Note: 期望的說明以 `LKAICLIText` 查出，不在測試裡寫死翻譯
+    @Test
+    func lkai_輸出語言為zhTW且provider的值被拒絕_Help行含正體中文的選項說明且退出碼為64() throws {
+        // Given
+        let expectedHelp = LKAICLIText.helpProvider.string(in: .zhTW)
+
+        // When
+        let output = try LKAICommandTestSupport.runLKAI(
+            arguments: ["--output-language", "zh-TW", "--provider", "bogus"]
+        )
+
+        // Then
+        let lines = output.standardError.split(separator: "\n")
+        let hasTranslatedHelpLine = lines.contains {
+            $0.hasPrefix("Help:") && $0.contains(expectedHelp)
+        }
+        #expect(hasTranslatedHelpLine)
         #expect(output.terminationStatus == 64)
     }
 

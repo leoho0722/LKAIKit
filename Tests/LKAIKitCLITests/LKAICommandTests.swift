@@ -143,6 +143,30 @@ struct LKAICommandTests {
         #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
     }
 
+    // spectra-scenario: cli-root-command / Request the version together with chat options
+    /// 驗證版本旗標與完整的對話選項一起給時，`parseAsRoot` 就丟出版本訊息：訊息等於
+    /// `LKAIKitInfo.version`、退出碼為成功；流程在 `validate()` 就結束，所以 `execute` 不會執行
+    @Test
+    func parseAsRoot_版本旗標加對話選項_訊息等於套件版本且退出碼為成功() throws {
+        // Given
+        let expectedVersion = LKAIKitInfo.version
+        var actualError: (any Error)?
+
+        // When
+        do {
+            _ = try LKAICommand.parseAsRoot(
+                ["-v", "--provider", "openai", "-m", "gpt-6-luna", "-p", "hi"]
+            )
+        } catch {
+            actualError = error
+        }
+
+        // Then
+        let error = try #require(actualError)
+        #expect(LKAICommand.fullMessage(for: error) == expectedVersion)
+        #expect(LKAICommand.exitCode(for: error) == ExitCode.success)
+    }
+
     /// 驗證輸出語言是 `zh-TW` 時，說明的簡介與 `--provider` 的說明都是 `zh-Hant` 的翻譯
     ///
     /// - Note: 以 `LKAIOutputLanguage.$current` 綁定語言，說明以固定的寬度產生，期望值以 `LKAICLIText` 查出
@@ -523,8 +547,8 @@ struct LKAICommandTests {
     /// 而且沒有建立 client
     ///
     /// - Parameter arguments: 命令列引數，不含 `--provider`、`-m`、`-p`、`-f`
-    /// - Note: 這是回歸防護：骨架對任何輸入都丟出說明請求，所以實作前就會通過；
-    ///   實作後要確認四個選項都沒給時仍是這個行為
+    /// - Note: 這是回歸防護：往後若四個選項都沒給時不再丟出說明請求（例如改成建立 client，
+    ///   或丟出輸入錯誤），這個測試會失敗
     @Test(arguments: [
         [],
         ["--stream"],

@@ -27,7 +27,7 @@ struct LKAIChatRunner {
     /// 警告與錯誤使用的輸出語言
     let language: LKAIOutputLanguage
 
-    /// 這次使用的 API 金鑰，只用來遮蔽輸出中的金鑰，不會被寫出去
+    /// 這次使用的 API 金鑰，只用來遮蔽錯誤細節中的金鑰，不會被寫出去；回答原樣寫出，不遮蔽
     let apiKey: LKAIAPIKey
 }
 
@@ -73,8 +73,9 @@ extension LKAIChatRunner {
     /// - Note: 寫過文字、而且最後一個 UTF-8 位元組不是 LF（`\n`）時，補一個 LF；以位元組判斷，
     ///   因為 CR（`\r`）加 LF 在 Swift 是一個 `Character`，用 `last == "\n"` 判斷會誤判
     /// - Note: 結束原因不是 `completed` 時，回答照樣寫出，再在標準錯誤寫一行 `Warning: ` 加該語言的訊息
-    /// - Note: 對話失敗時，在標準錯誤寫 `Error: ` 加該語言的錯誤說明，有技術細節時再寫一行 `Details: `，
-    ///   細節中的 API 金鑰換成 `[REDACTED]`；不印用法，因為問題不在命令列的寫法
+    /// - Note: 對話失敗時，在標準錯誤寫 `Error: ` 加該語言的錯誤說明，有技術細節時再寫 `Details: ` 加細節；
+    ///   細節除了把 API 金鑰換成 `[REDACTED]`，都照原樣寫出，含 LF 或 CR 時會超過一行；
+    ///   不印用法，因為問題不在命令列的寫法
     /// - Note: 串流失敗時，標準輸出保留失敗前收到的文字，先依結尾規則補 LF，再寫標準錯誤
     /// - Note: 串流沒有收到結束事件、也沒有錯誤就結束時，當成 `invalidResponse`，走同一條失敗路徑
     /// - Note: 寫回答文字、串流的片段或結尾的 LF 到標準輸出時，只要有一次丟出錯誤，就停止寫回答：
@@ -126,6 +127,8 @@ private extension LKAIChatRunner {
     /// - Parameter error: 對話失敗的錯誤
     /// - Returns: 一律是 `.failed`
     /// - Note: `Error: `、`Details: ` 前綴固定是英文，細節不翻譯，兩行都以 LF 結尾
+    /// - Note: 細節除了把 API 金鑰換成 `[REDACTED]`，都照供應商給的原樣寫出；含 LF（`\n`）或
+    ///   CR（`\r`）時，標準錯誤會超過兩行
     func reportFailure(_ error: LKAIError) -> Outcome {
         var text = "Error: \(error.errorDescription(localization: language.localization))\n"
         if let details = error.details {

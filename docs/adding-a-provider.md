@@ -11,6 +11,7 @@
 - **什麼時候更新**：以下的 change 封存前，都要檢查並更新這份清單：
   - 新增供應商的 change。
   - 修改 chat-client spec、任一供應商 spec，或 `LKAICore` 共同流程的 change。
+  - 修改 `LKAIKitCLI`（`lkai`）的 change。
 - **來源**：本清單由 `03-revise-chat-client-contract` 建立，取代 `docs/spectra/config.yaml` 原本一層層指向封存 design 的指標。
 
 ## 2. 開始前要做的事
@@ -86,6 +87,9 @@
 - token 用量依 `LKAIUsage` 的統一口徑：`inputTokens` 包含讀自快取的部分，`outputTokens` 包含思考或推理的部分。供應商的欄位口徑不同時，在 client 內換算。（第一份「token 用量以統一口徑放進共用型別」）
 - 實際產生回應的模型取自供應商的回報，不用請求的模型代替；沒有回報時為 nil。（第一份「實際回應的模型放進共用結果」）
 - `LKAICore` 的 `LKAIError`、`LKAIFinishReason` 與 `LKAIChatStreamEvent` 增減 case 時，`lkai` 會因為窮舉而編譯失敗：它對這三個 enum 的 `switch` 都列出每個 case、不寫 `@unknown default`（同一個 package，編譯器把它們當成可以窮舉），所以新增的 case 一定會被處理。其中 `LKAIError` 與 `LKAIFinishReason` 的 case 也列在 cli-chat spec 的「detail lines」與「finish reasons」兩張表，要一併更新。（`add-cli-chat-command`「同一個 package 的 @nonexhaustive enum 一律窮舉」）
+  - 編譯器不會提醒、要手動更新的測試清單：
+    - `LKAIError`：`LKAIErrorDetailsTests` 的範例表、`LKAIChatRunnerTests` 中 `run_invoke失敗_…` 的範例表、`LKAIOutputLanguageTests.errors`。
+    - `LKAIFinishReason`：一則 `warning.cli.*`（`LKAICLIText` 的 case 與兩種語言的翻譯），以及 `LKAIChatRunnerTests.finishReasonCases`。
 
 **錯誤**
 
@@ -101,8 +105,8 @@
 **金鑰與隱私**
 
 - API 金鑰不出現在 `description`、`debugDescription`、`dump(_:)` 與回報的錯誤裡；client 實作三個遵循（`CustomStringConvertible`、`CustomDebugStringConvertible`、`CustomReflectable`，只放設定、不放金鑰），由測試逐一檢查。（第一份「LKAnthropicClient 以 API 金鑰與 URLSession 建立，金鑰不出現在診斷輸出」；`02-add-openai-provider`「金鑰遮蔽由每家 client 各自實作三個遵循」）
-- 金鑰以 `LKAICore` 的 `LKAIAPIKey` 保存，不用 `String`：它的 `description`、`debugDescription` 都是 `LKAIAPIKey(redacted)`，`customMirror` 沒有子項目，client 漏寫某個遵循或之後加上金鑰欄位時，金鑰仍只會顯示成遮蔽文字。只有 `makeURLRequest(for:)` 讀原始值 `unredactedValue`，公開的 `init(apiKey: String, …)` 在 init 內包裝。（`04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」）
-  - 新增供應商的 change 完成前要做兩個 grep 檢查：`grep -rn 'unredactedValue' Sources | grep -v '///'` 只出現在 `LKAIAPIKey.swift` 與各家的 `makeURLRequest(for:)`；`grep -rn 'let apiKey: String' Sources` 沒有結果。沒用 `LKAIAPIKey` 保存金鑰的供應商，金鑰遮蔽的測試照樣通過，因為三個遵循本身就遮得住，只有這兩個檢查抓得到。（`04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」）
+- 金鑰以 `LKAICore` 的 `LKAIAPIKey` 保存，不用 `String`：它的 `description`、`debugDescription` 都是 `LKAIAPIKey(redacted)`，`customMirror` 沒有子項目，client 漏寫某個遵循或之後加上金鑰欄位時，金鑰仍只會顯示成遮蔽文字。原始值 `unredactedValue` 只在三個地方讀取：`LKAIAPIKey.swift`、各家的 `makeURLRequest(for:)`，以及 `LKAIKitCLI` 的兩處（`LKAICommand.run()` 把金鑰交給 client、`LKAIChatRunner` 遮蔽細節）；公開的 `init(apiKey: String, …)` 在 init 內包裝。（`04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」；`add-cli-chat-command`「API 金鑰：--apiKey 優先，其次是供應商的環境變數」）
+  - 新增供應商的 change 完成前要做兩個 grep 檢查：`grep -rn 'unredactedValue' Sources | grep -v '///'` 的結果只出現在 `LKAIAPIKey.swift`、各家 client 的 `makeURLRequest(for:)`，以及 `Sources/LKAIKitCLI` 的兩處（`LKAICommand.swift` 的 `run()` 與 `LKAIChatRunner.swift` 的 `redactAPIKey(in:)`，各一行），其他檔案出現就是多讀了一處；`grep -rn 'let apiKey: String' Sources` 沒有結果。沒用 `LKAIAPIKey` 保存金鑰的供應商，金鑰遮蔽的測試照樣通過，因為三個遵循本身就遮得住，只有這兩個檢查抓得到。（`04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」；`add-cli-chat-command`「API 金鑰：--apiKey 優先，其次是供應商的環境變數」）
 - 有伺服器端保存的供應商預設不保存，由 App 在建立 client 時選擇開啟，參數名一律是 `shouldStoreResponses`，讓 App 換供應商時寫法一致。（`02-add-openai-provider`「回應保存由 App 在建立 client 時選擇，預設不保存」；`04-add-gemini-provider`「回應保存預設關閉，由 App 建立 client 時開啟」）
 
 **測試**
@@ -167,6 +171,10 @@
 | 01 的決策「config.yaml 的指標改為同時指向本 change」、02 的決策「config.yaml 的指標加上本 change」 | `03-revise-chat-client-contract`「新增供應商的清單取代 config.yaml 的層層指標」：`config.yaml` 只指向本清單 |
 | 02 的決策「金鑰遮蔽由每家 client 各自實作三個遵循」 | `04-add-gemini-provider`「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」：加上 `LKAICore` 的 `package` 金鑰包裝型別，三家 client 以它保存金鑰，三個遵循保留 |
 | `03-revise-chat-client-contract` 的決策「新增供應商的清單取代 config.yaml 的層層指標」所列「下一家供應商已定好的事」中，Gemini 的錯誤「要處理 Interactions 與 Google 通用兩種格式；後者交給預設分類」 | `04-add-gemini-provider`「HTTP 錯誤處理 Interactions 與 Google 通用兩種格式」：Google 通用格式的 `error.details` 有 `reason` 為 `API_KEY_INVALID` 的項目時回報 `.invalidAPIKey`，其餘才交給預設分類（實測錯誤的 `AIza` 格式金鑰回 400，預設分類會當成 `.invalidRequest`） |
+| `04-add-gemini-provider` 的決策「金鑰遮蔽由 LKAICore 的 LKAIAPIKey 保證，三個遵循保留」中「只有 `makeURLRequest(for:)` 讀 `unredactedValue`」，以及它「完成後的狀態」中 `unredactedValue` 的 grep | `add-cli-chat-command`「API 金鑰：--apiKey 優先，其次是供應商的環境變數」：`LKAIKitCLI` 也讀原始值，共兩處：`LKAICommand.run()` 把金鑰交給 client、`LKAIChatRunner` 遮蔽細節；grep 的結果多出這兩處 |
+| `add-swift-package-foundation` 的 Implementation Contract 中 `CommandConfiguration(commandName: "lkai", …, version: LKAIKitInfo.version)` | `add-cli-chat-command`「自訂 -v/--version 旗標取代內建的版本旗標」：`configuration` 不再傳 `version:`，改宣告 `version` 旗標，由 `validate()` 印出版本，才能加上 `-v` |
+| `add-swift-package-foundation` 的決策「以行程層級測試驗證 lkai 的輸出分流」中「stdout 有一行剛好是 `USAGE: lkai`」 | `add-cli-chat-command`「說明輸出改以開頭比對用法那一行」：改成「有一行以 `USAGE: lkai `（含結尾空格）開頭」，因為用法改成自訂的兩行 |
+| `add-swift-package-foundation` 驗收方式中「`LKAICommandTests` 的行程層級測試」 | `add-cli-chat-command` 的決策「process 測試清掉 LKAI_*_API_KEY」：行程測試改在 `LKAICommandProcessTests`，`LKAICommandTests` 是 in-process 的測試 |
 
 ## 6. 下一家供應商
 
@@ -216,3 +224,4 @@
 | add-cli-chat-command | `"Stream ended before a finish event"` 寫在 `LKAIChatClientProtocol`、`LKAIServerSentEventChatStreaming` 與 `LKAIChatRunner` 三處 | 留給之後 | 下次動到這句時，在 `LKAICore` 加一個 `package` 的工廠讓三處共用，做法比照 `LKAIError.unrecognizedStreamError(code:message:)`（實作審查 fable 指出） |
 | add-cli-chat-command | 有思考的模型在思考期間會不會送資料，沒有查證 | 留給之後 | `--timeout` 是「多久沒有收到任何資料就放棄」的閒置逾時；遇到思考期間逾時的實例時，記錄在這份文件 |
 | add-cli-chat-command | 替身 client 在 `LKAICoreTests` 與 CLI 測試各有一份 | 留給之後 | 出現第三份時，收進 `LKAITestSupport` |
+| add-cli-chat-command | 中文說明在一般寬度的終端機上超出畫面 | 留給之後 | swift-argument-parser 以字元數計算寬度、只在半形空格處折行，而中文字佔兩欄。2026-11-23 以 `COLUMNS=80` 實測，37 行中有 11 行超過 80 欄，最寬 120 欄。CI 只看退出碼與 stdout，不受影響（`/spectra-review` 指出） |

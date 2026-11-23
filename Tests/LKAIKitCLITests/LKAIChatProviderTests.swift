@@ -104,7 +104,8 @@ struct LKAIChatProviderTests {
     /// 其他寫法（含大小寫不同與 `gemini`）都不是供應商
     ///
     /// - Parameter testCase: 一列範例：`--provider` 的值與預期的供應商，不是供應商時為 nil
-    /// - Note: 這是回歸防護：`rawValue` 的轉換由編譯器合成，在實作前就會通過
+    /// - Note: 這是回歸防護：往後若 `rawValue` 的轉換改成手寫，或 `--provider` 開始接受別的寫法
+    ///   （例如大小寫不同、`gemini`），這個測試會失敗
     @Test(arguments: [
         RawValueCase(rawValue: "anthropic", expectedProvider: .anthropic),
         RawValueCase(rawValue: "openai", expectedProvider: .openai),
@@ -125,7 +126,7 @@ struct LKAIChatProviderTests {
 
     /// 驗證 `allCases` 正好是三個供應商，順序是 `anthropic`、`openai`、`google`
     ///
-    /// - Note: 這是回歸防護：`allCases` 由編譯器合成，在實作前就會通過
+    /// - Note: 這是回歸防護：往後若 `allCases` 改成手寫，或改了宣告順序，這個測試會失敗
     /// - Note: 新增供應商時這個測試會失敗，提醒要一併補上環境變數與 client 的對應
     @Test
     func allCases_列出全部供應商_正好是三個且依宣告順序() {
