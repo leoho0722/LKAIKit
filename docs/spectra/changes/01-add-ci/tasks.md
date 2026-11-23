@@ -73,7 +73,7 @@
     - 「The action looks for lkai in the debug build directory」：在 scratch 的乾淨 clone 中只做 release 建置，再以不加 `-c release` 的 `--show-bin-path` 取資料夾，用 `bash --noprofile --norc -eo pipefail` 執行時 `lkai -v` 以退出碼 127 失敗，後面的指令沒有執行。（第一次誤用 zsh 執行，zsh 的 `set -e` 不會在失敗的指令替換中止，那次結果不採用。）
     - 另外把 `action.yml` 的建置 step 與 `ci.yml` 的試跑 step 原樣取出，在乾淨的 clone 中以同樣的 bash 依序執行：建置 step 退出碼 0，`GITHUB_PATH` 是 Release 資料夾，輸出 `path` 與 `version=0.1.0`；試跑 step 退出碼 0。
     - `swift test` 退出碼 0：7 個測試 target 共 270 個測試通過、0 個失敗，9 個需要真實 API Key 的測試函式顯示為略過；環境中沒有任何 `LKAI_*` 變數。
-- [ ] 2.2 [after: 2.1] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 在 `xcode-27` runner 通過：
+- [x] 2.2 [after: 2.1] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 在 `xcode-27` runner 通過：
   - 依 design「CI 跑單元測試與 action 試跑」，在分支上暫時加一個 step，以 `uses: leoho0722/LKAIKit@feat/01-add-ci` 引用 action，並執行 `lkai -v`；通過後移除這個 step 再推一次，確認 CI 仍通過。
   - 驗證：PR 的 CI check 成功。
   - 驗證：任務回報記錄以下內容：
@@ -82,3 +82,11 @@
     - `swift test` 略過的測試。
     - 暫時 step 的結果。
   - Xcode 27.1 無法編譯時，依 design 的 Risks 處理。
+  - 執行紀錄（2026-11-24，PR #8：https://github.com/leoho0722/LKAIKit/pull/8）：
+    - 第一次 CI（run 45285504606，含暫時的 step）：成功，job 2 分 34 秒。
+      - 工具鏈：`swift --version` 是 Apple Swift version 6.4（swiftlang-6.4.0.34.1），Target `arm64-apple-macosx27.0.0`，也就是 runner 預設的 Xcode 27.1 能編譯，不需要改用 27.2；`bash --version` 是 GNU bash 3.2.57。
+      - 各 step 的時間：Setup lkai 65 秒（release 建置 40.95 秒）、試跑 1 秒、暫時的外部引用 35 秒（建置 29.85 秒）、`swift test` 38 秒（建置 22.58 秒）。
+      - 試跑：`lkai -v` 是 `0.1.0`，`path` 是 `/Users/runner/work/LKAIKit/LKAIKit/.build/out/Products/Release/lkai`。
+      - 暫時的 step：以 `uses: leoho0722/LKAIKit@feat/01-add-ci` 引用時，action 在 `/Users/runner/work/_actions/leoho0722/LKAIKit/feat/01-add-ci/` 建置（不在 workspace 中），`path` 輸出與 `PATH` 上的 `lkai` 都是那一份，版號 `0.1.0`。
+      - `swift test`：7 個測試 target 共 270 個測試通過，9 個需要真實 API Key 的測試函式顯示為略過。
+    - 移除暫時的 step 後（commit c8fba2f，`ci.yml` 和加入前相同）的第二次 CI（run 45286073982）：成功，job 2 分 0 秒。
