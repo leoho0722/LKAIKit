@@ -362,13 +362,26 @@
   - 完成紀錄（主對話，2026-11-23）：
     - 「加一個換行」改成 LF 的用語修正，和 9.4 一起 commit。
     - discussion 改寫之後，以 `COLUMNS=300` 重新實測：最長的一行仍是 `--output-language` 的 244 字元，`helpColumns` 的說明仍然正確。
-- [ ] 9.6 [after: 9.2, 9.3, 9.4, 9.5] 修正後的驗收（主對話），依 design「完成後的狀態」與「驗收」：
+- [x] 9.6 [after: 9.2, 9.3, 9.4, 9.5] 修正後的驗收（主對話），依 design「完成後的狀態」與「驗收」：
   - `swift package clean` 後的建置與完整測試零警告，記錄測試數。
   - iOS 模擬器建置 `LKAIKit` scheme。
   - 反向檢查，包括新的 `try?` 規則。
   - 以 Keychain 的金鑰重跑 `LKAICommandLiveTests`，輸出不含金鑰。
   - 手動以 Gemini 執行 `lkai --provider google -m gemini-3.5-flash-lite -p "Reply with the single word OK." >&-`，確認退出碼 1，stderr 是 `Error: ` 加寫入失敗的訊息，以及 `Details: NSCocoaErrorDomain 512`。
   - 驗證：每一項的結果記錄在本任務下方。
+  - 執行紀錄（2026-11-23，主對話，功能分支在 b128161，三個 `LKAI_*_API_KEY` 都沒有設定）：
+    - 建置：`swift package clean` 後，`swift build`、`swift build --build-tests` 與 `swift test` 都以退出碼 0 結束，三份紀錄都沒有 `warning:`。
+    - 測試數：263 個測試、41 個 suite 全部通過，其中 `LKAIKitCLITests` 有 91 個。9 個實際 API 測試略過；4 個 known issue 是 `LKAITestSupportTests` 刻意驗證的預期失敗，和 8.2 相同。
+    - iOS：以 XcodeBuildMCP 執行 `build_sim`，對象是 iPhone 17（iOS 26.5）的 `LKAIKit` scheme。結果 SUCCEEDED，沒有 warning，也沒有 error。
+    - 反向檢查：和 8.2 的項目相同，全部符合，另外加上新的 `try?` 規則：
+      - `Sources/LKAIKitCLI/` 內的 `try?` 只有 `LKAICommandOutput` 寫 stderr 的那一處，同一行有可忽略的理由。
+      - `unredactedValue` 的位置和 8.2 相同。
+      - `LKAICore` 的 `public` 沒有新增，也沒有刪除。
+      - 改動的 Swift 檔中，沒有超過 100 字元的行（`spectra-scenario` 標記行除外）。
+    - 實際 API 測試：以 Keychain 的金鑰執行 `swift test --filter LKAICommandLiveTests`，退出碼 0。三家 × invoke、`--stream` 共 6 個案例通過，實際產生 6 次請求。
+    - stdout 關閉時：以 Gemini 執行 `lkai --provider google -m gemini-3.5-flash-lite -p "Reply with the single word OK." >&-`，加上與不加 `--stream` 各一次，共 2 次請求。兩次的退出碼都是 1，stderr 都是 `Error: Couldn't write the answer to standard output.` 與 `Details: NSCocoaErrorDomain 512`。
+    - 金鑰：測試紀錄與手動執行的 stderr 都不含三把金鑰，已用 `grep -F` 逐把確認。
+    - spec 情境：`spectra coverage` 回報 59 項都有測試標記，0 項排除，0 項缺少。另有 10 個標記指向主 spec cli-root-command 既有的情境，和 8.2 之後相同。
 
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。
