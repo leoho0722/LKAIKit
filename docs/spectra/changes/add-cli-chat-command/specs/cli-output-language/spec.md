@@ -43,7 +43,7 @@ The cli-output-language capability defines how the `--output-language` option of
 
 ### Requirement: Translated command text
 
-The following text SHALL be looked up in the String Catalog localization that matches the output language, `en` for `en-US` and `zh-Hant` for `zh-TW`, independently of the system's preferred languages: the command's abstract and discussion, the help text of every option that `lkai` declares, including where an error's `Help:` line repeats it, the messages of the input validation failures and incomplete answer warnings defined by the cli-chat capability, and the description of an `LKAIError`, which comes from the `LKAICore` String Catalog. The `Error: `, `Warning: `, `Details: ` and `Help:` prefixes and the `Details: ` content SHALL NOT be translated. Every string that `LKAIKitCLI` looks up SHALL have a non-empty `en` and `zh-Hant` value in its String Catalog.
+The following text SHALL be looked up in the String Catalog localization that matches the output language, `en` for `en-US` and `zh-Hant` for `zh-TW`, independently of the system's preferred languages: the command's abstract and discussion, the help text of every option that `lkai` declares, including where an error's `Help:` line repeats it, the messages of the input validation failures, the incomplete answer warnings and the answer write failure defined by the cli-chat capability, and the description of an `LKAIError`, which comes from the `LKAICore` String Catalog. The `Error: `, `Warning: `, `Details: ` and `Help:` prefixes and the `Details: ` content SHALL NOT be translated. Every string that `LKAIKitCLI` looks up SHALL have a non-empty `en` and `zh-Hant` value in its String Catalog.
 
 #### Scenario: Use English by default even on a Chinese system
 

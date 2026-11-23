@@ -2,6 +2,7 @@
 
 - 第 1 到 7 組由 sonnet 在 `.worktrees/sonnet`（分支 `wt/cli-chat-sonnet`）依序實作，完成後合併回功能分支 `feat/add-cli-chat-command`。
 - 8.1 由 owner 同意後在功能分支上執行；8.2 由主對話做。建置、測試、反向檢查、commit 與合併都由主對話執行。
+- 第 9 組（實作審查後的修正）沿用同一個 worktree：9.1 到 9.5 由 sonnet 依序實作並合併回功能分支，9.6 由主對話做；之後送 fable 與 opus 複審修正的部分。
 
 測試的做法：
 
@@ -252,3 +253,93 @@
     - 發佈的基準：
       - 只把 `.build/debug/lkai` 複製到 scratchpad 的空資料夾，執行 `./lkai -v`，以退出碼 133（SIGTRAP）中止。stderr 是 `LKAIKitCLI/resource_bundle_accessor.swift:44: Fatal error: unable to find bundle named LKAIKit_LKAIKitCLI`，和 design Context 的預期一致。
       - 把 `LKAIKit_LKAICore.bundle` 與 `LKAIKit_LKAIKitCLI.bundle` 一起複製後，`./lkai -v` 印出 `0.1.0`、退出碼 0。`./lkai --output-language zh-TW -h` 也以中文輸出，退出碼 0。
+
+## 9. 實作審查後的修正
+
+來源：`/spectra-verify`、`/spectra-review`，以及 fable（t2c）、opus（t2g）的實作審查，主對話逐項查證後，使用者 2026-11-23 決定全部採用，修完再複審。
+
+- [ ] 9.1 [after: 8.2] 依 design「寫回答到 stdout 失敗時以退出碼 1 結束」，交付 cli-chat「Answer write failure」與 cli-output-language「Translated command text」中寫入失敗的訊息（sonnet）：
+  - `LKAICommandOutput`：形狀照 Implementation Contract，`writeStandardOutput` 改成會丟出錯誤的 closure；收 `FileHandle` 的 init 讓 stdout 的錯誤往上丟，stderr 維持 `try?`；`///` 改寫成現況。
+  - `LKAIChatRunner`：
+    - 寫回答文字、stream 的片段與結尾的 LF 時接住錯誤，停止寫回答；stream 模式結束迭代，不再讀下一個事件，也不補 LF。
+    - 在 stderr 一次寫入兩行：`Error: ` 加新訊息，以及 `Details: <domain> <code>`，domain 與 code 取自 `NSError`。
+    - 不寫 `Warning:`，回傳 `.failed`。
+  - 新訊息：`LKAICLIText` 加一個不帶參數的 `error.cli.*` case，String Catalog 加 en 與 zh-Hant；內容不含 `LKAI_`。
+  - 「對話替身」support 檔的 `ChatRunRecorder` 加上設定：讓 stdout 的第 n 次寫入丟出指定的錯誤，預設不失敗；失敗的那次寫入也記在 timeline，測試才能確認嘗試寫入的內容與順序。
+  - `LKAIChatRunnerTests` 新增：
+    - 「Report a failed write of the answer」，以「failing writes」的兩列執行。
+    - 「Stop reading the stream after a failed write」：timeline 只有一次讀取，失敗之後沒有任何 stdout 寫入。
+    - 「Report a failed write instead of a warning」，兩種輸出方式都要測。
+    - 輸出語言為 `zh-TW` 時，第一行是 `Error: ` 加 zh-Hant 的訊息。這一項沒有對應的 Scenario，所以不加標記。
+  - 新增 `Tests/LKAIKitCLITests/LKAICommandOutputTests.swift`（實作審查 fable S1）：
+    - 以兩條 `Pipe` 的寫入端建立 `LKAICommandOutput`，各寫入含非 ASCII 的文字，關閉寫入端後讀出，確認內容正確、沒有接反。寫入量要小於 pipe 的緩衝。
+    - 以 `FileHandle(forReadingFrom:)` 開暫存資料夾內的檔案，當成 stdout 時 `writeStandardOutput` 丟出錯誤；當成 stderr 時 `writeStandardError` 不丟出錯誤。
+    - 不可使用接收端已關閉的 pipe：寫入會觸發 SIGPIPE，終止整個測試行程（design Context）。
+  - A 段的骨架：`writeStandardOutput` 先改成會丟出錯誤的型別，runner 的呼叫處暫時以 `try?` 忽略，行為和現在相同，讓新測試能編譯並在實作前失敗。B 段再依 spec 處理錯誤。
+  - 驗證：
+    - 主對話觀察到新的寫入失敗測試在實作前失敗。pipe 分流與 stderr 不丟出錯誤的測試是回歸防護。
+    - `swift test --filter "LKAIChatRunnerTests|LKAICommandOutputTests|LKAICLITextTests"` 通過。
+    - `swift build --build-tests` 零警告。
+- [ ] 9.2 [after: 9.1] 經 `execute` 的測試（回歸防護；實作審查的 `/spectra-verify` W1、fable W1）（sonnet）：
+  - `LKAICommandTests` 的 `executeCommand` 增加可由呼叫端傳入的 `ChatRunRecorder`，預設建立新的一個。
+  - 不給 `--max-output-tokens` 時，請求的 `maxOutputTokens` 是 4096，標 `cli-chat / Build the request from the options`。
+  - 以 `--output-language zh-TW --apiKey sk-secret-123` 執行，替身的 `invoke(_:)` 丟出訊息含 `sk-secret-123` 的 `.invalidRequest`。斷言：
+    - stderr 第一行是 `Error: ` 加 `errorDescription(localization: "zh-Hant")`。
+    - 第二行含 `[REDACTED]`，整段不含 `sk-secret-123`。
+    - `execute` 丟出 `ExitCode.failure`。
+    - 標 `cli-chat / Redact the API key in the detail` 與 `cli-output-language / Translate an error from the AI service`。
+  - 記錄器讓 stdout 寫入失敗時，`execute` 丟出 `ExitCode.failure`，標 `cli-chat / Report a failed write of the answer`。
+  - 驗證：
+    - `swift test --filter LKAICommandTests` 通過。
+    - 主對話暫時做三種修改，各確認至少一個新測試會失敗，然後還原：`execute` 傳給 runner 的 `language:` 改成 `.enUS`；`apiKey:` 改成空字串的金鑰；`maxOutputTokens` 的預設值改成 4095。
+- [ ] 9.3 [after: 9.1] 翻譯的防護（回歸防護；實作審查 opus W1、fable S5）（sonnet）：
+  - `LKAICLITextTests` 加參數化測試：每個 `LKAICLIText` case 在 `LKAIOutputLanguage.allCases` 查到的字串兩兩不同。
+  - `LKAIOutputLanguageTests` 加參數化測試：每個 `LKAIError` case 的 `errorDescription(localization: language.localization)`，在 `LKAIOutputLanguage.allCases` 之間兩兩不同。
+  - 驗證：
+    - `swift test --filter "LKAICLITextTests|LKAIOutputLanguageTests"` 通過。
+    - 主對話暫時把 `LKAIOutputLanguage.zhTW` 的 `localization` 改成 `"zh-TW"`，確認兩個新測試都失敗，然後還原。這模擬語言資料夾名稱不符時，查詢靜默退回英文的情況。
+- [ ] 9.4 [after: 9.1] 其他測試的補強與修正（回歸防護）（sonnet）：
+  - 補 cli-chat「Keep partial streamed text on failure」新增的順序（實作審查 opus S3）：`LKAIChatRunnerTests` 的 `run_stream中途失敗_stdout保留已收到的文字並補LF` 與 `run_stream沒有結束事件就結束_當成失敗並寫出細節`，以 `recorder.timeline` 斷言補的 LF 寫在第一個 stderr 寫入之前。
+  - 補兩個情境，都寫在 `LKAIChatRunnerTests`：
+    - 「Keep a multi-line detail as received」（實作審查 opus S2）。
+    - 「Write an answer that repeats the key unchanged」（實作審查 opus S7）。
+  - `LKAICommandProcessTests`：
+    - `lkai_違反輸入規則_錯誤訊息含指定的詞且退出碼為64` 加一個斷言：stderr 有一行以 `Usage: lkai ` 開頭（2026-11-23 實測的輸出是 `Usage: lkai --provider <provider> ...`）。
+    - 新增測試：`["-v", "--provider", "bogus"]` 的退出碼是 64，stdout 為空。cli-root-command「Version output」的本文寫了這條規則，但沒有對應的 Scenario，所以只在 `///` 註明，不加標記（實作審查的 `/spectra-verify` S1、S2）。
+  - `LKAIChatInputTests` 兩處相對路徑 `missing.txt`，改成暫存資料夾內一個不存在的絕對路徑，比照 `UnreadableFile.missing`（實作審查 opus S5）。
+  - `LKAIChatProviderTests` 加斷言：每個 `apiKeyEnvironmentName` 都以 `LKAI_` 開頭、以 `_API_KEY` 結尾，和 `LKAICommandTestSupport` 移除金鑰的樣式相同（實作審查 fable S4）。
+  - `LKAICommandLiveTests` 的 `makeChecks` 中，`hasSuffix("\n")` 改成 `utf8.last == UInt8(ascii: "\n")`（實作審查的 `/spectra-review`）。
+  - 驗證：
+    - `swift test --filter "LKAIChatRunnerTests|LKAICommandProcessTests|LKAIChatInputTests|LKAIChatProviderTests|LKAICommandLiveTests"` 通過，實際 API 測試顯示為略過。
+    - 主對話暫時對調 `runStream(_:)` 中補 LF 與寫 stderr 的順序，確認順序的斷言會失敗，然後還原。
+- [ ] 9.5 [after: 9.1] 註解、說明文字與文件（sonnet）：
+  - String Catalog 的 `cli.help.discussion` 中退出碼 1 的說明，en 與 zh-Hant 改成 design Implementation Contract「行為」寫的文字（實作審查 opus S6）。
+  - `///` 的修改（實作審查 fable S2）：
+    - `LKAICommand` 的 `outputLanguage` 屬性，以及 `extension LKAIOutputLanguage: ExpressibleByArgument {}`，各加一段：改名稱、parsing 策略或值的轉換時，要同步修改 `LKAIOutputLanguage.scanned(from:)`，並在 `scanned_可解析的引數_與解析出的輸出語言相同` 加一組引數。
+    - `scanned(from:)` 的清單補上「自訂 `init?(argument:)`」，並把「加短名稱」改成「加任何其他名稱（短名稱或第二個長名稱）」。
+    - `LKAIOutputLanguage.current` 寫明只給解析階段讀；解析之後，一律用解析出的 `outputLanguage`。
+  - `LKAICommandTestSupport`（實作審查 opus S8、fable S6）：
+    - `helpColumns` 的 `///` 改成點名 `--output-language` 那一行。2026-11-23 以 `COLUMNS=300` 實測，這一行是 244 字元，是最長的一行。
+    - 檔頭「與之後的實際 API 測試共用」改成現況。
+  - 用語：`LKAICommandProcessTests` 的 `lkai_要求版本_版本只印到標準輸出且退出碼為0`，`///` 的「加一個換行」改成「加一個 LF」。
+  - `docs/adding-a-provider.md` 第 7 章加四列，出處都是 `add-cli-chat-command`，狀態都是「留給之後」：
+    - `lkai` 要和 `LKAIKit_LKAICore.bundle`、`LKAIKit_LKAIKitCLI.bundle` 放在同一個資料夾。漏掉 Core 的 bundle 時，只在服務回報錯誤時中止（實測退出碼 133，`Error:` 印不出來）。發佈方式由做 release 的 change 決定，那個 change 的驗收要加上「複製到空資料夾後，`-v` 與一個服務錯誤的情境都正常」（實作審查 fable W2）。
+    - `"Stream ended before a finish event"` 寫在三處：`LKAIChatClientProtocol`、`LKAIServerSentEventChatStreaming` 與 `LKAIChatRunner`。下次動到這句時，在 `LKAICore` 加一個 `package` 的工廠讓三處共用，比照 `unrecognizedStreamError(code:message:)`（實作審查 fable S3）。
+    - 有思考的模型在思考期間會不會送資料，沒有查證。`--timeout` 遇到實例時記錄在這份文件。
+    - 替身 client 在 `LKAICoreTests` 與 CLI 測試各有一份，出現第三份時收進 `LKAITestSupport`。
+  - 驗證：
+    - `swift build --build-tests` 零警告，`swift test --filter LKAIKitCLITests` 通過。
+    - 內容審查確認 discussion 的兩種語言、`///` 與第 7 章的四列。
+- [ ] 9.6 [after: 9.2, 9.3, 9.4, 9.5] 修正後的驗收（主對話），依 design「完成後的狀態」與「驗收」：
+  - `swift package clean` 後的建置與完整測試零警告，記錄測試數。
+  - iOS 模擬器建置 `LKAIKit` scheme。
+  - 反向檢查，包括新的 `try?` 規則。
+  - 以 Keychain 的金鑰重跑 `LKAICommandLiveTests`，輸出不含金鑰。
+  - 手動以 Gemini 執行 `lkai --provider google -m gemini-3.5-flash-lite -p "Reply with the single word OK." >&-`，確認退出碼 1，stderr 是 `Error: ` 加寫入失敗的訊息，以及 `Details: NSCocoaErrorDomain 512`。
+  - 驗證：每一項的結果記錄在本任務下方。
+
+不採用的建議（不建立任務）：
+- fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。
+- fable S6：「detail lines」表在兩個測試檔各有一份；`makeTemporaryDirectory()`、`outputModes` 與「取第一行」的寫法重複。
+- 理由：以上都沒有造成錯誤，再多一份時再整理。
+- 用語：「空白與換行」共八處，其中的「換行」指一行結束，符合用語規則，維持原樣。

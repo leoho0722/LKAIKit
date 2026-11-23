@@ -116,7 +116,7 @@ When the input passes validation, `lkai` SHALL send exactly one chat request thr
 
 ### Requirement: API key resolution
 
-`lkai` SHALL use the `--apiKey` value as the API key when it is not empty. Otherwise it SHALL use the value of the environment variable listed for the selected provider when that value is not empty. When neither is available, the input SHALL be rejected with a message that names both `--apiKey` and that environment variable. The help of `lkai` SHALL list the environment variable of every provider in both output languages. `lkai` SHALL NOT write the API key to stdout or stderr in any outcome.
+`lkai` SHALL use the `--apiKey` value as the API key when it is not empty. Otherwise it SHALL use the value of the environment variable listed for the selected provider when that value is not empty. When neither is available, the input SHALL be rejected with a message that names both `--apiKey` and that environment variable. The help of `lkai` SHALL list the environment variable of every provider in both output languages. The text that `lkai` generates itself, namely the help, the input validation failures, the warnings and the `Error: ` and `Details: ` lines, SHALL NOT contain the API key. The answer text SHALL be written as received, without redaction, so an answer that repeats a key contained in the prompt reaches stdout unchanged.
 
 #### Scenario: Choose the API key source
 
@@ -162,6 +162,14 @@ When the input passes validation, `lkai` SHALL send exactly one chat request thr
 - **THEN** stderr's first line starts with `Error: ` and contains `--max-output-tokens`
 - **AND** neither stdout nor stderr contains `sk-secret-123`
 - **AND** the process exits with status 64
+
+#### Scenario: Write an answer that repeats the key unchanged
+
+- **GIVEN** the API key in use is `sk-secret-123`
+- **AND** the chat call completes with the finish reason `completed` and the text `key: sk-secret-123`
+- **WHEN** `lkai` runs without `--stream`
+- **THEN** stdout is exactly `key: sk-secret-123` followed by an LF
+- **AND** stderr is empty
 
 ### Requirement: Network timeout
 
@@ -225,7 +233,7 @@ When at least one chat option is given and the input is invalid, `lkai` SHALL ch
 
 ### Requirement: Invoke output
 
-Without `--stream`, `lkai` SHALL wait until the whole answer is complete and only then write the answer text to stdout. When the text is not empty and its last byte in UTF-8 is not LF, it SHALL write one LF after the text. Nothing else SHALL be written to stdout. When the finish reason is `completed`, stderr SHALL be empty and the process SHALL exit with status 0.
+Without `--stream`, `lkai` SHALL wait until the whole answer is complete and only then write the answer text to stdout. When the text is not empty and its last byte in UTF-8 is not LF, it SHALL write one LF after the text. Nothing else SHALL be written to stdout. When the finish reason is `completed` and every write to stdout succeeds, stderr SHALL be empty and the process SHALL exit with status 0. A failed write to stdout is handled as described in "Answer write failure".
 
 #### Scenario: Print the complete answer
 
@@ -246,7 +254,7 @@ Without `--stream`, `lkai` SHALL wait until the whole answer is complete and onl
 
 ### Requirement: Stream output
 
-With `--stream`, `lkai` SHALL write each text delta to stdout as soon as it is received, before reading the next stream event. After the stream ends, whether it finishes or fails, `lkai` SHALL write one LF when at least one byte was written and the last written byte is not LF. Nothing else SHALL be written to stdout. When the finish reason is `completed`, stderr SHALL be empty and the process SHALL exit with status 0. When the stream ends without a finish event and without an error, `lkai` SHALL report it as `invalidResponse(reason: "Stream ended before a finish event")`, as described in "Service failure reporting".
+With `--stream`, `lkai` SHALL write each text delta to stdout as soon as it is received, before reading the next stream event. After the stream ends, whether it finishes or fails, `lkai` SHALL write one LF when at least one byte was written and the last written byte is not LF. Nothing else SHALL be written to stdout. When the finish reason is `completed` and every write to stdout succeeds, stderr SHALL be empty and the process SHALL exit with status 0. A failed write to stdout is handled as described in "Answer write failure". When the stream ends without a finish event and without an error, `lkai` SHALL report it as `invalidResponse(reason: "Stream ended before a finish event")`, as described in "Service failure reporting".
 
 #### Scenario: Write deltas as they arrive
 
@@ -283,7 +291,7 @@ With `--stream`, `lkai` SHALL write each text delta to stdout as soon as it is r
 
 ### Requirement: Incomplete answer reporting
 
-When the finish event's reason is anything other than `completed`, `lkai` SHALL still write the answer text to stdout as described for the output mode in use, SHALL write a warning to stderr whose first line starts with `Warning: `, and SHALL exit with status 2.
+When the finish event's reason is anything other than `completed`, `lkai` SHALL still write the answer text to stdout as described for the output mode in use, SHALL write a warning to stderr whose first line starts with `Warning: `, and SHALL exit with status 2. When a write to stdout fails, "Answer write failure" applies instead of this requirement.
 
 #### Scenario: Warn about an answer that stopped early
 
@@ -303,7 +311,7 @@ When the finish event's reason is anything other than `completed`, `lkai` SHALL 
 
 ### Requirement: Service failure reporting
 
-When the chat call fails with an `LKAIError`, `lkai` SHALL write to stderr a first line that is `Error: ` followed by the error's description in the output language. When the error carries technical detail, it SHALL write a second line that is `Details: ` followed by the detail listed below, untranslated, with every occurrence of the API key in use replaced by `[REDACTED]`. It SHALL NOT print the usage information, and SHALL exit with status 1. Without `--stream`, stdout SHALL be empty. With `--stream`, stdout SHALL contain only the text received before the failure, followed by the line terminator rule of "Stream output".
+When the chat call fails with an `LKAIError`, `lkai` SHALL write to stderr a first line that is `Error: ` followed by the error's description in the output language. When the error carries technical detail, it SHALL write a second line that is `Details: ` followed by the detail listed below, untranslated, with every occurrence of the API key in use replaced by `[REDACTED]`. Apart from that replacement, the detail SHALL be written as the provider gave it, so a detail that contains LF or CR characters spans more than one line of stderr. It SHALL NOT print the usage information, and SHALL exit with status 1. Without `--stream`, stdout SHALL be empty. With `--stream`, stdout SHALL contain only the text received before the failure, followed by the line terminator rule of "Stream output".
 
 #### Scenario: Report the error and its detail
 
@@ -337,11 +345,19 @@ When the chat call fails with an `LKAIError`, `lkai` SHALL write to stderr a fir
 - **THEN** stderr's second line is exactly `Details: Incorrect API key provided: [REDACTED]`
 - **AND** stderr does not contain `sk-secret-123`
 
+#### Scenario: Keep a multi-line detail as received
+
+- **GIVEN** the output language `en-US`
+- **WHEN** the chat call fails with `invalidRequest(message:)` whose message is `first`, an LF and `second`, without `--stream`
+- **THEN** stderr is exactly `Error: ` followed by the `en` description of `invalidRequest`, an LF, `Details: first`, an LF, `second` and an LF
+- **AND** the process exits with status 1
+
 #### Scenario: Keep partial streamed text on failure
 
 - **GIVEN** a stream that yields the text delta `Hel`, then fails with `serviceUnavailable(statusCode: 500, retryAfter: nil)`
 - **WHEN** `lkai --stream` handles the stream
 - **THEN** stdout is exactly `Hel` followed by an LF
+- **AND** that LF is written to stdout before anything is written to stderr
 - **AND** stderr's first line starts with `Error: `
 - **AND** the process exits with status 1
 
@@ -350,4 +366,44 @@ When the chat call fails with an `LKAIError`, `lkai` SHALL write to stderr a fir
 - **GIVEN** a stream that fails with `serviceUnavailable(statusCode: 500, retryAfter: nil)` before yielding any text
 - **WHEN** `lkai --stream` handles the stream
 - **THEN** stdout is empty
+- **AND** the process exits with status 1
+
+### Requirement: Answer write failure
+
+When a write to stdout fails with an error while `lkai` writes the answer text, a text delta or the trailing LF, `lkai` SHALL stop writing the answer, and with `--stream` it SHALL NOT read another stream event. It SHALL write to stderr a first line that is `Error: ` followed by the answer write failure message in the output language, and a second line that is `Details: ` followed by the error's domain, a space and the error's code, untranslated, for example `Details: NSCocoaErrorDomain 640`. It SHALL NOT write a `Warning: ` line, even when the finish reason is not `completed`, and SHALL exit with status 1. A failed write to stderr SHALL be ignored. When stdout is a pipe whose reading end has closed, the operating system terminates the process with SIGPIPE before any write error is reported, so that case is outside this requirement.
+
+#### Scenario: Report a failed write of the answer
+
+- **GIVEN** the output language `en-US`
+- **AND** the chat call completes with the finish reason `completed` and the text `Hello`
+- **AND** the write listed fails with `CocoaError(.fileWriteOutOfSpace)`
+- **WHEN** `lkai` runs without `--stream`
+- **THEN** stderr's first line is `Error: ` followed by the `en` answer write failure message
+- **AND** stderr's second line is exactly `Details: NSCocoaErrorDomain 640`
+- **AND** the process exits with status 1
+
+##### Example: failing writes
+
+| Failing write | Writes attempted to stdout |
+| ------------- | -------------------------- |
+| the answer text `Hello` | `Hello` |
+| the trailing LF | `Hello`, then an LF |
+
+#### Scenario: Stop reading the stream after a failed write
+
+- **GIVEN** a stream that yields the text deltas `Hel` and `lo`, then a finish event with the reason `completed`
+- **AND** the write of `Hel` to stdout fails with `CocoaError(.fileWriteOutOfSpace)`
+- **WHEN** `lkai --stream` handles the stream
+- **THEN** only the first stream event is read
+- **AND** no LF is written after the failed write
+- **AND** stderr's second line is exactly `Details: NSCocoaErrorDomain 640`
+- **AND** the process exits with status 1
+
+#### Scenario: Report a failed write instead of a warning
+
+- **GIVEN** the chat call ends with the finish reason `maxOutputTokens` and the text `Partial`
+- **AND** the write of `Partial` to stdout fails with `CocoaError(.fileWriteOutOfSpace)`
+- **WHEN** `lkai` runs with and without `--stream`
+- **THEN** stderr's first line starts with `Error: `
+- **AND** no line of stderr starts with `Warning: `
 - **AND** the process exits with status 1
