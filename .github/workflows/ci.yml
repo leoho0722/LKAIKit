@@ -103,32 +103,6 @@ jobs:
 
           echo "lkai 試跑通過：版本 $(quote "$actual")，路徑 $(quote "$LKAI_PATH")"
 
-      # 暫時的 step（01-add-ci 任務 2.2）：以其他 repo 的寫法從 GitHub 引用 action，
-      # 確認 action 在下載的位置建置、不在 workspace 中建置。確認後移除，不會合併。
-      - name: 暫時：以 leoho0722/LKAIKit@feat/01-add-ci 引用 action
-        id: lkai-remote
-        uses: leoho0722/LKAIKit@feat/01-add-ci
-
-      - name: 暫時：確認外部引用的 lkai
-        shell: bash
-        working-directory: ${{ runner.temp }}
-        env:
-          REMOTE_PATH: ${{ steps.lkai-remote.outputs.path }}
-          REMOTE_VERSION: ${{ steps.lkai-remote.outputs.version }}
-        run: |
-          set -euo pipefail
-          echo "外部引用的 path：$REMOTE_PATH"
-          echo "外部引用的 version：$REMOTE_VERSION"
-          case "$REMOTE_PATH" in
-            "$GITHUB_WORKSPACE"/*)
-              echo "::error::外部引用的 action 在 workspace 中建置，預期在下載的位置"
-              exit 1
-              ;;
-          esac
-          [ -x "$REMOTE_PATH" ]
-          [ "$("$REMOTE_PATH" -v)" = "$REMOTE_VERSION" ]
-          echo "PATH 上的 lkai：$(command -v lkai)，版本 $(lkai -v)"
-
       # 預設的工作目錄就是 package 根目錄。
       - name: 執行單元測試
         shell: bash
