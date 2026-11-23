@@ -258,7 +258,7 @@
 
 來源：`/spectra-verify`、`/spectra-review`，以及 fable（t2c）、opus（t2g）的實作審查，主對話逐項查證後，使用者 2026-11-23 決定全部採用，修完再複審。
 
-- [ ] 9.1 [after: 8.2] 依 design「寫回答到 stdout 失敗時以退出碼 1 結束」，交付 cli-chat「Answer write failure」與 cli-output-language「Translated command text」中寫入失敗的訊息（sonnet）：
+- [x] 9.1 [after: 8.2] 依 design「寫回答到 stdout 失敗時以退出碼 1 結束」，交付 cli-chat「Answer write failure」與 cli-output-language「Translated command text」中寫入失敗的訊息（sonnet）：
   - `LKAICommandOutput`：形狀照 Implementation Contract，`writeStandardOutput` 改成會丟出錯誤的 closure；收 `FileHandle` 的 init 讓 stdout 的錯誤往上丟，stderr 維持 `try?`；`///` 改寫成現況。
   - `LKAIChatRunner`：
     - 寫回答文字、stream 的片段與結尾的 LF 時接住錯誤，停止寫回答；stream 模式結束迭代，不再讀下一個事件，也不補 LF。
@@ -280,6 +280,15 @@
     - 主對話觀察到新的寫入失敗測試在實作前失敗。pipe 分流與 stderr 不丟出錯誤的測試是回歸防護。
     - `swift test --filter "LKAIChatRunnerTests|LKAICommandOutputTests|LKAICLITextTests"` 通過。
     - `swift build --build-tests` 零警告。
+  - 完成紀錄（主對話，2026-11-23）：
+    - 實作前失敗：新的寫入失敗測試四個函式、共 7 個案例都失敗。`LKAICommandOutputTests` 的三個測試是回歸防護；A 段骨架已讓 stdout 丟出錯誤，所以「唯讀檔案當成 stdout 會丟出錯誤」在實作前就通過。
+    - 實作後：`LKAIKitCLITests` 82 個測試通過，建置零警告。
+    - mutation check 三項都讓測試失敗，之後已還原：
+      - 寫入失敗後繼續讀事件：讀取序號、嘗試寫入、stdout 與 Outcome 的斷言失敗。
+      - 失敗後仍補 LF：invoke 與 stream 的嘗試寫入斷言失敗。
+      - stdout 改回 `try?`：`writeStandardOutput_檔案是唯讀_丟出錯誤` 失敗。
+    - 主對話補上 ios-dev-kit 要求的 `try?` 同行理由（`cf86fd4`）。
+    - 串流先以 `LKAIError` 失敗、補 LF 時又寫入失敗：依 spec「Answer write failure」只回報寫入失敗，原本的服務錯誤不印出，退出碼都是 1。spec 與 design 沒有另外規定，維持現狀。
 - [ ] 9.2 [after: 9.1] 經 `execute` 的測試（回歸防護；實作審查的 `/spectra-verify` W1、fable W1）（sonnet）：
   - `LKAICommandTests` 的 `executeCommand` 增加可由呼叫端傳入的 `ChatRunRecorder`，預設建立新的一個。
   - 不給 `--max-output-tokens` 時，請求的 `maxOutputTokens` 是 4096，標 `cli-chat / Build the request from the options`。
