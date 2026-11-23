@@ -383,7 +383,7 @@
     - 金鑰：測試紀錄與手動執行的 stderr 都不含三把金鑰，已用 `grep -F` 逐把確認。
     - spec 情境：`spectra coverage` 回報 59 項都有測試標記，0 項排除，0 項缺少。另有 10 個標記指向主 spec cli-root-command 既有的情境，和 8.2 之後相同。
 
-- [ ] 9.7 [after: 9.6] 實作複審後的修正（回歸防護；實作複審 fable W1、S1 到 S3，opus S1 到 S4）（sonnet）：
+- [x] 9.7 [after: 9.6] 實作複審後的修正（回歸防護；實作複審 fable W1、S1 到 S3，opus S1 到 S4）（sonnet）：
   - `LKAIChatRunnerTests` 加 cli-chat「Report a failed write of the trailing LF in a stream」的測試。
     - 以「stream endings」的兩列參數化，標 spectra-scenario。
     - 記錄器讓第 3 次 stdout 寫入失敗，也就是寫結尾 LF 的那一次。
@@ -400,7 +400,14 @@
     - 主對話做兩項 mutation check，之後還原：
       - `runStream(_:)` 補 LF 的 `catch` 改成不處理、繼續往下：2026-11-23 實測時，現有測試全部通過，新測試要失敗。
       - 改成先印服務錯誤：新測試的第二列要失敗。
-- [ ] 9.8 [after: 9.7] 複審修正後的驗收（主對話）：
+  - 完成紀錄（主對話，2026-11-23）：
+    - 新測試是回歸防護，通過。`LKAIKitCLITests` 92 個測試通過，建置零警告。
+    - `git diff -U0 Sources/` 確認 `Sources/` 只有 `///` 的變更。
+    - mutation check 兩項都讓新測試失敗，之後已還原：
+      - 補 LF 的 `catch` 改成不處理：這條路徑在 9.7 之前沒有任何測試防護。
+      - 改成先印服務錯誤再印寫入失敗。
+    - `makeTemporaryDirectory()`：sonnet 先確認三份的函式本體逐字相同（只有 `///` 的用字不同），才收成一份。呼叫處共 8 處改用共用的版本，既有測試的名稱與期望值都沒改。
+- [x] 9.8 [after: 9.7] 複審修正後的驗收（主對話）：
   - `swift package clean` 後的建置與完整測試零警告，記錄測試數。
   - iOS 模擬器建置 `LKAIKit` scheme。
   - 反向檢查。
@@ -408,6 +415,15 @@
   - 以 `git diff 29c5540..HEAD -- Sources/` 確認 9.7 在 `Sources/` 只改了 `///`，所以不重跑實際 API 測試。
   - 之後送 fable 與 opus 複審 9.7。
   - 驗證：每一項的結果記錄在本任務下方。
+
+  - 執行紀錄（2026-11-23，主對話，功能分支在 9.7 合併之後，三個 `LKAI_*_API_KEY` 都沒有設定）：
+    - 建置：`swift package clean` 後，`swift build`、`swift build --build-tests` 與 `swift test` 都以退出碼 0 結束，三份紀錄都沒有 `warning:`。
+    - 測試數：264 個測試、41 個 suite 全部通過，其中 `LKAIKitCLITests` 有 92 個。9 個實際 API 測試略過；4 個 known issue 和 8.2 相同。
+    - iOS：`build_sim` 建置 iPhone 17（iOS 26.5）的 `LKAIKit` scheme，SUCCEEDED，沒有 warning，也沒有 error。
+    - 反向檢查：和 9.6 的項目相同，全部符合。另外確認 `makeTemporaryDirectory()` 只定義在 `LKAICommandTestSupport`。
+    - spec 情境：`spectra coverage` 回報 61 項都有測試標記，0 項排除，0 項缺少；新情境「Report a failed write of the trailing LF in a stream」與它的範例都有標記。
+    - 實際 API 測試：`git diff -U0 29c5540..HEAD -- Sources/` 中，`///` 以外的變更行數是 0，`Sources` 的行為不變，所以不重跑；9.6 的結果仍然有效。
+    - 之後送 fable 與 opus 複審 9.7。
 
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。
