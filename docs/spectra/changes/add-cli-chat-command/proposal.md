@@ -37,7 +37,7 @@
 
 ### Modified Capabilities
 
-- `cli-root-command`: 「Version output」改為 `--version` 與 `-v` 都印出版號。
+- `cli-root-command`: 「Version output」改為 `--version` 與 `-v` 都印出版號，並寫明說明與版本旗標的優先順序；「Invalid input rejection」寫明給了說明旗標或版本旗標時的例外。
 
 ## Impact
 

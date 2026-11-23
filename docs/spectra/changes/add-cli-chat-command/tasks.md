@@ -2,7 +2,7 @@
 
 - 第 1 到 7 組由 sonnet 在 `.worktrees/sonnet`（分支 `wt/cli-chat-sonnet`）依序實作，完成後合併回功能分支 `feat/add-cli-chat-command`。
 - 8.1 由 owner 同意後在功能分支上執行；8.2 由主對話做。建置、測試、反向檢查、commit 與合併都由主對話執行。
-- 第 9 組（實作審查後的修正）沿用同一個 worktree：9.1 到 9.5 由 sonnet 依序實作並合併回功能分支，9.6 由主對話做；之後送 fable 與 opus 複審修正的部分。複審的結論由 9.7（sonnet）與 9.8（主對話）處理，之後再複審一次。封存前最終審查的結論由 9.9（sonnet）與 9.10（主對話）處理，之後再跑一次 `/spectra-verify`、`/spectra-review` 與兩位審查者。
+- 第 9 組（實作審查後的修正）沿用同一個 worktree：9.1 到 9.5 由 sonnet 依序實作並合併回功能分支，9.6 由主對話做；之後送 fable 與 opus 複審修正的部分。複審的結論由 9.7（sonnet）與 9.8（主對話）處理，之後再複審一次。封存前最終審查的結論由 9.9（sonnet）與 9.10（主對話）處理，之後再跑一次 `/spectra-verify`、`/spectra-review` 與兩位審查者。那一輪的結論由 9.11（sonnet）與 9.12（主對話）處理，使用者 2026-11-23 決定驗收通過後直接封存，不再審查。
 
 測試的做法：
 
@@ -481,6 +481,29 @@
       - `scanned(from:)` 一律回傳 en-US：zh-TW 的 `Help:` 行測試失敗。
     - 實際 API 測試：`git diff -U0 1bf56e3..HEAD -- Sources/` 中，`///` 以外的變更行數是 0，所以不重跑；9.6 的結果仍然有效。
     - 之後依使用者的選擇，再跑一次 `/spectra-verify`、`/spectra-review`，並送 fable 與 opus 審查。
+- [ ] 9.11 [after: 9.10] 封存前最終審查後複審的修正，交付 cli-root-command「Invalid input rejection」新情境的測試（回歸防護）（sonnet）。來源是 `/spectra-verify`、fable 與 opus 的複審；`/spectra-review` 沒有發現問題：
+  - 測試：
+    - `LKAICommandProcessTests` 新增 cli-root-command「Invalid input rejection」的情境「Request help together with undefined input」，以「help with undefined input」三列參數化。斷言：stdout 有一行以 `USAGE: lkai ` 開頭、stderr 為空、退出碼 0。2026-11-23 實測這三列都印出說明、退出碼 0（fable S1、opus S2）。
+    - `LKAIChatInputTests.makeSessionConfiguration_指定逾時_請求逾時等於該秒數` 加兩個斷言：`urlCache?.diskCapacity` 是 0，`httpCookieStorage` 不是 `HTTPCookieStorage.shared`。依據是 2026-11-23 實測：`.ephemeral` 的磁碟快取是 0、cookie 不共用；`.default` 是 20000000、cookie 共用（verify 建議 1）。
+    - `LKAICommandProcessTests` 新增 cli-chat「Reject a blank prompt」中 `blank.md` 那一列的行程測試（verify 建議 2）：
+      - 在暫存資料夾寫入只有空格與 LF 的 `blank.md`，以那個資料夾為工作目錄，執行 `--provider openai -m x -f blank.md`。
+      - 斷言：stderr 第一行以 `Error: ` 開頭並含 `blank.md`，stdout 為空，退出碼 64。
+      - 標記這個情境與「blank prompt sources」範例。
+  - `///`：
+    - 4 處還在描述開發當時狀態的「回歸防護」說明，改成只寫往後什麼樣的修改會讓測試失敗（opus S1）：
+      - `LKAICommandProcessTests` 的 `lkai_只給stream_…`、`lkai_provider的值不被接受_…`、`lkai_以破折號開頭的提示詞當獨立引數_…`：「在命令列介面改寫後就成立」。
+      - `LKAICommandTests` 的 `scanned_可解析的引數_…`：「掃描在 `LKAIOutputLanguage` 已經完成」。
+    - `lkai_輸出語言為zhTW且provider的值被拒絕_…` 的說明改成：`Help:` 行由 swift-argument-parser 直接接上選項說明，不依終端機寬度折行。2026-11-23 以 `COLUMNS=40` 實測，這一行仍是完整的一行（opus S3）。
+  - 驗證：
+    - `swift test --filter LKAIKitCLITests` 通過，`Sources/` 沒有變更。
+    - 主對話做 mutation check：`makeSessionConfiguration()` 改用 `.default`，新斷言要失敗。
+- [ ] 9.12 [after: 9.11] 最後的驗收（主對話）：
+  - 檢查項目和 9.8 相同：乾淨建置與完整測試零警告、iOS 模擬器建置、反向檢查。
+  - 執行 `spectra coverage`。MODIFIED 的「Invalid input rejection」使既有的「Reject undefined input」也納入這次的 delta，確認它和新情境都有測試標記。
+  - 確認 `Sources/` 從 50bb95c 之後沒有變更，所以不重跑實際 API 測試。
+  - 驗收通過後執行 `/spectra-archive`（使用者 2026-11-23 選擇）。
+  - 驗證：每一項的結果記錄在本任務下方。
+
 不採用的建議（不建立任務）：
 - fable S4 的兩點：`runLKAI` 改成只收要追加的環境變數；三個實際 API 測試函式合併。
 - fable S6：「detail lines」表在兩個測試檔各有一份；`outputModes` 與「取第一行」的寫法重複。`makeTemporaryDirectory()` 在 9.1 之後已經有三份，改由 9.7 收進共用的 support 檔（實作複審 fable S3）。

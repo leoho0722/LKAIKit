@@ -140,6 +140,8 @@
   - 2026-11-23 實測：`lkai -v --bogus`、`lkai -v foo`、`lkai --version --bogus` 都印出 `0.1.0`、退出碼 0；`lkai -v -h`、`lkai -h -v`、`lkai --version --help` 都印出說明、退出碼 0。
   - 在 `main` 上，內建的 `--version` 也是這樣：`--version --bogus`、`--version foo` 印出版本、退出碼 0，`--version -h` 印出說明。所以這不是這個 change 造成的改變。
   - 這和主 spec「Invalid input rejection」的退出碼 64 字面衝突。使用者 2026-11-23 選擇維持行為，在「Version output」寫明優先順序；cli-chat「Help when no chat option is given」也寫明讓位（封存前最終審查：opus S1、S2，fable S4）。
+  - 說明旗標加上未定義的輸入也一樣：2026-11-23 實測 `lkai -h --bogus`、`lkai --help foo`、`lkai --bogus -h` 都印出說明、退出碼 0，因為 swift-argument-parser 先檢查內建的說明旗標，才檢查未定義的輸入。這是框架原本的行為。
+  - 所以 cli-root-command 也 MODIFIED「Invalid input rejection」：寫明給了說明旗標或版本旗標時，改由那個旗標的 requirement 處理，並新增情境「Request help together with undefined input」。只讀這條 requirement 的人，也看得到這個例外（封存前最終審查後的複審：fable S1、opus S2）。
 - 考慮過的替代方案：保留內建的 `--version`，另外宣告 `-v`。兩者都叫 `version`，說明裡會出現兩列，而且行為由兩處決定，否決。
 
 ### 必填檢查放在 run()，未定義的輸入仍先被拒絕
