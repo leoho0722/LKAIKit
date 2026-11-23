@@ -1,0 +1,57 @@
+# Setup lkai：在 macOS runner 上，從這個 action 自己的原始碼建置 lkai，並加進後續 step 的 PATH。
+#
+# - 這個 repo 以 `uses: ./` 使用；其他 repo 以 `uses: leoho0722/LKAIKit@<ref>` 使用，
+#   建置的就是那個 ref 的程式碼，不是呼叫端 workspace 的程式碼。
+# - lkai 留在 release 建置資料夾，不複製也不移動：它每次執行都讀旁邊的
+#   LKAIKit_LKAIKitCLI.bundle，印服務錯誤時還讀 LKAIKit_LKAICore.bundle。
+# - 目前只支援 macOS runner：LKAIKit 依賴 Linux 沒有的 URLSession.bytes(for:)。
+name: Setup lkai
+description: 在 macOS runner 上從這個 action 的原始碼建置 lkai，並加進後續 step 的 PATH。
+
+outputs:
+  path:
+    description: 建置出的 lkai 執行檔的絕對路徑。
+    value: ${{ steps.build.outputs.path }}
+  version:
+    description: 以 -v 執行 lkai 印出的版號，不含結尾的 LF。
+    value: ${{ steps.build.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    # 不是 macOS 就在建置之前失敗；訊息只說需要 macOS runner，不寫 runner 標籤，
+    # 因為這個 action 只依賴 macOS 與它的 Swift 工具鏈，標籤每年都會換。
+    - name: 確認是 macOS runner
+      if: runner.os != 'macOS'
+      shell: bash
+      run: |
+        echo "::error::lkai 需要 macOS runner"
+        exit 1
+
+    - name: 建置 lkai
+      id: build
+      shell: bash
+      env:
+        # 一律先以 env 傳入再用 "$變數"，run 裡不直接展開 ${{ }}。
+        LKAI_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+
+        # 兩個 swift build 都要加 -c release：不加時 --show-bin-path 回傳的是 debug 的資料夾。
+        swift build -c release --product lkai --package-path "$LKAI_ACTION_PATH"
+        bin="$(swift build -c release --product lkai --package-path "$LKAI_ACTION_PATH" --show-bin-path)"
+        version="$("$bin/lkai" -v)"
+
+        # 版號要寫進 GITHUB_OUTPUT：含 LF 或 CR 時，多出來的行會被當成另一個輸出的設定，所以必須是單行。
+        # 只檢查單行，不檢查版號的格式；結尾的 LF 已被 $(...) 去掉。用 case 是為了 bash 3.2 也能執行。
+        case "$version" in
+          *$'\n'*|*$'\r'*)
+            echo "::error::lkai -v 的輸出不是單行"
+            exit 1
+            ;;
+        esac
+
+        # 全部成功之後才寫 PATH 與輸出；上面任何一步失敗，set -e 會在這裡之前結束，PATH 不會被改。
+        echo "$bin" >> "$GITHUB_PATH"
+        echo "path=$bin/lkai" >> "$GITHUB_OUTPUT"
+        echo "version=$version" >> "$GITHUB_OUTPUT"

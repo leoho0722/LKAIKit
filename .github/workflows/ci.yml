@@ -1,0 +1,109 @@
+# CI：每個 pull request 都跑同一個 job，先試跑 Setup lkai action，再跑單元測試。
+#
+# - 不依檔案路徑篩選：只改 Spectra 文件的 PR 也要跑。要是之後把這個 check 設為
+#   required，被略過的 check 會停在 Pending，擋住合併。
+# - 不定義任何真實 API 金鑰的環境變數，也不引用 repository 的機密：需要真實金鑰的測試，
+#   由它們自己的 .enabled(if:) 條件顯示為略過。
+# - 第三方 action 以完整的 commit SHA 固定，tag 可以被改指向其他 commit，SHA 不行。
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+# 新的 commit 推上同一個 PR 時，取消還在執行的那一次。
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      # 這個 job 不需要推送，而 swift test 會執行 PR 的程式碼，所以不把 token 留在 .git/config。
+      - name: 取得原始碼
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # 記錄這台 runner 的工具鏈。bash --version 用 sed 取第一行，不用 head：
+      # head 先結束時 bash 可能收到 SIGPIPE，在 pipefail 下會讓這個 step 失敗。
+      - name: 記錄 runner 的工具鏈
+        shell: bash
+        run: |
+          swift --version
+          bash --version | sed -n '1p'
+
+      # 在任何建置之前執行 action：乾淨的 checkout 沒有 debug 的 lkai，
+      # action 取錯資料夾時，它自己執行的 lkai -v 就會失敗。
+      - name: Setup lkai
+        id: lkai
+        uses: ./
+
+      # 從 package 以外的資料夾試跑：不依賴 lkai 放在哪個資料夾，只確認 PATH 上的 lkai
+      # 與 action 的兩個輸出一致。steps.lkai.outputs.* 一律以 env 傳入，run 裡不直接展開 ${{ }}。
+      - name: 試跑 lkai
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          LKAI_VERSION: ${{ steps.lkai.outputs.version }}
+          LKAI_PATH: ${{ steps.lkai.outputs.path }}
+        run: |
+          set -euo pipefail
+
+          # 版號的格式：三段以點分隔的整數，除了 0 本身，每一段都不可以有前導的 0。
+          re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+
+          # 印出一行 ::error:: 開頭的訊息並結束這個 step。
+          fail() {
+            echo "::error::$1"
+            exit 1
+          }
+
+          # 把值轉成單行再印出：實際值若含 LF 或 CR，原樣印進 ::error:: 的話，
+          # 下一行可能被當成另一條工作流程指令，所以把它們換成可見的 <LF> 與 <CR>。
+          # 不用 printf '%q'：bash 3.2 的 %q 不會轉義 LF。替換的文字不含反斜線與 &，
+          # 這樣在不同版本的 bash 上結果相同。
+          quote() {
+            local value="$1" lf=$'\n' cr=$'\r'
+            value="${value//$cr/<CR>}"
+            value="${value//$lf/<LF>}"
+            printf '%s' "$value"
+          }
+
+          # 一、PATH 上的 lkai -v：退出碼 0、輸出符合版號格式，而且等於 action 的 version 輸出。
+          if ! actual="$(lkai -v)"; then
+            fail "lkai -v 沒有以退出碼 0 結束"
+          fi
+          if [[ ! "$actual" =~ $re ]]; then
+            fail "lkai -v 的輸出不符版號格式：實際是 $(quote "$actual")，預期符合 $re"
+          fi
+          if [[ "$actual" != "$LKAI_VERSION" ]]; then
+            fail "lkai -v 的輸出和 action 的 version 輸出不同：實際是 $(quote "$actual")，預期是 $(quote "$LKAI_VERSION")"
+          fi
+
+          # 二、action 的 path 輸出：是可執行檔、最後一段是 lkai，以 -v 執行也印出同樣的版號。
+          if [ ! -f "$LKAI_PATH" ] || [ ! -x "$LKAI_PATH" ]; then
+            fail "action 的 path 輸出不是可執行檔：實際是 $(quote "$LKAI_PATH")，預期是一個可執行檔"
+          fi
+          name="$(basename "$LKAI_PATH")"
+          if [ "$name" != "lkai" ]; then
+            fail "action 的 path 輸出的最後一段不是 lkai：實際是 $(quote "$name")，預期是 lkai"
+          fi
+          if ! path_actual="$("$LKAI_PATH" -v)"; then
+            fail "以 action 的 path 輸出執行 -v 沒有以退出碼 0 結束：$(quote "$LKAI_PATH")"
+          fi
+          if [[ "$path_actual" != "$LKAI_VERSION" ]]; then
+            fail "以 action 的 path 輸出執行 -v 的結果和 version 輸出不同：實際是 $(quote "$path_actual")，預期是 $(quote "$LKAI_VERSION")"
+          fi
+
+          echo "lkai 試跑通過：版本 $(quote "$actual")，路徑 $(quote "$LKAI_PATH")"
+
+      # 預設的工作目錄就是 package 根目錄。
+      - name: 執行單元測試
+        shell: bash
+        run: swift test

@@ -32,7 +32,7 @@
 
 ## 3. 必須遵守的規則
 
-每一條後面的括號是出處：change 名稱與決策標題（`add-chat-abstraction-anthropic` 簡稱「第一份」）。
+每一條後面的括號是出處：change 名稱與決策標題（`add-chat-abstraction-anthropic` 簡稱「第一份」）。這份清單中只寫編號的「01」到「04」，指 2026-11-22、23 的那一組 change（`01-extract-chat-stream-skeleton`、`02-add-openai-provider`、`03-revise-chat-client-contract`、`04-add-gemini-provider`）；之後的 change 編號會和這一組重複，所以一律寫完整名稱（例如 `01-add-ci`）。
 
 **架構與命名**
 
@@ -220,7 +220,7 @@
 | 04 | 三家測試的 `makeClient(events:)` 只差 client 型別（fable 指出） | 留給之後 | 可在 `LKAITestSupport` 加一個「推送事件後結束」的替身工廠，由下一家供應商的 change 處理 |
 | 04 | 供應商在 4xx 的 `message`，或不認得的串流代碼的 `message` 中回顯金鑰時，`.invalidRequest` 與 `.invalidResponse` 的描述會含金鑰（`/spectra-verify` 與 `/spectra-review` 指出） | 留給之後 | spec「API key secrecy」的「any error it reports」嚴格來說涵蓋這種情況。實測的金鑰錯誤都是 401 或 Google 通用格式，不保留 `message`；OpenAI 是同樣的寫法。`lkai` 先在 CLI 這一側處理：印出 `Details:` 行時，把使用中的金鑰換成 `[REDACTED]`（`add-cli-chat-command`「錯誤印通用說明加上 Details 行，細節中的金鑰換成 [REDACTED]」）；library 的處理仍留給之後。要處理時，一起修改三家的 spec 寫法或錯誤描述 |
 | 04 | `failed` 時仍解碼 `usage` 與 `model`（`/spectra-review` 指出） | 留給之後 | 見 `04-add-gemini-provider`「解碼端的判斷結果帶在事件裡，mapper 不再比對字串」。之後動到 `Interaction` 的解碼時，評估改成只在用得到時才解碼，並在 spec 寫明 `failed` 帶著格式不符的 `usage` 時的結果 |
-| add-cli-chat-command | `lkai` 要和 `LKAIKit_LKAICore.bundle`、`LKAIKit_LKAIKitCLI.bundle` 放在同一個資料夾 | 留給之後 | 少帶 `LKAIKit_LKAIKitCLI.bundle` 時，每次執行都中止，包括 `-v`（8.2 實測退出碼 133）。少帶 `LKAIKit_LKAICore.bundle` 時，`-v`、`-h` 與輸入錯誤都正常，只在服務回報錯誤時中止：2026-11-23 實測退出碼 133，`Error:` 印不出來。發佈方式由做 release 的 change 決定；那個 change 的驗收要加上「把 `lkai` 複製到空資料夾後，`-v` 與一個服務錯誤的情境都正常」（實作審查 fable 指出） |
+| add-cli-chat-command | `lkai` 要和 `LKAIKit_LKAICore.bundle`、`LKAIKit_LKAIKitCLI.bundle` 放在同一個資料夾 | 已解決 | 少帶 `LKAIKit_LKAIKitCLI.bundle` 時，每次執行都中止，包括 `-v`（8.2 實測退出碼 133）。少帶 `LKAIKit_LKAICore.bundle` 時，`-v`、`-h` 與輸入錯誤都正常，只在服務回報錯誤時中止：2026-11-23 實測退出碼 133，`Error:` 印不出來。`01-add-ci`「lkai 留在 release 建置資料夾執行，不複製」：setup action 不複製 `lkai`，直接從 `swift build -c release --show-bin-path` 的資料夾執行，兩個 bundle 就在旁邊。驗收方式：從 action 加入的 `PATH`，在 package 以外的資料夾執行 `-v` 與一個服務錯誤（金鑰被拒絕）的情境，兩者都正常（lkai-setup-action「Report a service failure when run from PATH」，`01-add-ci` 任務 2.1）。之後要複製 `lkai`（例如附在 release 上）時，仍要連同兩個 bundle 一起複製，並以「把 `lkai` 複製到空資料夾後，`-v` 與一個服務錯誤的情境都正常」驗收 |
 | add-cli-chat-command | `"Stream ended before a finish event"` 寫在 `LKAIChatClientProtocol`、`LKAIServerSentEventChatStreaming` 與 `LKAIChatRunner` 三處 | 留給之後 | 下次動到這句時，在 `LKAICore` 加一個 `package` 的工廠讓三處共用，做法比照 `LKAIError.unrecognizedStreamError(code:message:)`（實作審查 fable 指出） |
 | add-cli-chat-command | 有思考的模型在思考期間會不會送資料，沒有查證 | 留給之後 | `--timeout` 是「多久沒有收到任何資料就放棄」的閒置逾時；遇到思考期間逾時的實例時，記錄在這份文件 |
 | add-cli-chat-command | 替身 client 在 `LKAICoreTests` 與 CLI 測試各有一份 | 留給之後 | 出現第三份時，收進 `LKAITestSupport` |
