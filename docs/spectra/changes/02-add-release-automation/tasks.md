@@ -209,5 +209,9 @@
   - 拿掉 `shown_provider`、`shown_model`，改在使用的地方呼叫 `printable`（fable 第二輪 H1）；modes 被拒絕的三列改成比對完整的片段。
   - 文件：design 的決策「AI 的文字以 stop-commands 包起來」補上 `lkai` 的 stderr（commit `ebda335`）；`docs/releasing.md` 3.6 與 4.1（commit `ae55fe2`）。
   - 修正後：`run-tests.sh` 122 個測試通過，`GITHUB_ACTIONS=true` 時結果相同；`shellcheck`、`actionlint` 沒有訊息。之後依使用者的要求做第三輪審查。
+- 第三輪實作審查（2026-11-24，四方同時進行；對象是 `30ff5f7`）：沒有需要修正的項目，第二輪的項目都已解決；使用者決定把 7 項小項目修完後推送並開 PR，不再做第四輪完整審查：
+  - 找上一版失敗時報告不再印「上一版：（無）」（/spectra-verify W1，先寫測試並觀察到失敗）；`highest_ancestor_tag` 的原因改用 `error_line`；`version_tags` 在第 2 步只留下版本 tag；`make-prompt.sh` 的暫存資料夾放在 `RUNNER_TEMP` 底下；AI 失敗情境的測試改以正式發版執行（以故意改壞確認會失敗）。commit `5d4ea9c`。
+  - 文件：design 的流程第 2 步、補建的決策與「假的指令」表（commit `e0d0c10`）；`docs/releasing.md` 第 2 章的步驟表（commit `bea240b`）。
+  - 修正後：`run-tests.sh` 122 個測試通過，`GITHUB_ACTIONS=true` 與指定 `RUNNER_TEMP` 時結果相同、沒有留下暫存資料夾；`shellcheck`、`actionlint` 沒有訊息。
 - [ ] 4.4 [after: 4.2, 4.3] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 通過：
   - 驗證：PR 的 CI check 成功；任務回報記錄 script 測試在 runner 上的結果與時間，並確認 job log 沒有出現測試造成的 annotation、job summary 沒有測試寫入的內容。
