@@ -21,5 +21,5 @@ public enum LKAIKitInfo {
     ///   寫法改變時，要一起修改 `.github/scripts/release/package-version.sh`；
     ///   發版 script 的測試以這個檔案建立暫存 repo，寫法不合時 CI 會失敗
     /// - Note: 命令列工具的 `--version` 與日後送出的網路請求都讀這個值，確保版本一致
-    public static let version: String = "0.1.0"
+    public static let version: String = "0.1.1"
 }
