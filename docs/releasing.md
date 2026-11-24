@@ -26,9 +26,9 @@
   | 順序 | 步驟 | 做什麼 |
   | --- | --- | --- |
   | 1 | 解析供應商與模型 | 依 3.5 的優先順序決定供應商與模型 |
-  | 2 | 讀取版號 | 讀 `HEAD` 的版號，列出版本 tag；版號格式不對，或有比目前版號更大的 tag 時失敗 |
+  | 2 | 讀取版號 | 讀 `HEAD` 的版號，列出版本 tag；版號格式不對、有比目前版號更大的 tag、列不出 tag、版本 tag 沒有指向 commit，或判斷祖先時 git 出錯時失敗 |
   | 3 | 檢查 Release | 目前版號的 tag 已存在時，以 `gh release list` 確認它有沒有 Release |
-  | 4 | 補建 Release | 那個 tag 沒有 Release 時，撰寫它的 Release Notes 並建立（試跑只撰寫、不建立） |
+  | 4 | 補建 Release | 那個 tag 沒有 Release 時，撰寫它的 Release Notes 並建立（試跑只撰寫、不建立）；找不到補建的上一版（版本 tag 沒有指向 commit，或判斷祖先時 git 出錯）時也在這一步失敗 |
   | 5 | 判斷升級等級 | 升版時請 AI 回答 `major`、`minor` 或 `patch` |
   | 6 | 撰寫 Release Notes | 請 AI 撰寫這次的 Release Notes；試跑到這裡結束 |
   | 7 | 修改版號 | 升版時修改 `LKAIKitInfo.version` |
