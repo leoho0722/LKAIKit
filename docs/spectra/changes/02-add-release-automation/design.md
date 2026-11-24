@@ -196,7 +196,7 @@
   - 清單中沒有這個 tag：撰寫這個 tag 的 Release Notes（範圍是比它小、而且是它祖先的最高版本 tag 到這個 tag），以 `--verify-tag` 建立 Release，再照常判斷之後的變更。
 - 理由（fable 第二輪審查 N4）：不必比對 `gh` 的錯誤文字。錯誤文字不是介面，而且 `gh release view` 在 repo 不存在時也印同一句（Context 第 3 點）。
 - 為什麼 100 個就夠：目前版號是最高的 tag。它的 Release 存在時，是最近建立的那幾筆之一。這是推論；有人在之後手動補建了大量舊 Release 時才可能不成立。
-- 補建的 Release Notes 請求或建立失敗，都算「補建 Release」這一步失敗。
+- 補建的 Release Notes 請求或建立失敗，以及找不到補建的上一版（版本 tag 沒有指向 commit，或 `git merge-base` 出錯），都算「補建 Release」這一步失敗。
 - 補建成功之後，同一次執行的後續步驟才失敗時，補建的 Release 保留，不回收；其他的保證（不改檔案、不建 commit 與 tag、不建立其他 Release）不變（opus 第二輪審查 W1）。
 - 一次執行可能建立兩個 Release：補建的那一個，以及之後的升版。
 - dry run 時只撰寫補建用的 Release Notes 並印出，不建立。
@@ -476,7 +476,7 @@
 **`release.sh` 的流程**（括號內是 release-automation 的 requirement；每一步的名稱見決策「每個結束點都寫執行報告」）：
 
 1. 選擇模式（「Release mode」），解析供應商與模型（「Release provider and model selection」）。
-2. 讀取版號：`git show HEAD:Sources/LKAICore/LKAIKitInfo.swift` 寫到暫存檔，以 `package-version.sh get` 讀取；列出版本 tag；版號不合格式，或有更大的 tag 時失敗（「Release plan」第 1、2 條）。
+2. 讀取版號：`git show HEAD:Sources/LKAICore/LKAIKitInfo.swift` 寫到暫存檔，以 `package-version.sh get` 讀取；列出版本 tag；版號不合格式，或有更大的 tag 時失敗（「Release plan」第 1、2 條）；列不出 tag、目前版號的 tag 或其他版本 tag 沒有指向 commit，或判斷祖先時 `git merge-base` 出錯，也在這一步失敗（第二輪實作審查）。
 3. 目前版號的 tag 存在時：
    - 檢查 Release，需要時補建（「Release repair」）。
    - 沒有新的 commit，或只有 `docs/spectra/` 的變更時，以 0 結束（「Release plan」第 3 條）。
@@ -502,7 +502,7 @@
 | 指令 | 行為 |
 | --- | --- |
 | `lkai -v` | 印出目前資料夾 `Sources/LKAICore/LKAIKitInfo.swift` 中的版號；設定 `FAKE_LKAI_VERSION` 時改印它（測試重新建置後版號不同） |
-| `lkai --provider … --prompt-file <f>` | 依 `<f>` 第一行的標記分辨兩種請求，以 `FAKE_LKAI_BUMP_REPLY`、`FAKE_LKAI_NOTES` 回答，以 `FAKE_LKAI_BUMP_EXIT`、`FAKE_LKAI_NOTES_EXIT`、`FAKE_LKAI_BUMP_STDERR` 決定退出碼與 stderr；把引數與 prompt 複製到 `FAKE_LOG_DIR` |
+| `lkai --provider … --prompt-file <f>` | 依 `<f>` 第一行的標記分辨兩種請求，以 `FAKE_LKAI_BUMP_REPLY`、`FAKE_LKAI_NOTES` 回答，以 `FAKE_LKAI_BUMP_EXIT`、`FAKE_LKAI_NOTES_EXIT`、`FAKE_LKAI_BUMP_STDERR`、`FAKE_LKAI_NOTES_STDERR` 決定退出碼與 stderr；`FAKE_LKAI_SIGNAL_PARENT` 設定時，在請求的處理中對父行程（`release.sh`）送那個訊號（測試被訊號中止時的報告）；把引數與 prompt 複製到 `FAKE_LOG_DIR` |
 | `gh release list … --json tagName --jq '.[].tagName'` | 逐行印出 `FAKE_LOG_DIR` 中有 Release 紀錄的 tag；`FAKE_GH_LIST_EXIT` 不是 0 時以它結束 |
 | `gh release create <tag> --verify-tag …` | 暫存 remote 沒有這個 tag 時失敗；`FAKE_GH_CREATE_EXIT` 不是 0 時失敗；成功時寫下 Release 紀錄並記錄引數 |
 | `swift build … --show-bin-path` | 印出 fakes 資料夾 |
