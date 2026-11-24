@@ -96,7 +96,7 @@
 
 ## 2. Workflow
 
-- [ ] 2.1 [after: 1.6] 依 design「只有 docs/spectra 的 push 不觸發，CD 取 main 最新的 commit，正式 run 一次只跑一個」與「dry run 用另一個 concurrency group」，新增 `.github/workflows/release.yml`，形狀與環境變數照 Implementation Contract，交付 release-automation「Release workflow trigger」，以及「Release mode」與「Release provider and model selection」中由 workflow 設定環境變數的部分（sonnet）：
+- [x] 2.1 [after: 1.6] 依 design「只有 docs/spectra 的 push 不觸發，CD 取 main 最新的 commit，正式 run 一次只跑一個」與「dry run 用另一個 concurrency group」，新增 `.github/workflows/release.yml`，形狀與環境變數照 Implementation Contract，交付 release-automation「Release workflow trigger」，以及「Release mode」與「Release provider and model selection」中由 workflow 設定環境變數的部分（sonnet）：
   - 驗證：主對話逐列對照下列範例與情境審查內容：
     - 範例表「changed files and whether the workflow runs」與 `paths-ignore`。
     - 情境「Map the workflow inputs and repository variables」：四個變數原樣傳入，沒有運算式組合。
@@ -105,6 +105,15 @@
     - checkout 沒有 `persist-credentials: false`，並有一行註解寫明不可設定它的原因。
     - `inputs`、`vars` 與 `secrets` 都以 `env` 傳入。
   - actionlint 在 4.1 執行。合併前無法實際觸發（`workflow_dispatch` 要在預設分支上），合併後的確認見 design 的 Migration Plan 與 `docs/releasing.md`。
+  - 審查結果（2026-11-24）：
+    - 範例表「changed files and whether the workflow runs」：`paths-ignore: ['docs/spectra/**']` 只在這次 push 的檔案全部符合時略過，所以第 1、2 列不執行，第 3 列（含 `Sources/`）、第 4 列（`docs/adding-a-provider.md` 不在 `docs/spectra/` 底下）、第 5 列（`.github/workflows/ci.yml`）都執行，與範例表一致。
+    - 情境「Map the workflow inputs and repository variables」：四個變數以 `inputs.provider`、`inputs.model`、`vars.LKAI_RELEASE_DEFAULT_PROVIDER`、`vars.LKAI_RELEASE_DEFAULT_MODEL` 原樣傳入，沒有運算式組合或預設值；push 時兩個 `inputs` 是空的。
+    - `LKAI_RELEASE_DRY_RUN` 寫成 `${{ inputs.dry_run && 'true' || 'false' }}`；檔案中的 `github.event.inputs` 只出現在說明不可這樣寫的註解。
+    - 情境「A dry run while a release run waits」：group 是 `${{ inputs.dry_run && 'release-dry-run' || 'release' }}`，push 與非 dry run 的手動觸發是 `release`，dry run 是 `release-dry-run`，不會取代等待中的正式 run；`cancel-in-progress: false` 對應「Two pushes in quick succession」，checkout 的 `ref: main` 讓輪到的 run 取 job 開始時 `main` 最新的 commit。
+    - 情境「A push by the release workflow itself」：`GH_TOKEN` 與 checkout 的憑證都是 `GITHUB_TOKEN`，它推送的事件不會開新的 run，檔案開頭有說明。
+    - checkout 沒有 `persist-credentials`，有註解寫明不可設定 `persist-credentials: false` 的原因；`inputs`、`vars`、`secrets` 與 `github.token` 都在 `env`，`run` 中沒有 `${{ }}`。
+    - 審查時修正一處：`provider` 輸入的 description 原本舉例 `gemini`，`lkai` 接受的是 `anthropic`、`openai`、`google`，改成不列舉名稱（「`lkai --provider` 的值」）。
+    - `actionlint`（兩個 workflow）以 0 結束、沒有輸出；`tests/test-script-style.sh` 掃描到 `release.yml`，沒有違規。
 - [x] 2.2 [after: 1.1] 依 design「CI 的 script 測試規則放在 continuous-integration，測試的隔離留在 release-automation」，在 `.github/workflows/ci.yml` 的 `swift test` 之後，加上 `bash .github/scripts/release/tests/run-tests.sh` 的 step，交付 continuous-integration「Release script tests in CI」（sonnet）：
   - 新的 step 比照既有的寫法：正體中文的 `name`、`shell: bash`，並附一行註解指向 continuous-integration「Release script tests in CI」。
   - 檔案開頭的說明補上發版 script 的測試。
