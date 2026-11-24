@@ -16,7 +16,16 @@ PACKAGE_VERSION_SCRIPT="$RELEASE_DIR/package-version.sh"
 
 # 複本裡宣告的版號固定成這個值：真正的檔案之後會被發版流程升版，測試的預期不能跟著變
 BASELINE_VERSION="0.1.0"
-DECLARATION_PREFIX='public static let version: String = '
+# 定位宣告的樣式：和 package-version.sh 的 declaration_pattern 相同，整行只有宣告（前後可以有空白）。
+# 不能只比對「public static let version: String = 」這段前綴：LKAIKitInfo.swift 的 /// 註解裡會提到宣告的寫法，
+# 沒有錨定整行的比對會把註解那一行也算進去
+DECLARATION_PATTERN='^[[:space:]]*public static let version: String = "[^"]*"[[:space:]]*$'
+
+# set_declared_value <來源檔> <輸出檔> <值>：把來源檔裡宣告那一行的值換成 <值>，寫到輸出檔。
+# 錨定整行並保留縮排，其他行（包含 /// 註解）原樣不動；寫法和 package-version.sh 的 set 相同
+set_declared_value() {
+  sed 's/^\([[:space:]]*public static let version: String = \)"[^"]*"\([[:space:]]*\)$/\1"'"$3"'"\2/' "$1" >"$2"
+}
 
 # prepare_version_files：準備兩份檔案，都放在 $TEST_TMP 底下各自的資料夾
 #   BASELINE_FILE      真正的 LKAIKitInfo.swift，只把宣告的版號固定成 BASELINE_VERSION，之後不再修改
@@ -29,11 +38,12 @@ prepare_version_files() {
   VERSION_FILE="$TEST_TMP/version-files/LKAIKitInfo.swift"
   mkdir -p "$TEST_TMP/baseline" "$TEST_TMP/version-files"
 
-  sed 's/\('"$DECLARATION_PREFIX"'\)"[^"]*"/\1"'"$BASELINE_VERSION"'"/' "$source_file" >"$BASELINE_FILE" ||
+  set_declared_value "$source_file" "$BASELINE_FILE" "$BASELINE_VERSION" ||
     fail "無法讀取 $source_file"
-  assert_equals "1" "$(grep -c -F "$DECLARATION_PREFIX\"$BASELINE_VERSION\"" "$BASELINE_FILE")" \
-    "找不到剛好一行 $DECLARATION_PREFIX\"…\"：LKAIKitInfo.swift 宣告的寫法改了，package-version.sh 與這個測試要一起修改"
-  DECLARATION_LINE="$(grep -F "$DECLARATION_PREFIX\"$BASELINE_VERSION\"" "$BASELINE_FILE")"
+  assert_equals "1" "$(grep -c -E "$DECLARATION_PATTERN" "$BASELINE_FILE")" \
+    "找不到剛好一行 public static let version: String = \"…\"：LKAIKitInfo.swift 宣告的寫法改了，package-version.sh 與這個測試要一起修改"
+  DECLARATION_LINE="$(grep -E "$DECLARATION_PATTERN" "$BASELINE_FILE")"
+  assert_contains "$DECLARATION_LINE" "\"$BASELINE_VERSION\"" "複本裡宣告的版號要固定成 $BASELINE_VERSION"
   cp "$BASELINE_FILE" "$VERSION_FILE" || fail "無法建立複本"
 }
 
@@ -91,7 +101,7 @@ test_package_version_set_changes_only_the_declaration_line() {
 
 test_package_version_get_fails_when_the_declaration_is_missing() {
   prepare_version_files
-  grep -v -F "$DECLARATION_PREFIX" "$BASELINE_FILE" >"$VERSION_FILE"
+  grep -v -E "$DECLARATION_PATTERN" "$BASELINE_FILE" >"$VERSION_FILE"
   remember_current_content
 
   run_script "$PACKAGE_VERSION_SCRIPT" get "$VERSION_FILE"
@@ -102,7 +112,7 @@ test_package_version_get_fails_when_the_declaration_is_missing() {
 
 test_package_version_set_fails_when_the_declaration_is_missing() {
   prepare_version_files
-  grep -v -F "$DECLARATION_PREFIX" "$BASELINE_FILE" >"$VERSION_FILE"
+  grep -v -E "$DECLARATION_PATTERN" "$BASELINE_FILE" >"$VERSION_FILE"
   remember_current_content
 
   run_script "$PACKAGE_VERSION_SCRIPT" set "$VERSION_FILE" 0.1.1
@@ -162,9 +172,11 @@ test_package_version_get_rejects_a_malformed_declared_value() {
   local malformed_value count=0
   for malformed_value in "v0.1.0" "0.1" "0.1.0.1" "01.1.0" ""; do
     count=$((count + 1))
-    sed 's/\('"$DECLARATION_PREFIX"'\)"[^"]*"/\1"'"$malformed_value"'"/' "$BASELINE_FILE" >"$VERSION_FILE"
+    set_declared_value "$BASELINE_FILE" "$VERSION_FILE" "$malformed_value"
     remember_current_content
-    assert_equals "1" "$(grep -c -F "$DECLARATION_PREFIX\"$malformed_value\"" "$VERSION_FILE")" \
+    assert_equals "1" "$(grep -c -E "$DECLARATION_PATTERN" "$VERSION_FILE")" \
+      "第 $count 個複本的準備：宣告要剛好一行"
+    assert_contains "$(grep -E "$DECLARATION_PATTERN" "$VERSION_FILE")" "= \"${malformed_value}\"" \
       "第 $count 個複本的準備：宣告的值要換成「${malformed_value}」"
 
     run_script "$PACKAGE_VERSION_SCRIPT" get "$VERSION_FILE"

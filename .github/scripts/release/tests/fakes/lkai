@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # 測試用的假 lkai（design「發版 script 以假的 lkai、gh、swift 與暫存 git repo 測試」的「假的指令」）。
 #
-# - lkai -v：印出目前資料夾 Sources/LKAICore/LKAIKitInfo.swift 中的版號加 LF；
-#   設定了 FAKE_LKAI_VERSION 時改印它（測試「重新建置後版號不同」的情境）。
+# - lkai -v：印出目前資料夾 Sources/LKAICore/LKAIKitInfo.swift 中的版號加 LF；讀法和 release.sh 相同，
+#   呼叫 package-version.sh get（整行只有宣告、整個檔案剛好一行才算找到；/// 註解裡提到宣告的文字不算），
+#   讀不到時以 1 結束並保留它的 stderr。設定了 FAKE_LKAI_VERSION 時改印它（測試「重新建置後版號不同」的情境）。
 # - lkai --provider … --model … --prompt-file <檔案> …：依檔案第一行的標記分辨兩種請求
 #   （<!-- lkai-release-prompt: bump-level --> 與 <!-- lkai-release-prompt: release-notes -->），
 #   把引數與 prompt 複製到 FAKE_LOG_DIR，再依下面的環境變數回答。
@@ -37,11 +38,9 @@ if [ "${1:-}" = "-v" ] || [ "${1:-}" = "--version" ]; then
     echo "測試用的 lkai：目前的資料夾沒有 $version_file" >&2
     exit 1
   fi
-  version="$(sed -n 's/^.*public static let version: String = "\([^"]*\)".*$/\1/p' "$version_file" | sed -n '1p')"
-  if [ -z "$version" ]; then
-    echo "測試用的 lkai：在 $version_file 找不到版號的宣告" >&2
-    exit 1
-  fi
+  # 讀版號的規則要和 release.sh、package-version.sh 的 set 相同：不自己寫另一個比對的樣式。
+  # package-version.sh 在 fakes 的上兩層（tests 的上一層）；它失敗時，stderr 已經印出原因
+  version="$("$BASH" "$(dirname "${BASH_SOURCE[0]}")/../../package-version.sh" get "$version_file")" || exit 1
   printf '%s\n' "$version"
   exit 0
 fi
