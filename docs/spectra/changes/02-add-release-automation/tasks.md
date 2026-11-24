@@ -32,7 +32,7 @@
     - 主對話觀察到 `test-next-version.sh` 在實作前失敗；`run-tests.sh` 以 `/bin/bash` 通過。
     - 故意讓一個斷言失敗時，`run-tests.sh` 以 1 結束（確認後還原），涵蓋 continuous-integration「A release script test fails」中 script 的部分；job 失敗的部分只以內容審查確認，由任務 2.2 的檢查項負責（step 的非 0 退出碼會讓 job 失敗），不為了觀察它而推一個會失敗的 commit。
     - 情境「Run the tests inside GitHub Actions」：以 `GITHUB_ACTIONS=true` 與一個暫存檔作為 `GITHUB_STEP_SUMMARY` 執行 `run-tests.sh`，每個測試的結果相同，暫存檔沒有改變，輸出沒有以 `::` 開頭的行。
-- [ ] 1.2 [after: 1.1] 依 design「版號從 LKAIKitInfo.swift 讀取，與寫入共用同一個規則」，新增 `.github/scripts/release/package-version.sh` 的 `get` 與 `set`，交付 release-automation「Release plan」讀版號的規則，以及「Version commit and tag push」修改版號的部分（sonnet）：
+- [x] 1.2 [after: 1.1] 依 design「版號從 LKAIKitInfo.swift 讀取，與寫入共用同一個規則」，新增 `.github/scripts/release/package-version.sh` 的 `get` 與 `set`，交付 release-automation「Release plan」讀版號的規則，以及「Version commit and tag push」修改版號的部分（sonnet）：
   - `tests/test-package-version.sh` 以本 repo 真正的 `LKAIKitInfo.swift` 的複本測試：
     - `get` 印出 `0.1.0`。
     - `set` 換成 `0.1.1` 後只有那一行改變（以 `diff` 確認），`get` 印出 `0.1.1`。
