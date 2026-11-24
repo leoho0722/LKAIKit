@@ -70,12 +70,13 @@ answer_whitespace=$' \t\r\n'
 # 被拒絕的回答最多印出幾個 bytes
 answer_preview_bytes=200
 # 不發版的檔案：目前版號的 tag 之後只改了符合這些 pattern 的檔案時，沒有可發佈的變更。
-# - 必須和 .github/workflows/release.yml 的 paths-ignore 逐字相同、順序相同：paths-ignore 決定要不要開 runner，
-#   這裡決定要不要發版，手動觸發（workflow_dispatch）不經過 paths-ignore。tests/test-release.sh 檢查
-#   paths-ignore 的每一條都讓這裡判斷為沒有可發佈的變更。
-# - 每一條以 :(exclude,glob)<pattern> 交給 git diff。只有兩種形狀可以照抄：不含 * ? + [ ] ! 的完整路徑，
-#   以及以 /** 結尾的資料夾；其他形狀在 GitHub 與 git 的語意不同或沒有查證，要另外換算並擴充測試
-#   （見 docs/releasing.md 5.2）。
+# - 和 .github/workflows/release.yml 的 paths-ignore 寫成同樣的字串，順序也保持相同（方便對照）：paths-ignore
+#   決定要不要開 runner，這裡決定要不要發版，手動觸發（workflow_dispatch）不經過 paths-ignore。
+#   tests/test-release.sh 檢查 paths-ignore 的每一條都讓這裡判斷為沒有可發佈的變更，不檢查順序與這裡多出來的 pattern。
+# - 每一條以 :(exclude,glob)<pattern> 交給 git diff。只有兩種形狀可以照抄：檔案的完整路徑（不以 / 開頭或結尾，
+#   不含 // 與 . 或 .. 的路徑片段，也不含 * ? + [ ] !），以及以 /** 結尾的資料夾。資料夾要寫成 <資料夾>/**：
+#   git 把資料夾名稱或以 / 結尾的路徑當成整個資料夾，GitHub 只比對名稱相同的檔案。其他形狀在 GitHub 與 git 的
+#   語意不同或沒有查證，要另外換算並擴充測試（見 docs/releasing.md 5.2）。
 release_neutral_patterns=(
   'docs/spectra/**'
   'README.md'

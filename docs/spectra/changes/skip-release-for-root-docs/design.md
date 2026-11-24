@@ -54,7 +54,9 @@
 ### release.sh 的排除路徑與 paths-ignore 寫成同樣的 pattern
 
 - `release.sh` 在開頭的常數區以一個具名的陣列 `release_neutral_patterns` 列出 pattern，依序是 `docs/spectra/**`、`README.md`、`CLAUDE.md`、`AGENTS.md`，和 `paths-ignore` 逐字相同、順序相同。判斷沒有可發佈的變更時，以陣列的每一條組成 `:(exclude,glob)<pattern>` 交給 `git diff`。
-- 可以照抄的只有兩種形狀：不含 `*`、`?`、`+`、`[`、`]`、`!` 的完整路徑，以及以 `/**` 結尾、前段不含這些字元的資料夾。這兩種在 GitHub 與 git 的 `:(glob)` 語意相同（Context 的查證）。其他形狀（例如含 `?`、`+`，或以 `!` 開頭）兩邊語意不同或沒有查證，要另外換算，並擴充測試（fable S3、opus W1）。
+- 可以照抄的只有兩種形狀：檔案的完整路徑，以及以 `/**` 結尾、前段是這樣的路徑的資料夾。「完整路徑」指不以 `/` 開頭或結尾、不含 `//` 與 `.`、`..` 的路徑片段，也不含 `*`、`?`、`+`、`[`、`]`、`!`。這兩種在 GitHub 與 git 的 `:(glob)` 語意相同（Context 的查證）。其他形狀（例如含 `?`、`+`，或以 `!` 開頭）兩邊語意不同或沒有查證，要另外換算，並擴充測試（fable S3、opus W1）。
+- 資料夾一律寫成 `<資料夾>/**`：git 把資料夾名稱（例如 `Tests`）或以 `/` 結尾的路徑（例如 `docs/`）當成整個資料夾而排除其中所有檔案，GitHub 的 pattern 卻要比對完整的路徑，只比對名稱相同的檔案；`./README.md` 在 git 會被正規化成 `README.md`，GitHub 很可能比對不到。這些差異的後果都是 `release.sh` 排除得比 GitHub 多，只會多開一次以沒有可發佈的變更結束的 runner，但加路徑時容易寫錯，所以讀取規則一律拒絕（實作審查：`/spectra-verify`、fable F2、opus S1；2026-11-25 以 git 2.54.0 實測 `Tests`、`docs/`、`./README.md` 三種寫法）。
+- 「順序相同」只是方便對照：測試只檢查 `paths-ignore` 的每一條都被 `release.sh` 排除，不檢查順序，也不檢查 `release.sh` 多出來的 pattern。註解與手冊照實寫出測試檢查的範圍，不寫成兩處不同就一定有測試擋下（實作審查：fable F1、`/spectra-review`）。
 - 理由：兩邊的字串相同時，加路徑時照抄即可，測試也能直接拿 `paths-ignore` 的 pattern 推出要建立的檔案。原本的 `:(exclude)docs/spectra` 換成 `:(exclude,glob)docs/spectra/**` 結果相同。
 - 考慮過的替代方案：
   - 保留 `:(exclude)docs/spectra`，再加 `:(exclude)README.md` 等三個：結果相同，但與 `paths-ignore` 的寫法不同，加路徑時要自己換算。
@@ -106,9 +108,9 @@
 
 - `.github/workflows/release.yml`：
   - `on.push.paths-ignore` 依序是 `'docs/spectra/**'`、`'README.md'`、`'CLAUDE.md'`、`'AGENTS.md'`，每一條一行，寫成 `- '<pattern>'`（單引號）。清單中不放註解與空行，說明寫在檔案開頭。
-  - 開頭說明觸發的註解改寫成「改動的檔案全部是不發版的檔案時不執行」，指向下面的 `paths-ignore`，並寫明要和 `release.sh` 的 `release_neutral_patterns` 一致、由 `test-release.sh` 檢查，說明見 `docs/releasing.md` 3.1；不重抄四條 pattern。
+  - 開頭說明觸發的註解改寫成「改動的檔案全部是不發版的檔案時不執行」，指向下面的 `paths-ignore`，並寫明它和 `release.sh` 的 `release_neutral_patterns` 寫成同樣的字串（順序也保持相同，方便對照）、`test-release.sh` 檢查這裡的每一條都讓 `release.sh` 判斷為沒有可發佈的變更（不檢查順序與 `release.sh` 多出來的 pattern），說明見 `docs/releasing.md` 3.1 與 5.2；不重抄四條 pattern。
 - `.github/scripts/release/release.sh`：
-  - 開頭的常數區新增陣列 `release_neutral_patterns`，四條 pattern 與 `paths-ignore` 逐字相同、順序相同；旁邊的註解寫明它和 `release.yml` 的 `paths-ignore` 一致、由測試檢查，以及只有兩種形狀可以照抄（見決策「release.sh 的排除路徑與 paths-ignore 寫成同樣的 pattern」）。
+  - 開頭的常數區新增陣列 `release_neutral_patterns`，四條 pattern 與 `paths-ignore` 逐字相同、順序也保持相同（方便對照）；旁邊的註解寫明它和 `release.yml` 的 `paths-ignore` 寫成同樣的字串、測試檢查的範圍（同上），以及只有兩種形狀可以照抄、資料夾要寫成 `<資料夾>/**`（見決策「release.sh 的排除路徑與 paths-ignore 寫成同樣的 pattern」）。
   - 判斷沒有可發佈的變更時，`git diff --name-only <tag 的 commit> HEAD -- .` 之後接陣列每一條組成的 `:(exclude,glob)<pattern>`。
   - 開頭「流程」的說明與這個判斷旁的註解，把「只有 docs/spectra/ 的變更」改成「只有不發版的檔案（`release_neutral_patterns`）的變更」。
   - 失敗的行為不變：`git diff` 出錯時照舊以「無法比較 tag … 與 HEAD 的檔案」失敗。
@@ -116,9 +118,12 @@
   - 「Classify the file changed after the tag」的範例表，每一列一個測試函式：tag 0.1.0（有 Release）之後只有一個 commit，改動該列的檔案。`nothing to release` 的列以 `assert_exit_code 0`、`assert_nothing_to_release_report`、`assert_no_lkai_request`、`assert_repo_untouched` 確認；`version bump` 的列以 `assert_exit_code 0` 與 `assert_plan "version-bump" "0.1.0" "0.1.1"` 確認。
   - 「Every pattern the workflow ignores is release-neutral to the script」：
     - 讀取：在 `$REPO_ROOT/.github/workflows/release.yml` 找整行只有 `paths-ignore:`（前面只有空白）的那一行，必須剛好一行。區塊是它之後、到第一個縮排不比它深、而且不是註解的非空白行為止的所有行：YAML 的註解可以是任何縮排，不會結束清單，所以找區塊結尾時略過註解行（fable 與 opus 第二輪審查）。區塊結尾的空白行與註解行略過。區塊內其餘每一行都必須是 `- '<pattern>'`；出現其他形狀的行（包含任何縮排的註解、空行、雙引號或沒有引號）時測試失敗，訊息印出那一行。讀不到任何一條時測試失敗。
-    - 每一條 pattern 要建立的檔案：不含 `*`、`?`、`+`、`[`、`]`、`!` 的 pattern 就是檔案路徑；以 `/**` 結尾、前段不含這些字元的 pattern，建立 `<前段>/release-neutral-sample.md`；其他形狀讓測試失敗，訊息寫出那個 pattern，並說明要先確認 GitHub 與 git 的語意、再擴充測試。
+    - 每一條 pattern 要建立的檔案：是檔案的完整路徑（定義見決策「release.sh 的排除路徑與 paths-ignore 寫成同樣的 pattern」）的 pattern 就是檔案路徑；以 `/**` 結尾、前段是這樣的路徑的 pattern，建立 `<前段>/release-neutral-sample.md`；其他形狀讓測試失敗，訊息寫出那個 pattern、可以照抄的兩種形狀與「資料夾要寫成 `<資料夾>/**`」，並說明其他形狀要先確認 GitHub 與 git 的語意、再擴充測試。
+    - 讀取函式可以多收一個 repo 根目錄的引數；有給時，是檔案路徑的 pattern 在那個根目錄中是資料夾的話，讀取失敗，訊息提示改成 `<pattern>/**`。主要的測試以 `$REPO_ROOT` 呼叫它（實作審查 fable F2）。
+    - 一條都讀不到時的訊息，補一行「清單的項目要比 `paths-ignore:` 縮排更深，每一條一行 `- '<pattern>'`」：項目和 key 同一層縮排是合法的 YAML，讀取會以讀不到失敗，訊息要說出原因（實作審查 fable F4）。
+    - 測試中說明形狀規則的註解指向 `docs/releasing.md` 5.2，不指向本 change 的 design：design 封存後路徑會改變，而且權威順序在手冊之後（實作審查 fable F3）。
     - 讀取與形狀判斷寫成一個函式（例如 `read_release_neutral_patterns <workflow 檔案> <輸出檔>`），把每一條 pattern 與要建立的檔案寫進輸出檔，遇到認不得的行或形狀時以 `fail` 結束；直接在測試函式中呼叫，不放在 `$(...)` 或管線中（helpers.sh 開頭的規則）。主要的測試以真正的 `$REPO_ROOT/.github/workflows/release.yml` 呼叫它。
-    - 讀取規則的測試（fable 第二輪審查 X2）：以 `$TEST_TMP` 中的 YAML 為輸入，各一個測試函式，共 6 個：清單中間有一行與清單相同縮排的註解、清單中間有一行從行首開始的註解、某一條用雙引號、一條認不得形狀的 pattern（例如 `'docs/note?.md'`）、`paths-ignore:` 底下一條都沒有、`paths-ignore` 寫成同一行的清單（例如 `paths-ignore: ['docs/spectra/**', 'README.md']`，找不到整行只有 `paths-ignore:` 的行；fable 第三輪審查 Y2）。每個測試在 subshell 中呼叫讀取的函式，確認以非 0 結束，訊息含那一行或那個 pattern。這 6 個測試不對應 spec 的情境，不加 spectra-scenario 標記；有了它們，就不必暫時修改受版本控制的 `release.yml` 來確認讀取的規則。
+    - 讀取規則的測試（fable 第二輪審查 X2）：以 `$TEST_TMP` 中的 YAML 為輸入，各一個測試函式，共 6 個：清單中間有一行與清單相同縮排的註解、清單中間有一行從行首開始的註解、某一條用雙引號、一條認不得形狀的 pattern（例如 `'docs/note?.md'`）、`paths-ignore:` 底下一條都沒有、`paths-ignore` 寫成同一行的清單（例如 `paths-ignore: ['docs/spectra/**', 'README.md']`，找不到整行只有 `paths-ignore:` 的行；fable 第三輪審查 Y2）。實作審查之後再加 3 個：以 `/` 結尾的 pattern（例如 `'docs/spectra/'`）、含 `.` 路徑片段的 pattern（例如 `'./README.md'`）、在給定的根目錄中是資料夾的 pattern（例如 `'Tests'`）。另有 1 個成功情況的測試（清單結尾的註解與空行略過）。每個測試在 subshell 中呼叫讀取的函式，確認以非 0 結束，訊息含那一行或那個 pattern。這 6 個測試不對應 spec 的情境，不加 spectra-scenario 標記；有了它們，就不必暫時修改受版本控制的 `release.yml` 來確認讀取的規則。
     - 執行：建立 tag 0.1.0（有 Release）之後，依 `paths-ignore` 的順序，每一條依序做：commit 這一條的檔案、推上 origin、記下狀態、執行一次 `release.sh`，並確認以 0 結束、計畫是 `nothing-to-release`、沒有 AI 請求，再處理下一條（不是全部 commit 完才執行一次）。第一條不符合時測試失敗，訊息寫出：`release.yml` 的 `paths-ignore` 有 `<pattern>`，但 `release.sh` 把 `<檔案>` 當成可發佈的變更；要在 `release.sh` 的 `release_neutral_patterns` 加上同一條，或從 `paths-ignore` 拿掉；見 `docs/releasing.md` 5.2。
   - 「Choose the plan」範例表新增的一列（只改 `README.md` 與 `AGENTS.md` 的兩個 commit）一個測試函式，以 `assert_exit_code 0`、`assert_nothing_to_release_report`、`assert_no_lkai_request` 確認。
   - 每個測試上方加 `# spectra-scenario: release-automation / <情境>`，有範例時再加一行 `# spectra-scenario: release-automation / <情境> / <範例>`；寫法照既有的測試，相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
@@ -131,7 +136,7 @@
   - 3.1「push 到 `main`」：列出不發版的檔案（`docs/spectra/` 底下的檔案，以及根目錄的 `README.md`、`CLAUDE.md`、`AGENTS.md`；`docs/spectra/` 以外子資料夾中同名的檔案照常發版），改動的檔案全部是它們時不執行；舉例 `docs/` 的其他文件與 `.github/` 仍會發版。這是手冊中唯一列出清單的地方。
   - 第 2 章「計畫」的兩項、3.3 最後一項、4.1 表格「推送」一列：把「`docs/spectra/` 的變更」改成「不發版的檔案（見 3.1）的變更」。
   - 4.1 表格第一列、4.4 與 5.2 中「下一次合併」的說法改成「下一次會觸發的合併（見 3.1）」：只改不發版的檔案的合併不會觸發（fable S7、opus 第二輪審查 S4）。4.3 的「下一個合併」說的是一個特定的 PR，不必改。
-  - 5.2：改寫「只改 `docs/spectra/` 以外的文件也會觸發發版」那一項，依決策「清單只寫在 paths-ignore、release.sh 的具名陣列與手冊 3.1，其他說明引用它們」寫出之後加路徑時要改的地方與注意事項。
+  - 5.2：改寫「只改 `docs/spectra/` 以外的文件也會觸發發版」那一項，依決策「清單只寫在 paths-ignore、release.sh 的具名陣列與手冊 3.1，其他說明引用它們」寫出之後加路徑時要改的地方與注意事項；可以照抄的形狀照決策「release.sh 的排除路徑與 paths-ignore 寫成同樣的 pattern」的定義寫出（不以 `/` 開頭或結尾、資料夾要寫成 `<資料夾>/**`），兩處清單的關係照實寫出測試檢查的範圍（只檢查 `paths-ignore` 的每一條都被排除，順序只是方便對照）。
 
 **驗收**：
 
@@ -142,6 +147,7 @@
   - 只改 `release.yml` 之後：讀 `paths-ignore` 的測試失敗，訊息寫出第一條 `release.sh` 沒有排除的 pattern `README.md`。
   - 改完 `release.sh` 之後：全部通過。
 - `grep -n 'AGENTS.md' .github/workflows/release.yml .github/scripts/release/release.sh docs/releasing.md` 只出現在 `paths-ignore`、`release_neutral_patterns` 與手冊 3.1 的清單；5.2 與其他說明只寫「不發版的檔案」並引用，不出現這個檔名。
+- 依實作審查收緊讀取規則之後：新加的 3 個讀取規則測試在收緊讀取規則之前失敗（讀取成功），收緊之後通過；`run-tests.sh` 全部通過。
 - PR 的 CI 通過；合併後依 Migration Plan 確認。
 
 **範圍**：

@@ -260,9 +260,9 @@ gh workflow enable release.yml
 - 第一個 tag 之後，`docs/spectra/config.yaml` 的「API 演進規則」開始生效。例如公開 enum 的 case 增減 associated value，會破壞 App 建立與比對那個 case 的寫法，第一個 release tag 之後要加資料時，改用 struct 帶資料。
 - 不發版的檔案（見 3.1）以外的文件，例如這份手冊，改了也會觸發發版。之後要再排除其他路徑時，一起修改：
   - spec：release-automation「Release-neutral files」的定義，以及它的兩張範例表（「changed files and whether the workflow runs」與「changed file and plan」）。
-  - `release.yml` 的 `paths-ignore` 與 `release.sh` 的 `release_neutral_patterns`：兩處逐字相同、順序相同。只有兩種形狀可以照抄：不含 `*`、`?`、`+`、`[`、`]`、`!` 的完整路徑，以及以 `/**` 結尾的資料夾。其他形狀在 GitHub 與 git 的語意不同或沒有查證（例如 GitHub 的 `?` 是「前一個字元出現零或一次」，git 的 `?` 是任意一個字元），要另外換算 `release.sh` 的寫法，並擴充 `test-release.sh` 讀取 `paths-ignore` 的規則。
+  - `release.yml` 的 `paths-ignore` 與 `release.sh` 的 `release_neutral_patterns`：兩處寫成同樣的字串，順序也保持相同（方便對照）。只有兩種形狀可以照抄：檔案的完整路徑（不以 `/` 開頭或結尾，不含 `//` 與 `.`、`..` 的路徑片段，也不含 `*`、`?`、`+`、`[`、`]`、`!`），以及以 `/**` 結尾的資料夾。資料夾一律寫成 `<資料夾>/**`：git 把資料夾名稱（例如 `Tests`）或以 `/` 結尾的路徑當成整個資料夾，GitHub 的 pattern 只比對名稱相同的檔案。其他形狀在 GitHub 與 git 的語意不同或沒有查證（例如 GitHub 的 `?` 是「前一個字元出現零或一次」，git 的 `?` 是任意一個字元），要另外換算 `release.sh` 的寫法，並擴充 `test-release.sh` 讀取 `paths-ignore` 的規則。
   - 這份手冊 3.1 的清單。
-  - `test-release.sh` 會讀出 `paths-ignore` 的每一條，逐條確認 `release.sh` 判斷為沒有可發佈的變更；只改了 `paths-ignore`、忘了改 `release.sh` 時，這個測試會失敗，並寫出是哪一條與要改的地方。`paths-ignore` 的清單中不放註解與空行，寫成同一行的清單（`paths-ignore: [...]`）或測試認不得的寫法時，測試也會失敗。
+  - `test-release.sh` 會讀出 `paths-ignore` 的每一條，逐條確認 `release.sh` 判斷為沒有可發佈的變更；只改了 `paths-ignore`、忘了改 `release.sh` 時，這個測試會失敗，並寫出是哪一條與要改的地方。它不檢查順序，也不檢查 `release.sh` 多出來的 pattern：多出來的只會讓那些 push 多開一次 runner，以沒有可發佈的變更結束。`paths-ignore` 的清單中不放註解與空行，寫成同一行的清單（`paths-ignore: [...]`）或測試認不得的寫法時，測試也會失敗。
 - 「檢查 Release」只看目前版號的 tag，而且只看最近 100 個 Release。建立 Release 失敗後，下一次會觸發的合併（見 3.1）剛好是人工指定版號的 PR（照原樣發佈）時，舊 tag 的 Release 不會再被補建，由 owner 手動建立（4.2）。
 - 同一次執行最多建立兩個 Release：補建的那一個，以及這次發佈的版號。
 - `release.sh` 依賴 `lkai` 的介面：它以 `lkai --provider <供應商> --model <模型> --prompt-file <檔案> --timeout 180` 送出請求（Release Notes 另加 `--max-output-tokens 8192`），並只看退出碼判斷成敗：0 是成功，其他都是失敗。`lkai` 改了這些選項或退出碼時，要一起檢查 `release.sh` 的 `ask_lkai` 與它的三個呼叫處（補建 Release、判斷升級等級、撰寫 Release Notes）。bash 測試用的是假的 `lkai`，抓不到這種改變，要到下一次發版才會失敗；失敗時還沒有改任何東西（4.1 的第一列）。

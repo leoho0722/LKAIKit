@@ -61,7 +61,24 @@
 
 - [x] 3.1 [after: 1.3, 2.1] 主對話在功能分支上做整體檢查：`run-tests.sh` 以 `/bin/bash` 全部通過；`actionlint` 以 0 結束；`spectra validate skip-release-for-root-docs` 通過；`grep -n 'AGENTS.md' .github/workflows/release.yml .github/scripts/release/release.sh docs/releasing.md` 只出現在 `paths-ignore`、`release_neutral_patterns` 與手冊 3.1 的清單；`git diff --stat main...HEAD`（只比對分支上的 commit，不含工作目錄中還沒 commit 的 `/init` 文件）只有 Implementation Contract 範圍內的四個檔案與本 change 的文件。
   - 執行紀錄（2026-11-24，主對話，commit `a1a2d03`、`d8f352a`）：`run-tests.sh`（`/bin/bash` 3.2.57）共 139 個全部通過；`actionlint`（全部 workflow）以 0 結束、沒有輸出；`spectra validate skip-release-for-root-docs` 通過；`grep -n 'AGENTS.md' …` 只有 `release.yml` 的 `paths-ignore`、`release.sh` 的 `release_neutral_patterns` 與手冊 3.1 的清單三處；`git diff --stat main...HEAD` 是 `release.sh`、`test-release.sh`、`release.yml`、`docs/releasing.md` 與本 change 的 5 個文件，工作目錄中 `/init` 產生的 `AGENTS.md`、`CLAUDE.md`、`README.md` 沒有 commit。
-- [ ] 3.2 [after: 3.1] owner 同意後，主對話 push 功能分支並開 PR；驗證：PR 的 CI 通過（`gh pr checks`），並記錄 run 的連結。
+- [ ] 3.2 [after: 4.2] owner 同意後，主對話 push 功能分支並開 PR；驗證：PR 的 CI 通過（`gh pr checks`），並記錄 run 的連結。
 - [ ] 3.3 [after: 3.2] owner 合併 PR 之後，依 design 的 Migration Plan 第 1 步確認本 change 的合併開了一次 Release run（預期，因為改到 `.github/`），並等它成功結束（`gh run watch <run>`）；驗證：`gh release list` 列出新的 tag 與 Release。run 失敗時先依 `docs/releasing.md` 4.1 處理完，才進行 3.4。記錄 run 的連結與新版號。
 - [ ] 3.4 [after: 3.3] owner 合併只改 `README.md`、`CLAUDE.md`、`AGENTS.md` 的 PR（`/init` 產生的文件）之後，依 Migration Plan 第 2 步確認；驗證：`gh run list --workflow release.yml --commit <合併的 commit>` 沒有結果。記錄合併的 commit 與查詢結果。
 - [ ] 3.5 [after: 3.4] owner 同意後，主對話以 `gh workflow run release.yml -f dry_run=true` 手動試跑一次，依 Migration Plan 第 3 步確認手動觸發也不因為不發版的檔案升版；驗證：那次 run 的報告（job summary）中計畫是 `nothing-to-release`、有「沒有可發佈的變更。」一行，沒有「升級等級：」「補建的 Release：」與「Release Notes：」（`release.sh` 送出 AI 請求時不印紀錄，以這幾行確認沒有送出請求）。記錄 run 的連結。
+
+## 4. 實作審查的修正
+
+實作審查（2026-11-25）：`/spectra-verify`、`/spectra-review`、fable 與 opus 都沒有需要修正的項目；owner 決定先套用下列建議再 push。第 4 組的任務在 3.1 之後、3.2 之前完成，3.2 因此改成排在 4.2 之後。
+
+- [x] 4.1 [after: 3.1] 依 design「release.sh 的排除路徑與 paths-ignore 寫成同樣的 pattern」更新後的形狀規則，收緊 `.github/scripts/release/tests/test-release.sh` 的讀取規則，並修正註解、失敗訊息與手冊：
+  - 讀取函式拒絕以 `/` 結尾、含 `//` 或 `.`、`..` 路徑片段的 pattern；多收一個 repo 根目錄的引數，有給時拒絕在其中是資料夾的檔案路徑 pattern，訊息提示改成 `<pattern>/**`；主要的測試以 `$REPO_ROOT` 呼叫。認不得形狀的訊息寫出可以照抄的兩種形狀與「資料夾要寫成 `<資料夾>/**`」；一條都讀不到的訊息補上縮排的說明；說明形狀規則的註解指向 `docs/releasing.md` 5.2。
+  - 新增 3 個讀取規則的測試：`'docs/spectra/'`、`'./README.md'`、在暫存的根目錄中是資料夾的 `'Tests'`，三種都讓讀取以非 0 結束，訊息含那個 pattern 或改成 `/**` 的提示。不加 spectra-scenario 標記。
+  - `.github/workflows/release.yml` 開頭的註解與 `.github/scripts/release/release.sh` 的 `release_neutral_patterns` 旁的註解：照實寫出測試只檢查 `paths-ignore` 的每一條都被排除，順序只是方便對照；`release.sh` 的註解補上「資料夾要寫成 `<資料夾>/**`」與完整路徑的定義。
+  - `docs/releasing.md` 5.2：同樣的形狀定義與兩處清單的關係。
+  - 驗證：新的 3 個測試在收緊讀取規則之前失敗（讀取成功、測試要求失敗），收緊之後通過；以 `/bin/bash` 執行 `run-tests.sh` 全部通過，`GITHUB_ACTIONS=true` 再跑一次結果相同；`shellcheck -x -s bash` 與 `actionlint` 沒有輸出；`git diff` 中 `release.yml` 與 `release.sh` 只改了註解。
+  - 執行紀錄（2026-11-25，主對話）：
+    - 先寫的 3 個測試（`test_release_neutral_reading_rejects_a_pattern_ending_with_a_slash`、`…_with_a_dot_segment`、`…_that_names_a_directory`）在收緊之前失敗，原因都是「讀取應該失敗」（讀取成功）：`run-tests.sh` 共 142 個，通過 139 個，失敗 3 個。
+    - 收緊之後：讀取函式以新的 `is_plain_path` 拒絕空的、以 `/` 開頭或結尾、含 `//` 或 `.`、`..` 路徑片段的路徑；多收的 repo 根目錄引數有給時，拒絕在其中是資料夾的檔案路徑 pattern；主要的測試以 `$REPO_ROOT` 呼叫。`run-tests.sh`（`/bin/bash` 3.2.57）共 142 個全部通過；`GITHUB_ACTIONS=true` 再跑一次，共 142 個全部通過，PASS／FAIL 逐行相同。
+    - `shellcheck -x -s bash release.sh tests/test-release.sh` 與 `actionlint` 都沒有輸出；`git diff -U0` 中 `release.yml` 與 `release.sh` 改動的行全部是註解。
+    - 註解與手冊：`release.yml`、`release.sh` 照實寫出測試只檢查 `paths-ignore` 的每一條都被排除（不檢查順序與 `release.sh` 多出來的 pattern），順序只是方便對照；`release.sh` 與手冊 5.2 寫出完整路徑的定義與「資料夾要寫成 `<資料夾>/**`」；`has_glob_character` 與 `is_plain_path` 的註解指向手冊 5.2；一條都讀不到的訊息補上縮排的說明。
+- [ ] 4.2 [after: 4.1] 主對話重做 3.1 的整體檢查並 commit：`run-tests.sh` 以 `/bin/bash` 全部通過；`actionlint` 以 0 結束；`spectra validate skip-release-for-root-docs` 通過；`grep -n 'AGENTS.md' .github/workflows/release.yml .github/scripts/release/release.sh docs/releasing.md` 只出現在 `paths-ignore`、`release_neutral_patterns` 與手冊 3.1 的清單；`git diff --stat main...HEAD` 只有 Implementation Contract 範圍內的四個檔案與本 change 的文件。記錄 commit。

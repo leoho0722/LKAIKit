@@ -588,8 +588,8 @@ test_release_plan_reads_the_version_at_head_not_the_working_tree() {
 RELEASE_NEUTRAL_SAMPLE_NAME="release-neutral-sample.md"
 
 # has_glob_character <文字>：文字含有 * ? + [ ] ! 其中一個字元時回傳 0。
-# 這些字元在 GitHub 的 paths-ignore 與 git 的 :(glob) pathspec 中語意不同或沒有查證（見 skip-release-for-root-docs
-# 的 design），含有它們的 pattern 不能照抄到 release.sh，測試也不知道要建立什麼檔案。
+# 這些字元在 GitHub 的 paths-ignore 與 git 的 :(glob) pathspec 中語意不同或沒有查證（見 docs/releasing.md 5.2），
+# 含有它們的 pattern 不能照抄到 release.sh，測試也不知道要建立什麼檔案。
 has_glob_character() {
   case "$1" in
     *'*'* | *'?'* | *'+'* | *'['* | *']'* | *'!'*) return 0 ;;
@@ -597,21 +597,35 @@ has_glob_character() {
   return 1
 }
 
-# read_release_neutral_patterns <workflow 檔案> <輸出檔>：讀出 workflow 的 paths-ignore，每一條 pattern 在輸出檔
-# 寫一行「<pattern><Tab><要建立的檔案>」，順序和 workflow 相同。
+# is_plain_path <文字>：不是空字串、不以 / 開頭或結尾、不含 //、沒有 . 或 .. 的路徑片段時回傳 0。
+# 以 / 結尾的路徑 git 當成整個資料夾，./README.md 這類寫法 git 會正規化，GitHub 的 pattern 卻要比對完整的路徑，
+# 兩邊的結果不同（見 docs/releasing.md 5.2）。
+is_plain_path() {
+  case "$1" in
+    '' | /* | */ | *//*) return 1 ;;
+  esac
+  case "/$1/" in
+    */./* | */../*) return 1 ;;
+  esac
+  return 0
+}
+
+# read_release_neutral_patterns <workflow 檔案> <輸出檔> [<repo 根目錄>]：讀出 workflow 的 paths-ignore，每一條
+# pattern 在輸出檔寫一行「<pattern><Tab><要建立的檔案>」，順序和 workflow 相同。
 # - 起點：整行只有 paths-ignore:（前面只有空白）的那一行，必須剛好一行；寫成同一行的清單（paths-ignore: [...]）
 #   找不到這一行，讀取失敗。
 # - 區塊：起點之後，到第一個縮排不比起點深、而且不是註解的非空白行為止。YAML 的註解可以是任何縮排，不會結束
 #   清單，所以找結尾時略過註解行；區塊結尾的空白行與註解行（例如下一個 key 上方的說明）略過。
 # - 區塊內其餘每一行都必須是 - '<pattern>'：任何縮排的註解、空行、雙引號或沒有引號的寫法都讓讀取失敗，
 #   不會只讀到前面幾條而默默少檢查。
-# - pattern 的形狀：不含 * ? + [ ] ! 的完整路徑（不以 / 開頭）就是要建立的檔案；以 /** 結尾、前段是這樣的路徑時，
-#   建立 <前段>/<RELEASE_NEUTRAL_SAMPLE_NAME>；其他形狀讓讀取失敗。
+# - pattern 的形狀：檔案的完整路徑（is_plain_path，而且不含 * ? + [ ] !）就是要建立的檔案；以 /** 結尾、前段是
+#   這樣的路徑時，建立 <前段>/<RELEASE_NEUTRAL_SAMPLE_NAME>；其他形狀讓讀取失敗。
+# - 有給 repo 根目錄時，檔案路徑的 pattern 在根目錄中是資料夾的話讀取失敗：資料夾要寫成 <資料夾>/**。
 # - 一條都讀不到時失敗。
 # 失敗時以 fail 結束，所以要直接在測試函式中呼叫，不放在 $(...) 或管線中（見 helpers.sh 開頭）；
 # 迴圈只用 bash 的內建指令，以 < 重導檔案餵入。
 read_release_neutral_patterns() {
-  local workflow="$1" output="$2"
+  local workflow="$1" output="$2" root="${3:-}"
   local header_re='^[[:space:]]*paths-ignore:[[:space:]]*$'
   local item_re="^[[:space:]]*- '([^']+)'[[:space:]]*$"
   local header_count line leading indent header_indent=-1 pattern prefix sample
@@ -667,25 +681,30 @@ read_release_neutral_patterns() {
         sample="$pattern"
         ;;
     esac
-    if [ -z "$prefix" ] || has_glob_character "$prefix" || [ "${prefix#/}" != "$prefix" ]; then
+    if has_glob_character "$prefix" || ! is_plain_path "$prefix"; then
       fail "paths-ignore 有這個測試認不得形狀的 pattern：$pattern" \
-        "只有不含 * ? + [ ] ! 的完整路徑，以及 <資料夾>/** 兩種形狀可以照抄到 release.sh 的 release_neutral_patterns" \
+        "只有兩種形狀可以照抄到 release.sh 的 release_neutral_patterns：檔案的完整路徑（不以 / 開頭或結尾，不含 // 與 . 或 .. 的路徑片段，也不含 * ? + [ ] !），以及 <資料夾>/**（前段是這樣的路徑）；資料夾要寫成 <資料夾>/**" \
         "其他形狀要先確認 GitHub 與 git 的語意、換算 release.sh 的寫法，再擴充這個測試（見 docs/releasing.md 5.2）"
+    fi
+    if [ -n "$root" ] && [ "$sample" = "$pattern" ] && [ -d "$root/$pattern" ]; then
+      fail "paths-ignore 的 ${pattern} 在 repo 中是資料夾，要寫成 ${pattern}/**" \
+        "git 把資料夾名稱當成整個資料夾排除，GitHub 的 pattern 只比對名稱相同的檔案，兩邊的結果不同（見 docs/releasing.md 5.2）"
     fi
     printf '%s\t%s\n' "$pattern" "$sample" >>"$output" || fail "無法寫入：$output"
     count=$((count + 1))
   done <"$workflow"
 
   if [ "$count" -eq 0 ]; then
-    fail "paths-ignore 底下讀不到任何一條 pattern：$workflow"
+    fail "paths-ignore 底下讀不到任何一條 pattern：$workflow" \
+      "清單的項目要比 paths-ignore: 縮排更深，每一條一行 - '<pattern>'；項目和 paths-ignore: 同一層縮排時也讀不到"
   fi
 }
 
-# assert_release_neutral_reading_fails <workflow 檔案> <訊息要含有的片段>：在 subshell 中讀取，
-# 讀取要以非 0 結束，stderr 要含有片段
+# assert_release_neutral_reading_fails <workflow 檔案> <訊息要含有的片段> [<repo 根目錄>]：在 subshell 中讀取，
+# 讀取要以非 0 結束，stderr 要含有片段；有給根目錄時一併交給讀取函式
 assert_release_neutral_reading_fails() {
   local rc=0
-  (read_release_neutral_patterns "$1" "$TEST_TMP/patterns.txt") >"$TEST_TMP/read-stdout" 2>"$TEST_TMP/read-stderr" || rc=$?
+  (read_release_neutral_patterns "$1" "$TEST_TMP/patterns.txt" "${3:-}") >"$TEST_TMP/read-stdout" 2>"$TEST_TMP/read-stderr" || rc=$?
   if [ "$rc" -eq 0 ]; then
     fail "讀取應該失敗" "workflow（cat -v）：$(show_file "$1")" "讀到的 pattern（cat -v）：$(show_file "$TEST_TMP/patterns.txt")"
   fi
@@ -793,7 +812,7 @@ test_release_neutral_files_provider_guide_change_is_a_version_bump() {
 test_release_neutral_files_every_ignored_pattern_has_nothing_to_release() {
   local tab=$'\t' line i runs=0
   local patterns=() files=()
-  read_release_neutral_patterns "$REPO_ROOT/.github/workflows/release.yml" "$TEST_TMP/patterns.txt"
+  read_release_neutral_patterns "$REPO_ROOT/.github/workflows/release.yml" "$TEST_TMP/patterns.txt" "$REPO_ROOT"
   while IFS= read -r line; do
     patterns+=("${line%%"$tab"*}")
     files+=("${line#*"$tab"}")
@@ -912,6 +931,43 @@ on:
   workflow_dispatch:
 WORKFLOW_EOF
   assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "整行只有 paths-ignore: 的行"
+}
+
+# 讀取規則：以 / 結尾的 pattern，git 把它當成整個資料夾，GitHub 只比對完整的路徑，讀取失敗
+test_release_neutral_reading_rejects_a_pattern_ending_with_a_slash() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+      - 'docs/spectra/'
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "認不得形狀的 pattern：docs/spectra/"
+}
+
+# 讀取規則：含 . 路徑片段的 pattern，git 會正規化成 README.md，GitHub 很可能比對不到，讀取失敗
+test_release_neutral_reading_rejects_a_pattern_with_a_dot_segment() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+      - './README.md'
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "認不得形狀的 pattern：./README.md"
+}
+
+# 讀取規則：pattern 在給定的根目錄中是資料夾，git 會排除整個資料夾，讀取失敗並提示改成 <pattern>/**
+test_release_neutral_reading_rejects_a_pattern_that_names_a_directory() {
+  mkdir -p "$TEST_TMP/root/Tests"
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+      - 'Tests'
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "Tests/**" "$TEST_TMP/root"
 }
 
 # ---------------------------------------------------------------------------
