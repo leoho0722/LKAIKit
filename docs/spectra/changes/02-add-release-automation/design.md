@@ -342,6 +342,8 @@
   - 相容 bash 3.2：不用 associative array、`${var,,}`、`mapfile`。
   - 只用 BSD 與 GNU 都有的寫法：不用 `sed -i`（寫到暫存檔再 `mv`），不用兩邊旗標不同的 `stat`、`date`、`cut -c` 等。
   - 截斷 UTF-8 時，以 `head -c 200` 取 byte，再以 `iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true` 去掉不完整的字元。`2>/dev/null || true` 是必要的：結尾不完整時，macOS 的 `iconv -c` 輸出正確，但退出碼是 1，還會印一行訊息（Context 第 6 點）。
+  - 變數後面緊接著中文或全形標點時寫成 `${名稱}`：macOS 的 bash 3.2 在 UTF-8 語系下（GitHub 的 macOS runner 預設也是），會把 `$名稱` 後面的非 ASCII 位元組當成變數名稱的一部分，值不見、訊息變成亂碼；語系是 C 時看不出來。實作任務 1.4 時發現，`tests/test-script-style.sh` 以 `LC_ALL=C` 掃描發版 script、假指令、測試、workflow 與 `action.yml`，有這種寫法時失敗。
+  - 不用 `set -e`：每個會失敗的指令都接 `|| fail`，`fail` 才記得到失敗的步驟（決策「每個結束點都寫執行報告」）。
 - 訊息以正體中文寫到 stderr；在 GitHub Actions 中以 `::error::` 開頭成為 annotation，其他情況以 `Error: ` 開頭。
 - 理由：
   - 邏輯在 script 中才能在本機與 CI 測試。
@@ -435,7 +437,7 @@
 | `.github/scripts/release/make-prompt.sh` | `make-prompt.sh <bump-level\|release-notes> <previous-version> <target-ref> [<version>]`；`<previous-version>` 為空字串表示沒有上一版（diff 從空的 tree 開始，包含第一個 commit）；`<version>` 只用於 release-notes；stdout 為完整的 prompt（範本加上變更資料）；diff 上限讀 `LKAI_RELEASE_DIFF_LIMIT`，預設 200000 |
 | `.github/scripts/release/prompts/bump-level.md`、`release-notes.md` | 第一行分別是 `<!-- lkai-release-prompt: bump-level -->`、`<!-- lkai-release-prompt: release-notes -->`，供假的 `lkai` 分辨；內容依 release-automation「AI bump level answer」與「Release notes generation」 |
 | `.github/scripts/release/release.sh` | 不收引數，在 git repo 的根目錄執行；環境變數見下表；退出碼 0 表示已發佈、沒有可發佈的變更或 dry run 完成，1 表示失敗 |
-| `.github/scripts/release/tests/` | `run-tests.sh`、`helpers.sh`、`fakes/`（`lkai`、`gh`、`swift`）、`test-next-version.sh`、`test-package-version.sh`、`test-make-prompt.sh`、`test-release.sh` |
+| `.github/scripts/release/tests/` | `run-tests.sh`、`helpers.sh`、`fakes/`（`lkai`、`gh`、`swift`，以及三者共用的 `fake-common.sh`）、`test-next-version.sh`、`test-package-version.sh`、`test-make-prompt.sh`、`test-release.sh`、`test-script-style.sh`（寫法的檢查，見決策「發版邏輯寫成 bash script，只用 BSD 與 GNU 都有的寫法」） |
 | `docs/releasing.md` | 內容見決策「發版的操作寫在 docs/releasing.md」 |
 
 **`release.yml` 的形狀**：
