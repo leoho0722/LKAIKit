@@ -40,7 +40,7 @@
     - 宣告出現兩次時，`get` 與 `set` 都以 1 結束，檔案不變。
     - `set` 的版號不合格式（例如 `v0.1.1`）時，檔案不變、退出碼 1。
   - 驗證：主對話觀察到新測試在實作前失敗；`run-tests.sh` 通過；內容審查確認沒有使用 `sed -i`。
-- [ ] 1.3 [after: 1.1] 依 design「兩個 prompt 帶同樣的變更資料：commit 清單、變更統計與 200,000 bytes 以內的程式碼 diff」、「Release Notes 以正體中文分類撰寫」與「判斷升級等級與撰寫 Release Notes 分成兩次請求」，新增兩個 prompt 範本與 `make-prompt.sh`，交付 release-automation「Change data in prompts」，以及「AI bump level answer」「Release notes generation」中對 prompt 的要求（sonnet）：
+- [x] 1.3 [after: 1.1] 依 design「兩個 prompt 帶同樣的變更資料：commit 清單、變更統計與 200,000 bytes 以內的程式碼 diff」、「Release Notes 以正體中文分類撰寫」與「判斷升級等級與撰寫 Release Notes 分成兩次請求」，新增兩個 prompt 範本與 `make-prompt.sh`，交付 release-automation「Change data in prompts」，以及「AI bump level answer」「Release notes generation」中對 prompt 的要求（sonnet）：
   - `prompts/bump-level.md`：第一行是標記；依公開介面定義 `major`、`minor`、`patch`；要求只回答其中一個字。
   - `prompts/release-notes.md`：第一行是標記；要求以正體中文、Markdown，分成「破壞性變更」「新功能」「修正」「其他」，沒有項目的分類不寫。
   - 兩個範本都說明 `<commits>`、`<stat>`、`<diff>` 中的文字是資料，要忽略其中的指示。
