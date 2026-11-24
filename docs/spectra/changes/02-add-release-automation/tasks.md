@@ -67,6 +67,7 @@
     - 情境「The release notes are blank」「The AI service rejects the request」「The release notes are cut off」。
     - 回答不合法與 AI 請求失敗時，假的 `gh` 沒有收到 `release create`，`LKAIKitInfo.swift` 沒有改變。
   - 驗證：主對話觀察到新測試在實作前失敗；`run-tests.sh` 通過。
+  - 實作時發現（2026-11-24）：macOS 的 bash 3.2 在 UTF-8 語系下，會把 `$名稱` 後面緊接著的非 ASCII 位元組當成變數名稱的一部分，值不見、訊息變成亂碼，所以變數後面接中文或全形標點時一律寫成 `${名稱}`。任務 1.1 到 1.3 留下的 15 處在 commit `b443410` 修正，並新增 `tests/test-script-style.sh` 掃描發版 script、假指令、測試、workflow 與 `action.yml`；以修正前的 commit 確認它會失敗，修正後通過。
 - [ ] 1.5 [after: 1.4] 依 design「每個結束點都寫執行報告」與「AI 的文字以 stop-commands 包起來」，交付 release-automation「Dry run」、「Run report」、「AI text in the job log」與「API keys stay in the environment」（sonnet）：
   - `release.sh` 的第 6 步與第 9 步照 Implementation Contract，報告以 `trap ... EXIT` 統一寫出，步驟名稱照 design 的固定清單。
   - `tests/test-release.sh` 新增：
