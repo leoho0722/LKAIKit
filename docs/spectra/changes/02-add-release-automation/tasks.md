@@ -197,5 +197,11 @@
 - [x] 4.3 owner 在 GitHub 的 repository secrets 設定 `LKAI_ANTHROPIC_API_KEY`（或 owner 同意後由主對話以 `gh secret set` 從 Keychain 設定）：
   - 驗證：`gh secret list` 列出 `LKAI_ANTHROPIC_API_KEY`。
   - 執行紀錄（2026-11-24）：owner 同意後由主對話執行。先以 `security find-generic-password -s lkai-anthropic-api-key` 確認項目存在（不加 `-w`），再以 `security find-generic-password -s lkai-anthropic-api-key -w | tr -d '\n' | gh secret set LKAI_ANTHROPIC_API_KEY --repo leoho0722/LKAIKit` 從標準輸入設定，金鑰沒有出現在命令列引數或輸出中；`gh secret list` 列出 `LKAI_ANTHROPIC_API_KEY`（更新時間 2026-11-24T04:20:01Z）。金鑰的內容由合併後第一次發版的 AI 請求實際確認。
+- 實作審查（2026-11-24，`/spectra-verify`、`/spectra-review`、fable 與 opus 同時進行；對象是 `ffa42ce`）與修正：
+  - 違反 spec 的兩項，先寫測試並觀察到失敗再修正（commit `fd84738`）：`lkai` 的 stderr 可能含模型寫的拒答文字（OpenAI 的 `.refused(detail:)`），原本直接進 job log，改成收進檔案後經過 `print_ai_text`（release-automation「AI text in the job log」）；被訊號中止時報告沒有「失敗的步驟」，改由 `finish` 補上（「Run report」）。
+  - 同時修正：供應商與模型寫進訊息與報告時經過 `printable`（傳給 `lkai` 的值不變，spec 規定不檢查）；`git commit` 失敗時也還原版號檔。這兩項也先寫測試、觀察到失敗。
+  - 加強測試（行為已經符合，以故意改壞的方式確認測試會失敗）：「Choose a version by hand」改以正式發版測試；斷言重新建置用 `-c release --product lkai`；在 `release.sh` 這一層斷言第一次發版的 prompt；範本的分類與等級；四個 script 的 `version_pattern` 相同；dry run 的退出碼；更新過時的測試說明，`cut -c` 換掉。
+  - 文件：design 的檔案表與寫法限制（commit `846a3f6`）、`release.sh` 開頭的錯誤處理慣例、`docs/releasing.md` 5.2 與 `docs/adding-a-provider.md` 第 1 章（commit `6b079f0`）。不採用：四個 script 重複的 `fail`、`printable` 不抽成共用檔（fable 建議等出現第五個 script 再說）。
+  - 修正後：`run-tests.sh` 117 個測試通過，`GITHUB_ACTIONS=true` 時結果相同；`shellcheck`、`actionlint` 沒有訊息。之後依使用者的要求再審查一次。
 - [ ] 4.4 [after: 4.2, 4.3] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 通過：
   - 驗證：PR 的 CI check 成功；任務回報記錄 script 測試在 runner 上的結果與時間，並確認 job log 沒有出現測試造成的 annotation、job summary 沒有測試寫入的內容。
