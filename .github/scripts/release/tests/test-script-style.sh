@@ -50,3 +50,30 @@ test_scripts_brace_variable_names_before_non_ascii_text() {
     fail "變數名稱後面緊接著中文或全形標點，要寫成 \${名稱}（檔案:行號:內容）" "$(cat "$violations")"
   fi
 }
+
+# 版號的格式（MAJOR.MINOR.PATCH，每一段是沒有前導 0 的非負整數）在 next-version.sh、package-version.sh、
+# make-prompt.sh 與 release.sh 各寫了一份 version_pattern=。四份要完全相同：只改其中一份，
+# 各 script 對「什麼是合格的版號」的判斷就不一致（例如 release.sh 接受、package-version.sh 拒絕）。
+# 每個檔案剛好要有一行 version_pattern=（行首）。不同時，列出各檔的那一行
+test_scripts_share_the_same_version_pattern() {
+  local report="$TEST_TMP/version-pattern-lines.txt" file line count first_line="" mismatch="no"
+  : >"$report"
+
+  for file in next-version.sh package-version.sh make-prompt.sh release.sh; do
+    count="$(grep -c '^version_pattern=' "$RELEASE_DIR/$file")"
+    line="$(grep '^version_pattern=' "$RELEASE_DIR/$file")"
+    printf '%s（%s 行）：%s\n' "$file" "$count" "$line" >>"$report"
+    if [ "$count" != "1" ]; then
+      mismatch="yes"
+    fi
+    if [ -z "$first_line" ]; then
+      first_line="$line"
+    elif [ "$line" != "$first_line" ]; then
+      mismatch="yes"
+    fi
+  done
+
+  if [ "$mismatch" = "yes" ]; then
+    fail "四個 script 的 version_pattern= 要各剛好一行，而且完全相同" "$(cat "$report")"
+  fi
+}

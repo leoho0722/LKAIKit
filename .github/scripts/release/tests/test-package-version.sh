@@ -4,7 +4,7 @@
 #
 # package-version.sh get <file> 與 set <file> <version> 以同一個規則找 LKAIKitInfo.swift 裡
 # public static let version: String = "<版號>" 這一行：剛好一行才算找到，否則失敗。
-# 這個任務沒有直接對應的 spec 情境或範例表（「Release plan」的「Read the version at HEAD」由
+# package-version.sh 沒有直接對應的 spec 情境或範例表（「Release plan」的「Read the version at HEAD」由
 # release.sh 的測試涵蓋），所以不加 spectra-scenario 標記。
 #
 # 測試以本 repo 真正的 Sources/LKAICore/LKAIKitInfo.swift 的複本進行：宣告的寫法改變時，

@@ -31,9 +31,9 @@
 # 同一份附加進去，每行前面加「- 」成為 Markdown 的清單，Release Notes 原樣接在後面。退出碼是 0 時，
 # 報告在各行之後依序接補建的 Release Notes（有補建時）與這次的 Release Notes（有的話）。
 #
-# AI 的文字（被拒絕的回答、Release Notes）：GITHUB_ACTIONS 是 true 時，print_ai_text 在文字前後各寫一行
-# ::stop-commands::<token> 與 ::<token>::（和文字在同一個流），GitHub 就不會執行文字裡的 workflow command。
-# job summary 不是 job log，不加標記。
+# AI 的文字（被拒絕的回答、Release Notes、lkai 的 stderr：模型的拒答文字會出現在裡面）：
+# GITHUB_ACTIONS 是 true 時，print_ai_text 在文字前後各寫一行 ::stop-commands::<token> 與 ::<token>::
+# （和文字在同一個流），GitHub 就不會執行文字裡的 workflow command。job summary 不是 job log，不加標記。
 #
 # 環境變數：
 #   LKAI_RELEASE_DRY_RUN                 沒有設定、空字串或 true：dry run；false：正式發版，只在 GitHub Actions 中允許
@@ -48,6 +48,10 @@
 #   模式、供應商、模型、計畫、升級等級、上一版、新版號、補建的 Release、失敗的步驟
 #
 # 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
+#
+# 錯誤處理的慣例：不用 set -e、set -u 或 pipefail。每個會失敗的指令都要接 || fail（或明確處理）：
+# 只有 fail 才記得到失敗的步驟（current_step），報告才寫得出「失敗的步驟」。不經 fail 的非 0 結束
+# （例如被訊號中止）由 finish 補上目前的步驟。
 
 # shellcheck disable=SC2329  # finish 由 EXIT 的 trap 呼叫，shellcheck 看不出 trap 裡的呼叫，會把 finish 與只被它呼叫的函式都當成沒用到
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +76,10 @@ answer_preview_bytes=200
 mode=""
 provider=""
 model=""
+# 報告與訊息中顯示的供應商與模型：LF 與 CR 換成可見的 <LF>、<CR>（值本身原樣交給 lkai，spec 規定這裡不檢查）。
+# 解析供應商與模型之後只算一次
+shown_provider=""
+shown_model=""
 plan=""
 bump_level=""
 previous_version=""
@@ -106,6 +114,10 @@ cleanup() {
 finish() {
   local exit_code=$?
   trap - EXIT
+  # 不經 fail 的非 0 結束（例如被訊號中止，trap 把它轉成 exit 1）沒有記下失敗的步驟：補上目前的步驟
+  if [ "$exit_code" -ne 0 ] && [ -z "$failed_step" ]; then
+    failed_step="$current_step"
+  fi
   if [ "$report_enabled" = "true" ]; then
     report_enabled="false"
     if ! emit_report "$exit_code" && [ "$exit_code" -eq 0 ]; then
@@ -184,10 +196,10 @@ print_ai_text() {
 write_report() {
   printf '模式：%s\n' "$mode"
   if [ -n "$provider" ]; then
-    printf '供應商：%s\n' "$provider"
+    printf '供應商：%s\n' "$shown_provider"
   fi
   if [ -n "$model" ]; then
-    printf '模型：%s\n' "$model"
+    printf '模型：%s\n' "$shown_model"
   fi
   if [ -n "$plan" ]; then
     printf '計畫：%s\n' "$plan"
@@ -334,12 +346,23 @@ highest_ancestor_tag() {
 # ---------------------------------------------------------------------------
 
 # ask_lkai <prompt 檔> <輸出檔> [<額外的 lkai 選項>...]：以選定的供應商與模型送出一個請求，
-# stdout 寫到輸出檔。lkai 的 stderr 直接流到這個 script 的 stderr。不加 --stream 與 --apiKey，
-# API 金鑰由 lkai 從環境變數讀。lkai 以非 0 結束時回傳 1。
+# stdout 寫到輸出檔。不加 --stream 與 --apiKey，API 金鑰由 lkai 從環境變數讀。回傳 lkai 的退出碼（非 0 就是失敗）。
+# lkai 的 stderr 先收進檔案（輸出檔旁邊，每次呼叫一個檔名），lkai 結束之後，不論成功或失敗，有內容時以
+# print_ai_text 寫到這個 script 的 stderr：模型拒答時，lkai 把模型寫的拒答文字印在 stderr（Details: …），
+# 可能含有 workflow command，所以要和其他 AI 的文字一樣包起來。
+# 以重新導向收 stderr，不用 pipe 或 process substitution：lkai 仍是這個 script 的直接子行程，
+# 被訊號中止時，trap 會等它結束才執行。
 ask_lkai() {
-  local prompt_file="$1" output_file="$2"
+  local prompt_file="$1" output_file="$2" stderr_file status=0
+  stderr_file="${output_file}.err"
   shift 2
-  lkai --provider "$provider" --model "$model" --prompt-file "$prompt_file" --timeout 180 "$@" >"$output_file"
+  lkai --provider "$provider" --model "$model" --prompt-file "$prompt_file" --timeout 180 "$@" \
+    >"$output_file" 2>"$stderr_file" || status=$?
+  if [ -s "$stderr_file" ]; then
+    # 印不出來（產生不了 token）時，print_ai_text 已經寫了錯誤訊息；原本的結果照常回傳
+    print_ai_text "$(cat "$stderr_file")" >&2 || true
+  fi
+  return "$status"
 }
 
 # ---------------------------------------------------------------------------
@@ -375,6 +398,7 @@ fi
 if [ -z "$provider" ]; then
   provider="anthropic"
 fi
+shown_provider="$(printable "$provider")"
 
 # 模型：本次指定了供應商時，只看本次的模型；否則本次的模型 → repository 的預設模型 →
 # 兩個預設值都沒有設定時用 claude-opus-5-5。供應商與模型的值都原樣交給 lkai，這裡不檢查。
@@ -389,6 +413,7 @@ else
     model="claude-opus-5-5"
   fi
 fi
+shown_model="$(printable "$model")"
 if [ -z "$model" ]; then
   fail "沒有可用的模型：請設定 LKAI_RELEASE_MODEL 或 LKAI_RELEASE_DEFAULT_MODEL"
 fi
@@ -442,7 +467,7 @@ if [ -n "$current_tag_commit" ]; then
       >"$work_dir/repair-notes.md" ||
       fail "無法產生補建用的 Release Notes 的 prompt"
     ask_lkai "$work_dir/repair-notes.md" "$work_dir/repair-notes.out" --max-output-tokens 8192 ||
-      fail "lkai 的補建用的 Release Notes 請求失敗（供應商 ${provider}，模型 ${model}）"
+      fail "lkai 的補建用的 Release Notes 請求失敗（供應商 ${shown_provider}，模型 ${shown_model}）"
     repair_notes="$(cat "$work_dir/repair-notes.out")"
     case "$repair_notes" in
       *[![:space:]]*) ;;
@@ -484,7 +509,7 @@ if [ "$plan" = "version-bump" ]; then
   "$BASH" "$script_dir/make-prompt.sh" bump-level "$previous_version" HEAD >"$work_dir/bump-level.md" ||
     fail "無法產生升級等級的 prompt"
   ask_lkai "$work_dir/bump-level.md" "$work_dir/bump-level.out" ||
-    fail "lkai 的升級等級請求失敗（供應商 ${provider}，模型 ${model}）"
+    fail "lkai 的升級等級請求失敗（供應商 ${shown_provider}，模型 ${shown_model}）"
 
   # 回答是 lkai 的 stdout 去掉前後的空格、Tab、CR、LF，剛好是 major、minor、patch 才接受
   answer="$(cat "$work_dir/bump-level.out")"
@@ -515,7 +540,7 @@ current_step="撰寫 Release Notes"
 "$BASH" "$script_dir/make-prompt.sh" release-notes "$previous_version" HEAD "$next_version" >"$work_dir/release-notes.md" ||
   fail "無法產生 Release Notes 的 prompt"
 ask_lkai "$work_dir/release-notes.md" "$work_dir/release-notes.out" --max-output-tokens 8192 ||
-  fail "lkai 的 Release Notes 請求失敗（供應商 ${provider}，模型 ${model}）"
+  fail "lkai 的 Release Notes 請求失敗（供應商 ${shown_provider}，模型 ${shown_model}）"
 
 release_notes="$(cat "$work_dir/release-notes.out")"
 case "$release_notes" in
@@ -584,8 +609,11 @@ if [ "$plan" = "version-bump" ]; then
   current_step="建立 commit 與 tag"
   GIT_AUTHOR_NAME="$bot_name" GIT_AUTHOR_EMAIL="$bot_email" \
     GIT_COMMITTER_NAME="$bot_name" GIT_COMMITTER_EMAIL="$bot_email" \
-    git commit -q -m "chore: 版本號更新為 ${next_version}" -- "$version_file" ||
+    git commit -q -m "chore: 版本號更新為 ${next_version}" -- "$version_file" || {
+    restore_version_file
     fail "無法建立版號 commit"
+  }
+  # git tag 在 commit 之後才失敗時，本機會多一個 commit；只保證 remote 不變（runner 用完即丟）
   git tag "$next_version" || fail "無法建立 tag ${next_version}"
 
   # commit 與 tag 以一次 atomic push 推上去，一起成功或一起失敗；不 force，

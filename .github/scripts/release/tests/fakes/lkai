@@ -17,6 +17,9 @@
 #   FAKE_LKAI_NOTES_EXIT    Release Notes 請求的退出碼，預設 0
 #   FAKE_LKAI_BUMP_STDERR   升級等級請求寫到 stderr 的文字（加 LF），預設不寫
 #   FAKE_LKAI_NOTES_STDERR  Release Notes 請求寫到 stderr 的文字（加 LF），預設不寫
+#   FAKE_LKAI_SIGNAL_PARENT 訊號的名稱（例如 TERM）：處理請求（升級等級或 Release Notes）的途中，對父行程
+#                           （$PPID，也就是呼叫它的 release.sh）送這個訊號，再照常回答與結束；
+#                           測試「被訊號結束時的報告」。lkai -v 不受影響
 #
 # 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
 
@@ -77,6 +80,12 @@ index="$(fake_next_index "lkai-$kind")"
 fake_write_args_file "$FAKE_LOG_DIR/lkai-$kind-$index.args" "$@"
 cp "$prompt_file" "$FAKE_LOG_DIR/lkai-$kind-$index.prompt"
 fake_log_call "lkai $kind"
+
+# 測試「被訊號結束」：對父行程（呼叫這個假指令的 release.sh）送訊號，再照常回答與結束。
+# release.sh 的 trap 要等這個前景的指令結束之後才會執行
+if [ -n "${FAKE_LKAI_SIGNAL_PARENT:-}" ]; then
+  kill -s "$FAKE_LKAI_SIGNAL_PARENT" "$PPID"
+fi
 
 if [ "$kind" = "bump-level" ]; then
   if [ "${FAKE_LKAI_BUMP_REPLY+x}" = "x" ]; then

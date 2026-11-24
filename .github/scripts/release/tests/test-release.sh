@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# test-release.sh：release.sh 的測試，目前涵蓋流程的第 1 到 5 步（任務 1.4）：選擇模式、解析供應商與模型、
-# 讀取版號與選擇計畫、判斷升級等級、撰寫 Release Notes，以及 AI 請求失敗的處理。
+# test-release.sh：release.sh 的測試，涵蓋流程的第 1 到 9 步與補建 Release：選擇模式、解析供應商與模型、
+# 讀取版號、檢查 Release 與補建、選擇計畫、判斷升級等級、撰寫 Release Notes、dry run、修改版號、重新建置、
+# 建立 commit 與 tag、推送、建立 Release，以及 AI 請求失敗與各步驟失敗時的處理。
 # 由 run-tests.sh 載入，不單獨執行。
 #
 # 以假的 lkai、gh、swift 與暫存的 git repo 測試（bare repo 作為 origin），不連網、不送 AI 請求。
+# 不設定任何模式變數時是 dry run，到第 6 步以 0 結束，不改任何東西；正式發版的測試一律以 release_mode
+# （GITHUB_ACTIONS=true、LKAI_RELEASE_DRY_RUN=false）執行，push 真的推進 bare repo。
 #
 # 報告（write_report）向 stdout 印出下列各行，每行「名稱：值」，不知道的行不印：
 #   模式：dry-run 或 release
@@ -13,14 +16,16 @@
 #   升級等級：major、minor 或 patch（只有升版、回答被接受之後）
 #   上一版：<版號>，照原樣發佈而沒有上一版時是「上一版：（無）」；沒有可發佈的變更時不印
 #   新版號：<版號>；沒有可發佈的變更時不印
+#   補建的 Release：<tag>（補建了，或 dry run 時將會補建 Release 的 tag）
 #   失敗的步驟：<design 固定清單中的名稱>（只有失敗時）
-# 沒有可發佈的變更時，報告之後再印一行「沒有可發佈的變更。」，以 0 結束。
-# 這一階段第 5 步之後暫時印出報告與 Release Notes 就以 1 結束（之後的任務取代），
-# 所以「會繼續發版」的測試只斷言報告的行，不斷言退出碼。
+# 沒有可發佈的變更時，報告之後再印一行「沒有可發佈的變更。」。以 0 結束時，報告之後依序接
+# 「補建的 Release Notes（<tag>）：」與補建的文字（有補建時），以及「Release Notes：」與這次的 Release Notes。
 #
 # 失敗時 release.sh 保證：工作目錄沒有改變、沒有新的 commit、remote 沒有新的 commit 與 tag、
-# 假的 gh 沒有收到 release create；每個失敗類的測試都用 assert_repo_untouched 與
-# assert_no_release_created 檢查。
+# 假的 gh 沒有收到 release create；失敗類的測試用 assert_failed_with_step（含 assert_repo_untouched 與
+# assert_no_release_created）檢查。兩種例外：補建成功之後才失敗時，補建的 Release 保留；建立 Release 失敗時，
+# remote 已經有版號 commit 與 tag（下一次執行補建 Release）。這幾個測試不用 assert_no_release_created，
+# 改成逐項斷言。
 #
 # 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
 
@@ -394,6 +399,7 @@ test_release_plan_without_tags_releases_as_is() {
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   assert_plan "release-as-is" "（無）" "0.1.0"
 }
 
@@ -410,6 +416,7 @@ test_release_plan_with_source_changes_after_the_tag_is_a_version_bump() {
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   assert_plan "version-bump" "0.1.0" "0.1.1"
   assert_equals "1" "$(call_count "lkai bump-level")" "升版要送出一次升級等級的請求"
 }
@@ -459,6 +466,7 @@ test_release_plan_with_a_hand_set_major_version_releases_as_is_after_the_highest
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   assert_plan "release-as-is" "0.2.0" "1.0.0"
 }
 
@@ -506,21 +514,33 @@ test_release_plan_compares_versions_part_by_part_as_integers() {
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   assert_plan "release-as-is" "0.9.0" "0.10.0"
 }
 
-# 最新的 tag 是 0.4.2（有 Release），PR 把版號手動改成 1.0.0：照原樣發佈 1.0.0，上一版 0.4.2，沒有建立版號 commit
+# 最新的 tag 是 0.4.2（有 Release），PR 把版號手動改成 1.0.0，正式發版：照原樣發佈 1.0.0，上一版 0.4.2，
+# 沒有建立版號 commit（本機 HEAD 與 remote 的 main 都不變），tag 1.0.0 指向原本的 HEAD，建立了 Release 1.0.0，
+# 也沒有問 AI 升級等級
 # spectra-scenario: release-automation / Choose a version by hand
 test_release_plan_for_a_hand_set_version_creates_no_version_commit() {
   new_release_repo 0.1.0
   make_version_tag 0.4.2
   commit_version 1.0.0
   finish_fixture
+  release_mode
+  local old_head
+  old_head="$(repo_git rev-parse HEAD)"
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   assert_plan "release-as-is" "0.4.2" "1.0.0"
-  assert_repo_untouched
+  assert_equals "$old_head" "$(repo_git rev-parse HEAD)" "不建立 commit"
+  assert_equals "$old_head" "$(remote_git rev-parse refs/heads/main)" "remote 的 main 不變"
+  assert_equals "$old_head" "$(remote_tag_commit 1.0.0)" "tag 1.0.0 指向原本的 HEAD"
+  assert_equals "1" "$(call_count "gh release-create 1.0.0")" "建立 Release 1.0.0 一次"
+  assert_release_record 1.0.0
+  assert_equals "0" "$(call_count "lkai bump-level")" "人工指定的版號不問升級等級"
 }
 
 # HEAD 的版號是 0.1.0，工作目錄有還沒 commit 的修改把它改成 0.9.0：目前版號是 0.1.0，而且工作目錄的修改原封不動
@@ -532,6 +552,7 @@ test_release_plan_reads_the_version_at_head_not_the_working_tree() {
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   assert_has_line "$TEST_STDOUT" "新版號：0.1.0"
   assert_lacks_line "$TEST_STDOUT" "新版號：0.9.0" "不該讀工作目錄的版號"
   assert_equals "0.9.0" "$("$BASH" "$RELEASE_DIR/package-version.sh" get "$TEST_REPO/$VERSION_FILE_PATH")" "工作目錄的修改要原封不動"
@@ -551,6 +572,7 @@ assert_answer_accepted() {
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   assert_has_line "$TEST_STDOUT" "升級等級：$2"
   assert_has_line "$TEST_STDOUT" "新版號：0.1.1"
   assert_equals "1" "$(call_count "lkai release-notes")" "回答被接受之後要送出 Release Notes 的請求"
@@ -686,6 +708,7 @@ test_release_invokes_lkai_with_the_documented_arguments() {
 
   run_release
 
+  assert_exit_code 0 "release.sh 的退出碼"
   local bump_args="$FAKE_LOG_DIR/lkai-bump-level-1.args"
   local notes_args="$FAKE_LOG_DIR/lkai-release-notes-1.args"
   local first_bump_call first_notes_call
@@ -717,7 +740,7 @@ test_release_invokes_lkai_with_the_documented_arguments() {
 }
 
 # ---------------------------------------------------------------------------
-# 任務 1.5：報告只印一次、dry run、job summary、AI 文字的保護、API 金鑰
+# 報告與 AI 文字：報告只印一次、dry run、job summary、AI 文字的保護、API 金鑰
 # ---------------------------------------------------------------------------
 
 # use_step_summary：建立 GITHUB_STEP_SUMMARY 指向的暫存檔（先放一行「已有的內容」，附加時不能蓋掉它）
@@ -1018,7 +1041,7 @@ test_release_never_writes_the_api_key_anywhere() {
 }
 
 # ---------------------------------------------------------------------------
-# 任務 1.6：版號 commit 與 tag 的推送、Release 的建立與補建
+# 正式發版：版號 commit 與 tag 的推送、Release 的建立與補建
 # ---------------------------------------------------------------------------
 #
 # 正式發版一律是 GITHUB_ACTIONS=true、LKAI_RELEASE_DRY_RUN=false（release_mode）。
@@ -1132,6 +1155,14 @@ test_release_bump_pushes_the_version_commit_and_the_tag_then_creates_the_release
   assert_plan "version-bump" "0.1.0" "0.1.1"
   assert_has_line "$TEST_STDOUT" "- 測試用的項目" "報告有 Release Notes"
   assert_calls_in_order "lkai bump-level" "lkai release-notes" "swift build" "swift show-bin-path" "lkai -v" "gh release-create 0.1.1"
+  # 重新建置的兩個 swift 呼叫：第一個建置，第二個取 bin 資料夾；兩個都是 release 組態的 lkai product
+  local build_args="$FAKE_LOG_DIR/swift-build-1.args" bin_path_args="$FAKE_LOG_DIR/swift-build-2.args"
+  assert_equals "release" "$(arg_after "$build_args" "-c")" "建置的 -c 要是 release"
+  assert_equals "lkai" "$(arg_after "$build_args" "--product")" "建置的 --product 要是 lkai"
+  assert_lacks_line "$build_args" "--show-bin-path" "第一個呼叫是建置，不是取 bin 資料夾"
+  assert_equals "release" "$(arg_after "$bin_path_args" "-c")" "取 bin 資料夾的 -c 要是 release"
+  assert_equals "lkai" "$(arg_after "$bin_path_args" "--product")" "取 bin 資料夾的 --product 要是 lkai"
+  assert_has_line "$bin_path_args" "--show-bin-path"
 }
 
 # 版號 commit 只含 LKAIKitInfo.swift：工作目錄裡剛好有一個沒有追蹤的檔案、一個已經 stage 的檔案，
@@ -1203,6 +1234,8 @@ test_release_as_is_for_the_first_time_pushes_only_the_tag() {
   assert_has_line "$FAKE_LOG_DIR/gh-release-create-1.args" "--verify-tag"
   assert_release_record 0.1.0
   assert_has_line "$FAKE_LOG_DIR/releases/0.1.0/notes" "- 第一次發版" "Release 的內容是 Release Notes"
+  assert_file_contains "$FAKE_LOG_DIR/lkai-release-notes-1.prompt" "這是 LKAIKit 的第一次發版，沒有上一版。" "沒有上一版時，prompt 要說明是第一次發版"
+  assert_file_contains "$FAKE_LOG_DIR/lkai-release-notes-1.prompt" "chore: 建立測試用的 repo" "範圍從空的 tree 開始，要有第一個 commit 的標題"
   assert_plan "release-as-is" "（無）" "0.1.0"
   assert_equals "0" "$(call_count "swift build")" "照原樣發佈不重新建置"
 }
@@ -1404,7 +1437,7 @@ test_release_tag_of_a_release_as_is_matches_the_declared_version() {
 }
 
 # ---------------------------------------------------------------------------
-# 任務 1.6 補充：失敗的報告、補建的 Release Notes 的保護、補建失敗的步驟、本機已有同名 tag
+# 失敗的報告、補建的 Release Notes 的保護、補建失敗的步驟、本機已有同名 tag
 # ---------------------------------------------------------------------------
 
 # assert_release_not_recorded <tag>：假的 gh 沒有為這個 tag 建立 Release（沒有 Release 紀錄）
@@ -1528,4 +1561,181 @@ test_release_fails_when_the_tag_of_the_version_already_exists_locally() {
   assert_has_line "$TEST_STDOUT" "計畫：release-as-is"
   assert_file_contains "$TEST_STDERR" "本機已經有 tag 0.1.0" "訊息要說本機已經有這個 tag"
   assert_equals "0" "$(call_count "swift build")" "沒有重新建置"
+}
+
+# ---------------------------------------------------------------------------
+# lkai 的 stderr、被訊號結束時的報告、供應商與模型的顯示、git commit 失敗
+# ---------------------------------------------------------------------------
+
+# 假的 lkai 失敗時寫到 stderr 的文字：多行，其中一行是 workflow command。OpenAI 回報拒答時，lkai 以
+# 「Details: <模型寫的拒答文字>」印到 stderr，原樣、可以跨多行，所以這是 AI 寫的文字
+LKAI_STDERR_TEXT=$'Error: refused\nDetails: 拒答\n::add-mask::x'
+
+# assert_lkai_stderr_is_protected：LKAI_STDERR_TEXT 的每一行都只出現一次，而且都在 stderr 的
+# ::stop-commands::<token> 與 ::<token>:: 之間；token 一次執行只選一次，所以只有一組標記
+assert_lkai_stderr_is_protected() {
+  assert_wrapped_in_stop_commands "$TEST_STDERR" "Error: refused"
+  assert_wrapped_in_stop_commands "$TEST_STDERR" "Details: 拒答"
+  assert_wrapped_in_stop_commands "$TEST_STDERR" "::add-mask::x"
+  assert_line_count "$TEST_STDERR" "::add-mask::x" 1
+  assert_equals "1" "$(grep -c '^::stop-commands::' "$TEST_STDERR")" "lkai 的 stderr 只包一次"
+  assert_file_not_contains "$TEST_STDOUT" "add-mask" "lkai 的 stderr 不該跑到 stdout"
+}
+
+# assert_lkai_stderr_is_plain：不在 GitHub Actions 中，lkai 的 stderr 原樣出現，沒有任何標記
+assert_lkai_stderr_is_plain() {
+  assert_has_line "$TEST_STDERR" "Error: refused" "要保留 lkai 的 stderr"
+  assert_has_line "$TEST_STDERR" "Details: 拒答" "要保留 lkai 的 stderr"
+  assert_has_line "$TEST_STDERR" "::add-mask::x" "要保留 lkai 的 stderr"
+  assert_equals "0" "$(grep -c '^::stop-commands::' "$TEST_STDERR")" "不該有 ::stop-commands:: 那一行"
+  assert_equals "0" "$(grep -c -E '^::[0-9a-fA-F]{32,}::$' "$TEST_STDERR")" "不該有 ::<token>:: 那一行"
+}
+
+# args_after_flag <引數檔> <旗標> <行數>：引數檔（一行一個引數）裡，旗標後面的幾行，以 | 接起來。
+# 引數裡有 LF 時，一個引數會佔多行，所以要看幾行
+args_after_flag() {
+  local number
+  number="$(line_number "$1" "$2")"
+  if [ -z "$number" ]; then
+    fail "引數檔裡沒有 $2：$1" "檔案（cat -v）：$(show_file "$1")"
+  fi
+  sed -n "$((number + 1)),$((number + $3))p" "$1" | paste -s -d '|' -
+}
+
+# GITHUB_ACTIONS 是 true，升級等級的請求以 1 結束，stderr 是多行、含 ::add-mask::x：lkai 的 stderr 是 AI 寫的文字
+# （模型的拒答、被截斷的回答等），要保留在 release.sh 自己的 stderr，而且在同一個流以
+# ::stop-commands::<token> 與 ::<token>:: 包起來，GitHub 才不會執行裡面的 workflow command。
+# 依據 spec「AI text in the job log」的「wherever release.sh writes text that comes from an AI answer to stdout or stderr」
+test_release_stderr_of_the_bump_level_request_is_wrapped_in_stop_commands() {
+  fixture_version_bump
+  export GITHUB_ACTIONS=true
+  export FAKE_LKAI_BUMP_EXIT=1
+  export FAKE_LKAI_BUMP_STDERR="$LKAI_STDERR_TEXT"
+
+  run_release
+
+  assert_failed_with_step "判斷升級等級"
+  assert_lkai_stderr_is_protected
+}
+
+# 同上，Release Notes 的請求（照原樣發佈只有這一個請求）：兩個呼叫處都經過同一條路
+test_release_stderr_of_the_release_notes_request_is_wrapped_in_stop_commands() {
+  fixture_first_release
+  export GITHUB_ACTIONS=true
+  export FAKE_LKAI_NOTES_EXIT=1
+  export FAKE_LKAI_NOTES_STDERR="$LKAI_STDERR_TEXT"
+
+  run_release
+
+  assert_failed_with_step "撰寫 Release Notes"
+  assert_lkai_stderr_is_protected
+}
+
+# GITHUB_ACTIONS 沒有設定（例如本機執行）時，lkai 的 stderr 原樣出現，不加標記，輸出才不會多出看不懂的行
+test_release_stderr_of_the_bump_level_request_is_not_wrapped_outside_github_actions() {
+  fixture_version_bump
+  export FAKE_LKAI_BUMP_EXIT=1
+  export FAKE_LKAI_BUMP_STDERR="$LKAI_STDERR_TEXT"
+
+  run_release
+
+  assert_failed_with_step "判斷升級等級"
+  assert_lkai_stderr_is_plain
+}
+
+test_release_stderr_of_the_release_notes_request_is_not_wrapped_outside_github_actions() {
+  fixture_first_release
+  export FAKE_LKAI_NOTES_EXIT=1
+  export FAKE_LKAI_NOTES_STDERR="$LKAI_STDERR_TEXT"
+
+  run_release
+
+  assert_failed_with_step "撰寫 Release Notes"
+  assert_lkai_stderr_is_plain
+}
+
+# 升級等級的請求進行中，release.sh 收到 TERM（假的 lkai 對它的父行程送訊號，再照常結束）：以 1 結束，
+# 報告仍然寫出失敗的步驟（判斷升級等級），而且只印一次；沒有改變 repo 與 remote，沒有建立 Release
+# spectra-scenario: release-automation / Report a failed run
+test_release_signal_during_a_request_reports_the_failed_step() {
+  fixture_version_bump
+  export FAKE_LKAI_SIGNAL_PARENT=TERM
+
+  run_release
+
+  assert_exit_code 1 "release.sh 的退出碼"
+  assert_equals "1" "$(call_count "lkai bump-level")" "升級等級的請求有送出（訊號是在請求進行中收到的）"
+  assert_has_line "$TEST_STDOUT" "失敗的步驟：判斷升級等級" "被訊號結束時，報告也要寫出失敗的步驟"
+  assert_line_count "$TEST_STDOUT" "模式：dry-run" 1
+  assert_line_count "$TEST_STDOUT" "供應商：anthropic" 1
+  assert_line_count "$TEST_STDOUT" "模型：claude-opus-5-5" 1
+  assert_line_count "$TEST_STDOUT" "計畫：version-bump" 1
+  assert_repo_untouched
+  assert_no_release_created
+}
+
+# 供應商與模型是原樣交給 lkai 的值，spec 不允許 release.sh 檢查它們，所以不拒絕；但寫進訊息與報告時，
+# LF 要換成可見的 <LF>，免得值裡的一行變成另一條 workflow command。沒有可發佈的變更（不送請求）：
+# 模型含 LF 與 ::warning::y 時，報告的那一行是「模型：x<LF>::warning::y」，stdout 與 stderr 都沒有以 ::warning:: 開頭的行
+test_release_model_with_a_workflow_command_is_shown_on_one_line() {
+  fixture_nothing_to_release
+  export GITHUB_ACTIONS=true
+  set_provider_variables "anthropic" $'x\n::warning::y' "$NOT_SET" "$NOT_SET"
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_has_line "$TEST_STDOUT" "模型：x<LF>::warning::y"
+  assert_equals "0" "$(grep -c '^::warning::' "$TEST_STDOUT")" "stdout 不該有以 ::warning:: 開頭的行"
+  assert_equals "0" "$(grep -c '^::warning::' "$TEST_STDERR")" "stderr 不該有以 ::warning:: 開頭的行"
+}
+
+# 供應商的值也一樣
+test_release_provider_with_a_workflow_command_is_shown_on_one_line() {
+  fixture_nothing_to_release
+  export GITHUB_ACTIONS=true
+  set_provider_variables $'anthropic\n::warning::p' "x" "$NOT_SET" "$NOT_SET"
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_has_line "$TEST_STDOUT" "供應商：anthropic<LF>::warning::p"
+  assert_equals "0" "$(grep -c '^::warning::' "$TEST_STDOUT")" "stdout 不該有以 ::warning:: 開頭的行"
+  assert_equals "0" "$(grep -c '^::warning::' "$TEST_STDERR")" "stderr 不該有以 ::warning:: 開頭的行"
+}
+
+# 會送請求的版本（沒有 tag，Release Notes 的請求以 1 結束）：lkai 收到的 --model 是原樣的值
+# （含 LF，所以在引數檔裡佔兩行），但錯誤訊息那一行（::error::）裡是 <LF>，stderr 沒有以 ::warning:: 開頭的行
+test_release_model_with_a_workflow_command_is_passed_to_lkai_unchanged_and_shown_on_one_line() {
+  fixture_first_release
+  export GITHUB_ACTIONS=true
+  export FAKE_LKAI_NOTES_EXIT=1
+  set_provider_variables "anthropic" $'x\n::warning::y' "$NOT_SET" "$NOT_SET"
+
+  run_release
+
+  assert_failed_with_step "撰寫 Release Notes"
+  assert_equals "x|::warning::y" "$(args_after_flag "$FAKE_LOG_DIR/lkai-release-notes-1.args" "--model" 2)" "lkai 收到的 --model 要是原樣的值"
+  assert_equals "anthropic" "$(args_after_flag "$FAKE_LOG_DIR/lkai-release-notes-1.args" "--provider" 1)" "lkai 收到的 --provider"
+  assert_has_line "$TEST_STDOUT" "模型：x<LF>::warning::y"
+  assert_equals "1" "$(grep -c -E '^::error::.*x<LF>::warning::y' "$TEST_STDERR")" "::error:: 那一行要含 <LF>"
+  assert_equals "0" "$(grep -c '^::warning::' "$TEST_STDOUT")" "stdout 不該有以 ::warning:: 開頭的行"
+  assert_equals "0" "$(grep -c '^::warning::' "$TEST_STDERR")" "stderr 不該有以 ::warning:: 開頭的行"
+}
+
+# git commit 失敗（暫存 repo 的 pre-commit hook 以 1 結束）：失敗的步驟是「建立 commit 與 tag」，而且工作目錄
+# 已經還原（LKAIKitInfo.swift 回到 HEAD 的內容）；本機與 remote 都沒有新的 commit 或 tag，沒有建立 Release
+test_release_commit_failure_restores_the_version_file() {
+  fixture_version_bump
+  release_mode
+  mkdir -p "$TEST_REPO/.git/hooks"
+  printf '#!/bin/sh\necho "pre-commit 故意失敗" >&2\nexit 1\n' >"$TEST_REPO/.git/hooks/pre-commit"
+  chmod +x "$TEST_REPO/.git/hooks/pre-commit"
+
+  run_release
+
+  assert_failed_with_step "建立 commit 與 tag"
+  assert_file_contains "$TEST_STDERR" "pre-commit 故意失敗" "失敗要來自 pre-commit hook（沒有這一行，測試沒有走到 git commit）"
+  assert_equals "" "$(repo_git status --porcelain)" "工作目錄要是乾淨的（版號檔已還原）"
+  assert_equals "0.1.0" "$("$BASH" "$RELEASE_DIR/package-version.sh" get "$TEST_REPO/$VERSION_FILE_PATH")" "版號檔回到 HEAD 的內容"
 }

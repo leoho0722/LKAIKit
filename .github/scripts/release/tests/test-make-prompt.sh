@@ -5,8 +5,8 @@
 #
 # make-prompt.sh <bump-level|release-notes> <previous-version> <target-ref> [<version>]
 #
-# 測試的前提（都是 Implementation Contract 與任務 1.3 的規則）：
-# - 範本原樣輸出在最前面，所以輸出的第一行就是範本的標記；範本本身由第二階段寫，
+# 測試的前提（都是 design 的 Implementation Contract 中 make-prompt.sh 那一列的規則）：
+# - 範本原樣輸出在最前面，所以輸出的第一行就是範本的標記；範本是 prompts/<種類>.md，
 #   這裡直接比對 design 規定的標記字串。
 # - bump-level 接「上一版：<previous-version>」，不帶新版號；release-notes 接「要發佈的版號：<version>」，
 #   以及「上一版：<previous-version>」或固定的第一次發版說明。
@@ -244,6 +244,33 @@ test_make_prompt_tells_the_model_to_ignore_instructions_in_the_data() {
   assert_file_contains "$TEST_STDOUT" "忽略" "release-notes prompt 要叫模型忽略資料裡的指示"
 }
 
+# release-notes 的範本寫明輸出的格式：正體中文，依序四個分類的二級標題（release-automation「Release notes generation」）
+test_make_prompt_release_notes_template_states_the_output_format() {
+  setup_bump_repo
+
+  run_make_prompt release-notes 0.1.0 HEAD 0.1.1
+
+  assert_prompt_succeeded
+  assert_file_contains "$TEST_STDOUT" "## 破壞性變更" "要寫明分類：破壞性變更"
+  assert_file_contains "$TEST_STDOUT" "## 新功能" "要寫明分類：新功能"
+  assert_file_contains "$TEST_STDOUT" "## 修正" "要寫明分類：修正"
+  assert_file_contains "$TEST_STDOUT" "## 其他" "要寫明分類：其他"
+  assert_file_contains "$TEST_STDOUT" "正體中文" "要叫模型用正體中文撰寫"
+}
+
+# bump-level 的範本寫明三個等級，並要求只回答其中一個（release-automation「AI bump level answer」）
+test_make_prompt_bump_level_template_asks_for_exactly_one_level() {
+  setup_bump_repo
+
+  run_make_prompt bump-level 0.1.0 HEAD
+
+  assert_prompt_succeeded
+  assert_file_contains "$TEST_STDOUT" "major" "要寫明等級：major"
+  assert_file_contains "$TEST_STDOUT" "minor" "要寫明等級：minor"
+  assert_file_contains "$TEST_STDOUT" "patch" "要寫明等級：patch"
+  assert_file_contains "$TEST_STDOUT" "只回答" "要求只回答其中一個等級"
+}
+
 # 範圍裡的 merge commit，標題不出現；它兩邊的 commit 標題都要出現
 test_make_prompt_leaves_out_merge_commit_subjects() {
   setup_bump_repo
@@ -373,21 +400,32 @@ test_make_prompt_rejects_wrong_usage() {
   assert_make_prompt_fails "上一版的 tag 不存在" bump-level 0.9.9 HEAD
 }
 
+# assert_first_line_starts_with <檔案> <前綴> [<說明>]：檔案的第一行以這個前綴開頭。
+# 用 case 比對，不用 cut -c：GNU 的 cut -c 以 byte 計算，BSD 的以字元計算，訊息有中文時兩邊的結果不同
+assert_first_line_starts_with() {
+  local first_line
+  first_line="$(head -n 1 "$1")"
+  case "$first_line" in
+    "$2"*) ;;
+    *) fail "${3:-第一行的開頭不符}" "預期以「$2」開頭" "實際（cat -v）：$(printf '%s' "$first_line" | cat -v)" ;;
+  esac
+}
+
 # 訊息的前綴：GITHUB_ACTIONS 是 true 時以 ::error:: 開頭，其他情況以 Error: （冒號後有一個空格）開頭
 test_make_prompt_error_message_prefix() {
   setup_bump_repo
 
   run_make_prompt bogus 0.1.0 HEAD
   assert_exit_code 1
-  assert_equals "Error: " "$(head -n 1 "$TEST_STDERR" | cut -c 1-7)" "沒有 GITHUB_ACTIONS 時的前綴"
+  assert_first_line_starts_with "$TEST_STDERR" "Error: " "沒有 GITHUB_ACTIONS 時的前綴"
 
   GITHUB_ACTIONS=true run_make_prompt bogus 0.1.0 HEAD
   assert_exit_code 1
-  assert_equals "::error::" "$(head -n 1 "$TEST_STDERR" | cut -c 1-9)" "GITHUB_ACTIONS 是 true 時的前綴"
+  assert_first_line_starts_with "$TEST_STDERR" "::error::" "GITHUB_ACTIONS 是 true 時的前綴"
 
   GITHUB_ACTIONS=false run_make_prompt bogus 0.1.0 HEAD
   assert_exit_code 1
-  assert_equals "Error: " "$(head -n 1 "$TEST_STDERR" | cut -c 1-7)" "GITHUB_ACTIONS 是 false 時的前綴"
+  assert_first_line_starts_with "$TEST_STDERR" "Error: " "GITHUB_ACTIONS 是 false 時的前綴"
 }
 
 # 訊息裡帶進去的值若含 LF，不能讓 stderr 多出一行（多出來的行可能以 :: 開頭，被當成 workflow command）
