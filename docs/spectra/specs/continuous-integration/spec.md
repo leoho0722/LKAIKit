@@ -97,3 +97,49 @@ code:
   - action.yml
   - docs/adding-a-provider.md
 -->
+
+---
+### Requirement: Release script tests in CI
+
+The CI job SHALL run `.github/scripts/release/tests/run-tests.sh` with the runner's default `bash`, after `swift test`, in the job that runs on the same runner label as the release workflow, so that the release scripts are tested with the shell and tools that the release workflow uses. The job SHALL fail when that script exits with a non-zero status. Values that the release script tests set inside their own processes, such as the test key `sk-test-secret`, are not environment variables that the CI job defines in the sense of "Unit tests without real API keys". The rules for the tests themselves are in release-automation "Release script test isolation".
+
+#### Scenario: Run the release script tests
+
+- **GIVEN** a pull request whose release scripts satisfy every test in `.github/scripts/release/tests/`
+- **WHEN** the CI job runs `.github/scripts/release/tests/run-tests.sh`
+- **THEN** the script exits with status 0
+
+#### Scenario: A release script test fails
+
+- **GIVEN** a pull request that changes `next-version.sh` so that `0.1.0` with `patch` no longer yields `0.1.1`
+- **WHEN** the CI job runs `.github/scripts/release/tests/run-tests.sh`
+- **THEN** the script exits with a non-zero status
+- **AND** the job fails
+
+<!-- @trace
+source: 02-add-release-automation
+updated: 2026-11-24
+code:
+  - .github/scripts/release/make-prompt.sh
+  - .github/scripts/release/next-version.sh
+  - .github/scripts/release/package-version.sh
+  - .github/scripts/release/prompts/bump-level.md
+  - .github/scripts/release/prompts/release-notes.md
+  - .github/scripts/release/release.sh
+  - .github/workflows/ci.yml
+  - .github/workflows/release.yml
+  - Sources/LKAICore/LKAIKitInfo.swift
+  - docs/adding-a-provider.md
+  - docs/releasing.md
+tests:
+  - .github/scripts/release/tests/fakes/fake-common.sh
+  - .github/scripts/release/tests/fakes/gh
+  - .github/scripts/release/tests/fakes/lkai
+  - .github/scripts/release/tests/fakes/swift
+  - .github/scripts/release/tests/helpers.sh
+  - .github/scripts/release/tests/run-tests.sh
+  - .github/scripts/release/tests/test-make-prompt.sh
+  - .github/scripts/release/tests/test-next-version.sh
+  - .github/scripts/release/tests/test-package-version.sh
+  - .github/scripts/release/tests/test-release.sh
+-->

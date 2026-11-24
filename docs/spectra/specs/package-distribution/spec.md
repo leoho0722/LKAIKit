@@ -219,3 +219,43 @@ code:
   - Tests/LKAICoreTests/Networking/LKAIHTTPResponseTests.swift
   - Tests/LKAIKitTests/ExportsTests.swift
 -->
+
+---
+### Requirement: Release tag matches the package version
+
+Every release tag of the repository SHALL be named exactly the value of `LKAIKitInfo.version` in the commit that the tag points to, in the `MAJOR.MINOR.PATCH` form without a `v` prefix, so that an app that resolves LKAIKit by a version tag builds a library whose `LKAIKitInfo.version` equals that tag.
+
+#### Scenario: Inspect a release tag
+
+- **GIVEN** the release tag `0.1.1` created by the release workflow
+- **WHEN** `git show 0.1.1:Sources/LKAICore/LKAIKitInfo.swift` is inspected
+- **THEN** the declaration of `LKAIKitInfo.version` has the value `0.1.1`
+- **AND** `lkai -v` built from that commit prints `0.1.1`
+
+<!-- @trace
+source: 02-add-release-automation
+updated: 2026-11-24
+code:
+  - .github/scripts/release/make-prompt.sh
+  - .github/scripts/release/next-version.sh
+  - .github/scripts/release/package-version.sh
+  - .github/scripts/release/prompts/bump-level.md
+  - .github/scripts/release/prompts/release-notes.md
+  - .github/scripts/release/release.sh
+  - .github/workflows/ci.yml
+  - .github/workflows/release.yml
+  - Sources/LKAICore/LKAIKitInfo.swift
+  - docs/adding-a-provider.md
+  - docs/releasing.md
+tests:
+  - .github/scripts/release/tests/fakes/fake-common.sh
+  - .github/scripts/release/tests/fakes/gh
+  - .github/scripts/release/tests/fakes/lkai
+  - .github/scripts/release/tests/fakes/swift
+  - .github/scripts/release/tests/helpers.sh
+  - .github/scripts/release/tests/run-tests.sh
+  - .github/scripts/release/tests/test-make-prompt.sh
+  - .github/scripts/release/tests/test-next-version.sh
+  - .github/scripts/release/tests/test-package-version.sh
+  - .github/scripts/release/tests/test-release.sh
+-->
