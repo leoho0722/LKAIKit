@@ -104,7 +104,7 @@
     - checkout 沒有 `persist-credentials: false`，並有一行註解寫明不可設定它的原因。
     - `inputs`、`vars` 與 `secrets` 都以 `env` 傳入。
   - actionlint 在 4.1 執行。合併前無法實際觸發（`workflow_dispatch` 要在預設分支上），合併後的確認見 design 的 Migration Plan 與 `docs/releasing.md`。
-- [ ] 2.2 [after: 1.1] 依 design「CI 的 script 測試規則放在 continuous-integration，測試的隔離留在 release-automation」，在 `.github/workflows/ci.yml` 的 `swift test` 之後，加上 `bash .github/scripts/release/tests/run-tests.sh` 的 step，交付 continuous-integration「Release script tests in CI」（sonnet）：
+- [x] 2.2 [after: 1.1] 依 design「CI 的 script 測試規則放在 continuous-integration，測試的隔離留在 release-automation」，在 `.github/workflows/ci.yml` 的 `swift test` 之後，加上 `bash .github/scripts/release/tests/run-tests.sh` 的 step，交付 continuous-integration「Release script tests in CI」（sonnet）：
   - 新的 step 比照既有的寫法：正體中文的 `name`、`shell: bash`，並附一行註解指向 continuous-integration「Release script tests in CI」。
   - 檔案開頭的說明補上發版 script 的測試。
   - 驗證：主對話審查內容，確認以下幾點；實際執行在 4.4 確認。
@@ -112,6 +112,7 @@
     - job 的 `runs-on` 與 `release.yml` 相同。
     - 新 step 沒有 `continue-on-error`，也沒有吞掉 `run-tests.sh` 的退出碼（例如 `|| true`），所以非 0 會讓 job 失敗；這一項就是 continuous-integration「A release script test fails」中 job 失敗部分的內容審查。
     - `actionlint .github/workflows/ci.yml` 沒有錯誤。
+  - 審查結果（2026-11-24）：`git diff` 只刪掉檔案開頭的舊說明一行，其他 step、trigger、permissions、concurrency 不變；`runs-on: xcode-27` 與 design 規定的 `release.yml` 相同；新 step 沒有 `continue-on-error`、`|| true`、`env`、`secrets` 或 `vars`；`actionlint .github/workflows/ci.yml` 以 0 結束、沒有輸出。
 
 ## 3. 文件
 
