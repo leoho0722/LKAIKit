@@ -140,7 +140,7 @@
   - `config.yaml` 的那一行寫明什麼時候讀，以及哪些 change 封存前要更新它。
   - 驗證：主對話逐項對照決策審查文字；`spectra validate 02-add-release-automation` 仍通過。
   - 審查結果（2026-11-24）：design「發版的操作寫在 docs/releasing.md」的每一項都有對應的章節；步驟名稱、報告的各行、「失敗時的狀態」表與供應商的金鑰對照，都對照 `release.sh` 與 `release.yml` 的實作確認一致。審查時補上 4.3「發錯時怎麼退」的注意事項：刪 tag 之前先停用 release workflow，否則中間的合併會以 `main` 上的錯誤版號照原樣再發一次；4.4 一起調整。`spectra validate 02-add-release-automation` 通過。
-- [ ] 3.2 [after: 3.1] 更新兩份既有的說明（sonnet）：
+- [x] 3.2 [after: 3.1] 更新兩份既有的說明（sonnet）：
   - `Sources/LKAICore/LKAIKitInfo.swift` 的 `///`：
     - 依 design「版號由 AI 回答升級等級、script 計算」，改成由 release workflow 更新。
     - 要指定版號時，在 PR 中改成還沒有 tag 的版號，並指向 `docs/releasing.md`。
@@ -151,6 +151,7 @@
     - 第 5 章加一列，說明 `add-swift-package-foundation` 的「發佈時手動更新此值」由 `02-add-release-automation` 的決策取代。
     - 第 7 章「調整 `LKAIKitInfo.version` 並打第一個 release tag」一列改成「已解決」，依據寫 `02-add-release-automation` 的決策「版號由 AI 回答升級等級、script 計算」。
   - 驗證：主對話審查文字；`git diff Sources/` 只有 `LKAIKitInfo.swift` 的 `///` 改變；`swift build` 通過。
+  - 審查結果（2026-11-24）：`git diff Sources/` 只有 `LKAIKitInfo.swift` 的 8 行 `///` 新增、1 行刪除，值不變；`swift build` 通過。新的 `///` 提到宣告的寫法之後，`run-tests.sh` 有 18 個測試失敗：假的 `lkai` 與 `test-package-version.sh` 以沒有錨定整行的比對找宣告，把註解那一行也算進去，和 `package-version.sh` 的規則不一致。依 design「版號從 LKAIKitInfo.swift 讀取，與寫入共用同一個規則」在 commit `468d9cf` 修正測試工具（假的 `lkai` 改呼叫 `package-version.sh get`，測試改用相同的整行樣式），不改註解；修正後 105 個測試通過，`GITHUB_ACTIONS=true` 時結果相同。
 
 ## 4. 驗收
 
