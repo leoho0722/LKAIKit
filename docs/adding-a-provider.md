@@ -71,6 +71,11 @@
     - cli-chat spec 的「provider values」與「environment variables」兩張表。
     - `Tests/LKAIKitCLITests/LKAICommandLiveTests.swift`：加一個測試函式，只在新供應商的環境變數有設定時執行，模型與 library 的實際 API 測試相同。
     - String Catalog 不必修改：說明中的環境變數清單由 `LKAIChatProvider.allCases` 產生，字串裡沒有寫任何供應商或環境變數的名稱。
+  - 新增供應商時發版流程也要加金鑰，要動三處（`02-add-release-automation`「供應商與模型：優先順序由 script 決定，只留一組預設值，驗證交給 lkai」；操作見 `docs/releasing.md` 的 3.5）：
+    - `.github/workflows/release.yml`：「發版」那一步的 `env` 加上新供應商的 secret，名稱和 `LKAIChatProvider.apiKeyEnvironmentName` 相同（GitHub 的運算式組不出 secret 名稱，所以每家各寫一行，以同名的環境變數傳入）。
+    - release-automation spec「Release provider and model selection」最後一句中，列出 repository secret 的那一句。
+    - GitHub 上的 repository secret：以 `gh secret set <名稱>` 設定，值從標準輸入讀，不要把金鑰放在命令列引數。
+    - 不必動的：`release.sh` 不維護供應商清單，也不檢查供應商的值與金鑰，原樣交給 `lkai`，由 `lkai` 在送出請求前拒絕不認得的供應商與缺少的金鑰。
 
 **串流的共同流程**
 
@@ -175,6 +180,7 @@
 | `add-swift-package-foundation` 的 Implementation Contract 中 `CommandConfiguration(commandName: "lkai", …, version: LKAIKitInfo.version)` | `add-cli-chat-command`「自訂 -v/--version 旗標取代內建的版本旗標」：`configuration` 不再傳 `version:`，改宣告 `version` 旗標，由 `validate()` 印出版本，才能加上 `-v` |
 | `add-swift-package-foundation` 的決策「以行程層級測試驗證 lkai 的輸出分流」中「stdout 有一行剛好是 `USAGE: lkai`」 | `add-cli-chat-command`「說明輸出改以開頭比對用法那一行」：改成「有一行以 `USAGE: lkai `（含結尾空格）開頭」，因為用法改成自訂的兩行 |
 | `add-swift-package-foundation` 驗收方式中「`LKAICommandTests` 的行程層級測試」 | `add-cli-chat-command` 的決策「process 測試清掉 LKAI_*_API_KEY」：行程測試改在 `LKAICommandProcessTests`，`LKAICommandTests` 是 in-process 的測試 |
+| `add-swift-package-foundation` 的決策「版本資訊集中於 LKAICore 的 LKAIKitInfo.version」中「發佈時手動更新此值。手動同步 git tag 的做法，最晚要在打第一個 release tag 之前另開 change 處理。」 | `02-add-release-automation`「版號由 AI 回答升級等級、script 計算」：版號由 release workflow 更新（AI 回答升級等級，script 計算新版號，commit 回 `main`）；要指定版號時，在 PR 中修改 `LKAIKitInfo.version`，合併後照原樣發佈（`02-add-release-automation`「版號還沒有 tag 時照原樣發佈」）。tag 與版號同步由 package-distribution「Release tag matches the package version」要求；操作見 `docs/releasing.md` |
 
 ## 6. 下一家供應商
 
@@ -190,7 +196,7 @@
 | --- | --- | --- | --- |
 | 第一份 | 輸入本身超過 context window 的 HTTP 400 要不要設專屬 case | 已解決：不設 | Anthropic 與 OpenAI 都沒有可辨識的代碼，02 設的條件「至少兩家可辨識」不成立（02「輸入超過 context window 的錯誤不設專屬種類」、03 Non-Goals）；Gemini 沒有測成，`04-add-gemini-provider`「輸入超過 context window 不特別處理」記成風險，不特別處理，之後有實例時再實測（見本表 `04` 的第一項） |
 | 第一份 | Gemini 用 generateContent 還是 Interactions API；`candidatesTokenCount` 是否不含思考 | 已解決 | 使用者選定 Interactions API 的 `v1`；用量改看 `total_*` 欄位，`total_output_tokens` 不含思考（03 Context 實測） |
-| 第一份 | 調整 `LKAIKitInfo.version` 並打第一個 release tag | 留給之後 | 屬於版本與 release 流程，另行決定 |
+| 第一份 | 調整 `LKAIKitInfo.version` 並打第一個 release tag | 已解決 | `02-add-release-automation`「版號由 AI 回答升級等級、script 計算」：合併後由 release workflow 照原樣發佈 `0.1.0`（「版號還沒有 tag 時照原樣發佈」），之後的版號由 AI 回答升級等級、script 計算；tag 與版號相同，沒有 `v` 前綴。第一次發版後的確認見 `docs/releasing.md` 第 6 章 |
 | 第一份 | 抽出 `stream(_:)` 的共同骨架，並處理實作審查留下的四項 | 已解決 | `01-extract-chat-stream-skeleton` |
 | 第一份 | 只 `import LKAIKit` 的使用端檢查 package | 留給之後 | 使用者決定延後到 BuyLedger 整合（02 Context） |
 | 01 | `LKAIHTTPClient.makeLines(from:)` 的 task 寫法是否收進共用的建構方式 | 留給之後 | 等出現第二個建立逐行內容的地方 |
