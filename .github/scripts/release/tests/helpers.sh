@@ -208,6 +208,20 @@ commit_change() {
   repo_git commit -q -m "$1" || fail "git commit 失敗：$1"
 }
 
+# commit_version <版號>：把暫存 repo 的 Sources/LKAICore/LKAIKitInfo.swift 的版號改成 <版號>
+# （用 package-version.sh set）並 commit，訊息是「chore: 版本號更新為 <版號>」。不推到 origin。
+# 檔案的版號本來就是 <版號> 時什麼都不做：真正的 LKAIKitInfo.swift 的版號之後會被發版流程升版，
+# 測試要的是固定的版號，不能假設複製來的檔案是哪一版。
+commit_version() {
+  local version_file="Sources/LKAICore/LKAIKitInfo.swift"
+  "$BASH" "$RELEASE_DIR/package-version.sh" set "$TEST_REPO/$version_file" "$1" ||
+    fail "無法把版號改成 $1"
+  if [ -n "$(repo_git status --porcelain -- "$version_file")" ]; then
+    repo_git add -- "$version_file" || fail "git add 失敗：$version_file"
+    repo_git commit -q -m "chore: 版本號更新為 $1" || fail "git commit 失敗：版本 $1"
+  fi
+}
+
 # push_main：把暫存 repo 的 main 推到 origin
 push_main() {
   repo_git push -q origin main || fail "無法把 main 推上 origin"
