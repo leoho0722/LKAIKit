@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# 測試用的假 swift（design「發版 script 以假的 lkai、gh、swift 與暫存 git repo 測試」的「假的指令」）。
+# 只支援 swift build，其他指令以 2 結束。
+#
+# - swift build … --show-bin-path：印出這個 fakes 資料夾（假的 lkai 就在裡面，
+#   所以 "$bin/lkai" -v 會執行假的 lkai）。
+# - swift build …（其他）：以 FAKE_SWIFT_EXIT（預設 0）結束；不是 0 時在 stderr 印出一行訊息。
+#
+# 環境變數（只由測試設定；假指令不讀、也不記錄其他環境變數）：
+#   FAKE_LOG_DIR     必要：記錄的資料夾，見 fake-common.sh
+#   FAKE_SWIFT_EXIT  swift build 的退出碼，預設 0
+#
+# 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=fake-common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fake-common.sh"
+fake_require_log_dir swift
+
+if [ "${1:-}" != "build" ]; then
+  echo "測試用的 swift 只支援 build" >&2
+  exit 2
+fi
+shift
+
+index="$(fake_next_index swift-build)"
+fake_write_args_file "$FAKE_LOG_DIR/swift-build-$index.args" "$@"
+
+for arg in "$@"; do
+  if [ "$arg" = "--show-bin-path" ]; then
+    fake_log_call "swift show-bin-path"
+    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+    exit 0
+  fi
+done
+
+fake_log_call "swift build"
+if [ "${FAKE_SWIFT_EXIT:-0}" != "0" ]; then
+  echo "測試用的 swift：build 失敗" >&2
+fi
+exit "${FAKE_SWIFT_EXIT:-0}"

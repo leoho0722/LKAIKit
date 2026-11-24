@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# 測試用的假 gh（design「發版 script 以假的 lkai、gh、swift 與暫存 git repo 測試」的「假的指令」）。
+# 只支援下面兩個指令，其他指令以 2 結束。
+#
+# - gh release list … --json tagName --jq '.[].tagName'：逐行印出 FAKE_LOG_DIR/releases 內有 Release 紀錄的
+#   tag。必須帶 --json tagName 與 --jq '.[].tagName'：真的 gh 少了它們印的是表格，script 讀不到 tag 名稱。
+# - gh release create <tag> --verify-tag [--title <標題>] [--notes <內容> | --notes-file <檔案>]：
+#   - 沒有 --verify-tag 時失敗（真的 gh 會自己建立 tag，spec 要求用 --verify-tag 確認 tag 已在 remote）。
+#   - remote 沒有這個 tag 時失敗；這個 tag 已經有 Release 紀錄時失敗（和真的 gh 一樣）。
+#   - 成功時寫下 FAKE_LOG_DIR/releases/<tag>/ 的 Release 紀錄（title、notes），並印出一行假的網址。
+#
+# 環境變數（都只由測試設定；假指令不讀、也不記錄其他環境變數，特別是 GH_TOKEN）：
+#   FAKE_LOG_DIR         必要：記錄的資料夾，見 fake-common.sh
+#   FAKE_GH_LIST_EXIT    gh release list 的退出碼，預設 0；不是 0 時以它結束，不印 tag
+#   FAKE_GH_CREATE_EXIT  gh release create 的退出碼，預設 0；不是 0 時失敗，不寫 Release 紀錄
+#   LKAI_RELEASE_REMOTE  檢查 tag 用的 remote，預設 origin（和 release.sh 用同一個變數）
+#
+# 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=fake-common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fake-common.sh"
+fake_require_log_dir gh
+
+if [ "${1:-}" = "release" ] && [ "${2:-}" = "list" ]; then
+  shift 2
+  index="$(fake_next_index gh-release-list)"
+  fake_write_args_file "$FAKE_LOG_DIR/gh-release-list-$index.args" "$@"
+  fake_log_call "gh release-list"
+
+  if [ "${FAKE_GH_LIST_EXIT:-0}" != "0" ]; then
+    echo "測試用的 gh：release list 失敗" >&2
+    exit "$FAKE_GH_LIST_EXIT"
+  fi
+
+  json_ok=false
+  jq_ok=false
+  previous=""
+  for arg in "$@"; do
+    if [ "$previous" = "--json" ] && [ "$arg" = "tagName" ]; then
+      json_ok=true
+    fi
+    if [ "$previous" = "--jq" ] && [ "$arg" = ".[].tagName" ]; then
+      jq_ok=true
+    fi
+    previous="$arg"
+  done
+  if [ "$json_ok" != "true" ] || [ "$jq_ok" != "true" ]; then
+    echo "測試用的 gh：release list 要帶 --json tagName --jq '.[].tagName'" >&2
+    exit 2
+  fi
+
+  ls -1 "$FAKE_LOG_DIR/releases" 2>/dev/null
+  exit 0
+fi
+
+if [ "${1:-}" = "release" ] && [ "${2:-}" = "create" ]; then
+  shift 2
+  index="$(fake_next_index gh-release-create)"
+  fake_write_args_file "$FAKE_LOG_DIR/gh-release-create-$index.args" "$@"
+
+  tag="${1:-}"
+  case "$tag" in
+    "" | -*)
+      echo "測試用的 gh：release create 的第一個引數要是 tag" >&2
+      exit 2
+      ;;
+  esac
+  shift
+  fake_log_call "gh release-create $tag"
+
+  verify_tag=false
+  title=""
+  notes=""
+  notes_file=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --verify-tag)
+        verify_tag=true
+        shift
+        ;;
+      --title | -t | --notes | -n | --notes-file | -F)
+        if [ $# -lt 2 ]; then
+          echo "測試用的 gh：$1 缺少值" >&2
+          exit 2
+        fi
+        case "$1" in
+          --title | -t) title="$2" ;;
+          --notes | -n) notes="$2" ;;
+          *) notes_file="$2" ;;
+        esac
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  if [ "${FAKE_GH_CREATE_EXIT:-0}" != "0" ]; then
+    echo "測試用的 gh：release create 失敗" >&2
+    exit "$FAKE_GH_CREATE_EXIT"
+  fi
+  if [ "$verify_tag" != "true" ]; then
+    echo "測試用的 gh：release create 沒有帶 --verify-tag" >&2
+    exit 2
+  fi
+  if ! git ls-remote --exit-code --tags "${LKAI_RELEASE_REMOTE:-origin}" "refs/tags/$tag" >/dev/null 2>&1; then
+    echo "測試用的 gh：remote 沒有 tag $tag（--verify-tag）" >&2
+    exit 1
+  fi
+  record_dir="$FAKE_LOG_DIR/releases/$tag"
+  if [ -e "$record_dir" ]; then
+    echo "測試用的 gh：tag $tag 已經有 Release" >&2
+    exit 1
+  fi
+
+  mkdir -p "$record_dir"
+  printf '%s\n' "${title:-$tag}" >"$record_dir/title"
+  if [ -n "$notes_file" ]; then
+    if [ "$notes_file" = "-" ]; then
+      cat >"$record_dir/notes"
+    else
+      cat "$notes_file" >"$record_dir/notes" || exit 1
+    fi
+  else
+    printf '%s' "$notes" >"$record_dir/notes"
+  fi
+  printf 'https://github.example.invalid/releases/tag/%s\n' "$tag"
+  exit 0
+fi
+
+echo "測試用的 gh 只支援 release list 與 release create" >&2
+exit 2

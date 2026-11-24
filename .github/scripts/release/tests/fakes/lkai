@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# 測試用的假 lkai（design「發版 script 以假的 lkai、gh、swift 與暫存 git repo 測試」的「假的指令」）。
+#
+# - lkai -v：印出目前資料夾 Sources/LKAICore/LKAIKitInfo.swift 中的版號加 LF；
+#   設定了 FAKE_LKAI_VERSION 時改印它（測試「重新建置後版號不同」的情境）。
+# - lkai --provider … --model … --prompt-file <檔案> …：依檔案第一行的標記分辨兩種請求
+#   （<!-- lkai-release-prompt: bump-level --> 與 <!-- lkai-release-prompt: release-notes -->），
+#   把引數與 prompt 複製到 FAKE_LOG_DIR，再依下面的環境變數回答。
+#
+# 環境變數（都只由測試設定；假指令不讀、也不記錄其他環境變數，特別是 API 金鑰）：
+#   FAKE_LOG_DIR            必要：記錄的資料夾，見 fake-common.sh（lkai -v 沒有設定時不記錄）
+#   FAKE_LKAI_VERSION       lkai -v 印出的版號；沒有設定時讀目前資料夾的 LKAIKitInfo.swift
+#   FAKE_LKAI_BUMP_REPLY    升級等級請求的 stdout，原樣輸出（不另外加 LF）；沒有設定時是 patch 加 LF
+#   FAKE_LKAI_NOTES         Release Notes 請求的 stdout，原樣輸出；沒有設定時是一行固定的文字
+#   FAKE_LKAI_BUMP_EXIT     升級等級請求的退出碼，預設 0
+#   FAKE_LKAI_NOTES_EXIT    Release Notes 請求的退出碼，預設 0
+#   FAKE_LKAI_BUMP_STDERR   升級等級請求寫到 stderr 的文字（加 LF），預設不寫
+#   FAKE_LKAI_NOTES_STDERR  Release Notes 請求寫到 stderr 的文字（加 LF），預設不寫
+#
+# 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=fake-common.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fake-common.sh"
+
+# ---- lkai -v ----
+if [ "${1:-}" = "-v" ] || [ "${1:-}" = "--version" ]; then
+  if [ -n "${FAKE_LOG_DIR:-}" ] && [ -d "$FAKE_LOG_DIR" ]; then
+    fake_log_call "lkai -v"
+  fi
+  if [ "${FAKE_LKAI_VERSION+x}" = "x" ]; then
+    printf '%s\n' "$FAKE_LKAI_VERSION"
+    exit 0
+  fi
+  version_file="Sources/LKAICore/LKAIKitInfo.swift"
+  if [ ! -f "$version_file" ]; then
+    echo "測試用的 lkai：目前的資料夾沒有 $version_file" >&2
+    exit 1
+  fi
+  version="$(sed -n 's/^.*public static let version: String = "\([^"]*\)".*$/\1/p' "$version_file" | sed -n '1p')"
+  if [ -z "$version" ]; then
+    echo "測試用的 lkai：在 $version_file 找不到版號的宣告" >&2
+    exit 1
+  fi
+  printf '%s\n' "$version"
+  exit 0
+fi
+
+# ---- 送出請求 ----
+fake_require_log_dir lkai
+
+# 找出 --prompt-file 的值
+prompt_file=""
+previous=""
+for arg in "$@"; do
+  if [ "$previous" = "--prompt-file" ]; then
+    prompt_file="$arg"
+  fi
+  previous="$arg"
+done
+if [ -z "$prompt_file" ] || [ ! -r "$prompt_file" ]; then
+  echo "測試用的 lkai：沒有 --prompt-file，或讀不到那個檔案" >&2
+  exit 66
+fi
+
+# 依第一行的標記分辨兩種請求
+IFS= read -r first_line <"$prompt_file"
+case "$first_line" in
+  '<!-- lkai-release-prompt: bump-level -->') kind="bump-level" ;;
+  '<!-- lkai-release-prompt: release-notes -->') kind="release-notes" ;;
+  *)
+    echo "測試用的 lkai：prompt 的第一行不是認得的標記" >&2
+    exit 64
+    ;;
+esac
+
+index="$(fake_next_index "lkai-$kind")"
+fake_write_args_file "$FAKE_LOG_DIR/lkai-$kind-$index.args" "$@"
+cp "$prompt_file" "$FAKE_LOG_DIR/lkai-$kind-$index.prompt"
+fake_log_call "lkai $kind"
+
+if [ "$kind" = "bump-level" ]; then
+  if [ "${FAKE_LKAI_BUMP_REPLY+x}" = "x" ]; then
+    printf '%s' "$FAKE_LKAI_BUMP_REPLY"
+  else
+    printf 'patch\n'
+  fi
+  if [ -n "${FAKE_LKAI_BUMP_STDERR:-}" ]; then
+    printf '%s\n' "$FAKE_LKAI_BUMP_STDERR" >&2
+  fi
+  exit "${FAKE_LKAI_BUMP_EXIT:-0}"
+fi
+
+if [ "${FAKE_LKAI_NOTES+x}" = "x" ]; then
+  printf '%s' "$FAKE_LKAI_NOTES"
+else
+  printf '測試用的 Release Notes\n'
+fi
+if [ -n "${FAKE_LKAI_NOTES_STDERR:-}" ]; then
+  printf '%s\n' "$FAKE_LKAI_NOTES_STDERR" >&2
+fi
+exit "${FAKE_LKAI_NOTES_EXIT:-0}"
