@@ -16,7 +16,7 @@
 
 ## 1. 發版 script
 
-- [ ] 1.1 依 design「發版 script 以假的 lkai、gh、swift 與暫存 git repo 測試」與「1.0.0 之前 major 只升 MINOR、minor 與 patch 升 PATCH」，建立 script 的測試工具，並交付 release-automation「Next version computation」與「Release script test isolation」（sonnet）：
+- [x] 1.1 依 design「發版 script 以假的 lkai、gh、swift 與暫存 git repo 測試」與「1.0.0 之前 major 只升 MINOR、minor 與 patch 升 PATCH」，建立 script 的測試工具，並交付 release-automation「Next version computation」與「Release script test isolation」（sonnet）：
   - `.github/scripts/release/tests/run-tests.sh`：
     - 執行同一個資料夾內 `test-*.sh` 的每個 `test_` 函式，每個函式在自己的 subshell 與暫存資料夾中執行。
     - 執行前設定 `GIT_CONFIG_GLOBAL=/dev/null` 與 `GIT_CONFIG_NOSYSTEM=1`；每個測試開始前清掉 design 列出的 GitHub Actions、`GH_*`、`LKAI_RELEASE_*` 與 `LKAI_*_API_KEY` 變數。
