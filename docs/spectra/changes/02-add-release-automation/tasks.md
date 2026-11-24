@@ -213,5 +213,11 @@
   - 找上一版失敗時報告不再印「上一版：（無）」（/spectra-verify W1，先寫測試並觀察到失敗）；`highest_ancestor_tag` 的原因改用 `error_line`；`version_tags` 在第 2 步只留下版本 tag；`make-prompt.sh` 的暫存資料夾放在 `RUNNER_TEMP` 底下；AI 失敗情境的測試改以正式發版執行（以故意改壞確認會失敗）。commit `5d4ea9c`。
   - 文件：design 的流程第 2 步、補建的決策與「假的指令」表（commit `e0d0c10`）；`docs/releasing.md` 第 2 章的步驟表（commit `bea240b`）。
   - 修正後：`run-tests.sh` 122 個測試通過，`GITHUB_ACTIONS=true` 與指定 `RUNNER_TEMP` 時結果相同、沒有留下暫存資料夾；`shellcheck`、`actionlint` 沒有訊息。
-- [ ] 4.4 [after: 4.2, 4.3] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 通過：
+- [x] 4.4 [after: 4.2, 4.3] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 通過：
   - 驗證：PR 的 CI check 成功；任務回報記錄 script 測試在 runner 上的結果與時間，並確認 job log 沒有出現測試造成的 annotation、job summary 沒有測試寫入的內容。
+  - 執行紀錄（2026-11-24）：使用者同意後由主對話推送 `feat/02-add-release-automation`（`078323d`）並開 PR #9（https://github.com/leoho0722/LKAIKit/pull/9）。推送功能分支沒有觸發 release workflow（它只在 push 到 `main` 時執行）。
+    - CI（run 45389540277，job 138429280515）成功，job 約 4 分半；runner 是 Swift 6.4、GNU bash 3.2.57。
+    - 「執行發版 script 的測試」約 98 秒（12:04:15 到 12:05:53），輸出「共 122 個測試，通過 122 個，失敗 0 個」，122 行 `PASS`、沒有 `FAIL`；這個 step 的 log 沒有任何以 `::` 開頭或含有 `::` 的行。
+    - annotation：check run 的 annotations API 回傳 0 筆（`annotations_count` 是 0），check run 的 output 也是空的。
+    - job summary：GitHub 的 API 沒有提供 job summary 的內容，無法直接讀回；依據是 `run-tests.sh` 在每個測試前清掉 `GITHUB_STEP_SUMMARY`、這個 step 自己不寫 summary，以及 1.1、4.1 在本機以暫存檔作為 `GITHUB_STEP_SUMMARY` 時檔案沒有改變。owner 可以在 run 的頁面確認 summary 沒有這個 step 的內容。
+    - continuous-integration「Run the release script tests」與 release-automation「Run the tests inside GitHub Actions」的 CI 部分，由這次的執行確認。
