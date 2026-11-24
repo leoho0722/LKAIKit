@@ -126,7 +126,7 @@
 
 ## 3. 文件
 
-- [ ] 3.1 [after: 2.1] 依 design「發版的操作寫在 docs/releasing.md」，新增 `docs/releasing.md`，並在 `docs/spectra/config.yaml` 的 context 加一行指向它，讓之後的 owner 與 agent 不讀封存的 design 也知道怎麼操作發版（sonnet）：
+- [x] 3.1 [after: 2.1] 依 design「發版的操作寫在 docs/releasing.md」，新增 `docs/releasing.md`，並在 `docs/spectra/config.yaml` 的 context 加一行指向它，讓之後的 owner 與 agent 不讀封存的 design 也知道怎麼操作發版（sonnet）：
   - 內容涵蓋決策列出的每一項。其中「第一次發版後的確認」包括：
     - tag `0.1.0` 指向合併後 `main` 的 commit。
     - Release 的標題與 Release Notes。
@@ -139,6 +139,7 @@
     - 改用其他 token 要另開 change，同時更新 release-automation「Release workflow trigger」中只描述 `GITHUB_TOKEN` 的情境「A push by the release workflow itself」，並補上「以其他 token 推送時會再觸發一次，並以沒有可發佈的變更結束」的情境。
   - `config.yaml` 的那一行寫明什麼時候讀，以及哪些 change 封存前要更新它。
   - 驗證：主對話逐項對照決策審查文字；`spectra validate 02-add-release-automation` 仍通過。
+  - 審查結果（2026-11-24）：design「發版的操作寫在 docs/releasing.md」的每一項都有對應的章節；步驟名稱、報告的各行、「失敗時的狀態」表與供應商的金鑰對照，都對照 `release.sh` 與 `release.yml` 的實作確認一致。審查時補上 4.3「發錯時怎麼退」的注意事項：刪 tag 之前先停用 release workflow，否則中間的合併會以 `main` 上的錯誤版號照原樣再發一次；4.4 一起調整。`spectra validate 02-add-release-automation` 通過。
 - [ ] 3.2 [after: 3.1] 更新兩份既有的說明（sonnet）：
   - `Sources/LKAICore/LKAIKitInfo.swift` 的 `///`：
     - 依 design「版號由 AI 回答升級等級、script 計算」，改成由 release workflow 更新。
