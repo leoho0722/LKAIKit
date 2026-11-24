@@ -150,7 +150,7 @@ test_package_version_set_rejects_other_malformed_versions() {
   for malformed_version in "0.1" "0.1.1.1" "01.1.1" "0.01.1" "" "0.1.1 " " 0.1.1" $'0.1.1\n' "0.1.1&" "0.1.1/x" "x.y.z" "-1.0.0"; do
     count=$((count + 1))
     run_script "$PACKAGE_VERSION_SCRIPT" set "$VERSION_FILE" "$malformed_version"
-    assert_failed_cleanly "set 第 $count 個不合格式的版號（$malformed_version）"
+    assert_failed_cleanly "set 第 $count 個不合格式的版號（${malformed_version}）"
     assert_version_file_unchanged
   done
 }
@@ -165,11 +165,11 @@ test_package_version_get_rejects_a_malformed_declared_value() {
     sed 's/\('"$DECLARATION_PREFIX"'\)"[^"]*"/\1"'"$malformed_value"'"/' "$BASELINE_FILE" >"$VERSION_FILE"
     remember_current_content
     assert_equals "1" "$(grep -c -F "$DECLARATION_PREFIX\"$malformed_value\"" "$VERSION_FILE")" \
-      "第 $count 個複本的準備：宣告的值要換成「$malformed_value」"
+      "第 $count 個複本的準備：宣告的值要換成「${malformed_value}」"
 
     run_script "$PACKAGE_VERSION_SCRIPT" get "$VERSION_FILE"
 
-    assert_failed_cleanly "get 讀到不合格式的值（第 $count 個：$malformed_value）"
+    assert_failed_cleanly "get 讀到不合格式的值（第 $count 個：${malformed_value}）"
     assert_version_file_unchanged
   done
 }

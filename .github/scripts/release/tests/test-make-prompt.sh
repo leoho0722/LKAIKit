@@ -107,8 +107,8 @@ assert_make_prompt_fails() {
   shift
   run_make_prompt "$@"
   assert_exit_code 1 "$description 的退出碼"
-  assert_file_empty "$TEST_STDOUT" "$description：失敗時 stdout 要是空的"
-  assert_file_not_empty "$TEST_STDERR" "$description：失敗時 stderr 要有訊息"
+  assert_file_empty "$TEST_STDOUT" "${description}：失敗時 stdout 要是空的"
+  assert_file_not_empty "$TEST_STDERR" "${description}：失敗時 stderr 要有訊息"
 }
 
 # assert_bump_change_data：升版情境（setup_bump_repo）的變更資料：兩個 commit 的標題與變更統計，
@@ -261,9 +261,9 @@ test_make_prompt_leaves_out_merge_commit_subjects() {
       run_make_prompt release-notes 0.1.0 HEAD 0.1.1
     fi
     assert_prompt_succeeded
-    assert_file_contains "$TEST_STDOUT" "feat: 分支上的功能" "$kind：分支上的 commit 標題要出現"
-    assert_file_contains "$TEST_STDOUT" "fix: main 上的修正" "$kind：main 上的 commit 標題要出現"
-    assert_file_not_contains "$TEST_STDOUT" "Merge: 合併功能分支（不該出現）" "$kind：merge commit 的標題不該出現"
+    assert_file_contains "$TEST_STDOUT" "feat: 分支上的功能" "${kind}：分支上的 commit 標題要出現"
+    assert_file_contains "$TEST_STDOUT" "fix: main 上的修正" "${kind}：main 上的 commit 標題要出現"
+    assert_file_not_contains "$TEST_STDOUT" "Merge: 合併功能分支（不該出現）" "${kind}：merge commit 的標題不該出現"
   done
 }
 
@@ -281,11 +281,11 @@ test_make_prompt_stops_at_the_target_tag() {
       run_make_prompt release-notes 0.1.0 0.1.1 0.1.1
     fi
     assert_prompt_succeeded
-    assert_file_contains "$TEST_STDOUT" "feat: 新增版號的說明" "$kind：tag 之前的 commit 標題要出現"
-    assert_file_contains "$TEST_STDOUT" "test: 補上版號的測試" "$kind：tag 之前的 commit 標題要出現"
-    assert_file_contains "$TEST_STDOUT" "diff --git a/$SOURCES_PATH" "$kind：到 tag 為止的 diff 要出現"
-    assert_file_not_contains "$TEST_STDOUT" "feat: 0.1.1 之後的變更" "$kind：tag 之後的 commit 標題不該出現"
-    assert_file_not_contains "$TEST_STDOUT" "Later.swift" "$kind：tag 之後的檔案不該出現在統計或 diff"
+    assert_file_contains "$TEST_STDOUT" "feat: 新增版號的說明" "${kind}：tag 之前的 commit 標題要出現"
+    assert_file_contains "$TEST_STDOUT" "test: 補上版號的測試" "${kind}：tag 之前的 commit 標題要出現"
+    assert_file_contains "$TEST_STDOUT" "diff --git a/$SOURCES_PATH" "${kind}：到 tag 為止的 diff 要出現"
+    assert_file_not_contains "$TEST_STDOUT" "feat: 0.1.1 之後的變更" "${kind}：tag 之後的 commit 標題不該出現"
+    assert_file_not_contains "$TEST_STDOUT" "Later.swift" "${kind}：tag 之後的檔案不該出現在統計或 diff"
   done
 }
 

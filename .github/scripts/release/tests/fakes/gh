@@ -106,7 +106,7 @@ if [ "${1:-}" = "release" ] && [ "${2:-}" = "create" ]; then
     exit 2
   fi
   if ! git ls-remote --exit-code --tags "${LKAI_RELEASE_REMOTE:-origin}" "refs/tags/$tag" >/dev/null 2>&1; then
-    echo "測試用的 gh：remote 沒有 tag $tag（--verify-tag）" >&2
+    echo "測試用的 gh：remote 沒有 tag ${tag}（--verify-tag）" >&2
     exit 1
   fi
   record_dir="$FAKE_LOG_DIR/releases/$tag"

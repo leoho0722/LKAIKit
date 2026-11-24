@@ -113,7 +113,7 @@ command_set() {
   # 取代之前，確認暫存檔裡剛好一行宣告，而且值是要設定的版號
   locate_declaration "$temp_file"
   if [ "$declared_version" != "$version" ]; then
-    fail "替換的結果不符：預期 $version，實際 $(printable "$declared_version")"
+    fail "替換的結果不符：預期 ${version}，實際 $(printable "$declared_version")"
   fi
 
   mv "$temp_file" "$file" || fail "無法取代 $(printable "$file")"
