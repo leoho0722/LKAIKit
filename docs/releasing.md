@@ -159,7 +159,7 @@
 
 - 沒有可發佈的變更時，各行之後有一行「沒有可發佈的變更。」。
 - 以 0 結束的報告，在各行之後依序接「補建的 Release Notes（<tag>）：」與補建的文字（有補建時），以及「Release Notes：」與這次的 Release Notes（有的話）。失敗的報告沒有 Release Notes。
-- job log 中，AI 的文字（Release Notes、被拒絕的回答）前後各有一行 `::stop-commands::<token>` 與 `::<token>::`：這是為了讓 GitHub 不去執行文字裡可能出現的 workflow command，不是錯誤。job summary 不加這兩行。
+- job log 中，AI 的文字（Release Notes、被拒絕的回答，以及 `lkai` 的 stderr）前後各有一行 `::stop-commands::<token>` 與 `::<token>::`：這是為了讓 GitHub 不去執行文字裡可能出現的 workflow command，不是錯誤。job summary 不加這兩行。`lkai` 的 stderr 整段都包起來（模型拒答時，裡面有模型寫的拒答文字），所以缺少金鑰、逾時這類一般的錯誤旁邊也會看到這兩行；`lkai` 的訊息不會成為 annotation，而且要等 `lkai` 結束才印出。失敗的原因看 `release.sh` 自己寫的 `::error::` 那一行與報告的「失敗的步驟」。本機執行時照原樣印出，不加這兩行。
 - 模式還沒選定就失敗時（例如 `LKAI_RELEASE_DRY_RUN` 的值不認得）沒有報告，只有錯誤訊息。
 
 ## 4. 失敗與回退
@@ -177,7 +177,8 @@
 | 建立 Release | 升版時 remote 多了版號 commit 與 tag，照原樣發佈時多了 tag；沒有 Release。SwiftPM 只看 tag，App 不受影響 | 下一次執行會先補建這個 Release；一直失敗時見 4.2 |
 
 - 除了最後一列，失敗時 remote 的 `main` 與 tag 都沒有動，重跑是安全的；最後一列重跑時，會先補建那個 Release，再照常判斷之後的計畫。
-- AI 請求失敗（`lkai` 以非 0 結束，包含逾時、輸出被截斷、不認得的供應商、缺少金鑰）、AI 的升級等級回答不是三個字之一，或 Release Notes 是空的，都算這一步失敗，stderr 會保留 `lkai` 的訊息。
+- AI 請求失敗（`lkai` 以非 0 結束，包含逾時、輸出被截斷、不認得的供應商、缺少金鑰）、AI 的升級等級回答不是三個字之一，或 Release Notes 是空的，都算這一步失敗，stderr 會保留 `lkai` 的訊息（在 GitHub Actions 中包在標記之間，見 3.6）。
+- 版本 tag 沒有指向 commit（例如指向 tree），或列不出 tag（`git tag --list` 失敗）時，在「讀取版號」失敗；補建 Release 時找上一版遇到這種 tag，失敗的步驟是「補建 Release」。修正那個 tag 後重跑。
 - 被拒絕的升級等級回答最多印出前 200 bytes；在 GitHub Actions 中，它包在 `::stop-commands::<token>` 與 `::<token>::` 之間。
 
 ### 4.2 補建 Release 一直失敗
