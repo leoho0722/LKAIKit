@@ -251,19 +251,20 @@ test_release_mode_false_in_actions_is_a_release() {
 # spectra-scenario: release-automation / Choose the mode
 # spectra-scenario: release-automation / Choose the mode / modes
 test_release_mode_false_outside_actions_is_rejected() {
-  assert_mode_rejected "false" "$NOT_SET" "GitHub Actions"
+  assert_mode_rejected "false" "$NOT_SET" "正式發版只能在 GitHub Actions 中執行"
+  assert_file_not_contains "$TEST_STDERR" "的值不認得" "false 是認得的值，被拒絕的原因是不在 GitHub Actions 中"
 }
 
 # spectra-scenario: release-automation / Choose the mode
 # spectra-scenario: release-automation / Choose the mode / modes
 test_release_mode_uppercase_true_is_rejected() {
-  assert_mode_rejected "TRUE" "true" "TRUE"
+  assert_mode_rejected "TRUE" "true" "的值不認得：TRUE；"
 }
 
 # spectra-scenario: release-automation / Choose the mode
 # spectra-scenario: release-automation / Choose the mode / modes
 test_release_mode_one_is_rejected() {
-  assert_mode_rejected "1" "$NOT_SET" "1"
+  assert_mode_rejected "1" "$NOT_SET" "的值不認得：1；"
 }
 
 # ---------------------------------------------------------------------------
@@ -1546,10 +1547,10 @@ test_release_repair_release_creation_failure_fails_the_repair_step() {
   assert_file_not_contains "$SUMMARY_FILE" "補建的 Release" "job summary 也不該有這一行"
 }
 
-# 本機已經有同名的 tag（0.1.0 指向 tree，不是 commit，所以計畫是 release-as-is）：release 模式在建立 commit 與
-# tag 時失敗，訊息說本機已經有這個 tag；沒有任何改變、沒有 swift build、沒有 Release。
-# 照原樣發佈時，就算沒有這個檢查，git tag 也會在同一個步驟失敗，所以另外比對訊息，確認是先檢查的
-test_release_fails_when_the_tag_of_the_version_already_exists_locally() {
+# 目前版號的 tag（0.1.0）存在，但指向 tree，不是 commit：第 3 步看不到它（以 commit 解析不了），
+# 不能把它當成「沒有 tag」而照原樣發佈，要在「讀取版號」失敗，訊息說這個 tag 沒有指向 commit；
+# 沒有任何 AI 請求、沒有重新建置，沒有任何改變
+test_release_fails_when_the_tag_of_the_version_points_to_a_tree() {
   new_release_repo 0.1.0
   repo_git tag 0.1.0 "$(repo_git rev-parse 'HEAD^{tree}')" || fail "無法建立指向 tree 的 tag"
   finish_fixture
@@ -1557,9 +1558,9 @@ test_release_fails_when_the_tag_of_the_version_already_exists_locally() {
 
   run_release
 
-  assert_failed_with_step "建立 commit 與 tag"
-  assert_has_line "$TEST_STDOUT" "計畫：release-as-is"
-  assert_file_contains "$TEST_STDERR" "本機已經有 tag 0.1.0" "訊息要說本機已經有這個 tag"
+  assert_failed_with_step "讀取版號"
+  assert_file_contains "$TEST_STDERR" "目前版號的 tag 0.1.0 沒有指向 commit" "要是「目前版號的 tag」那道檢查擋下的（不是找上一版時的檢查）"
+  assert_no_lkai_request
   assert_equals "0" "$(call_count "swift build")" "沒有重新建置"
 }
 
@@ -1738,4 +1739,110 @@ test_release_commit_failure_restores_the_version_file() {
   assert_file_contains "$TEST_STDERR" "pre-commit 故意失敗" "失敗要來自 pre-commit hook（沒有這一行，測試沒有走到 git commit）"
   assert_equals "" "$(repo_git status --porcelain)" "工作目錄要是乾淨的（版號檔已還原）"
   assert_equals "0.1.0" "$("$BASH" "$RELEASE_DIR/package-version.sh" get "$TEST_REPO/$VERSION_FILE_PATH")" "版號檔回到 HEAD 的內容"
+}
+
+# ---------------------------------------------------------------------------
+# git 指令失敗時的處理、被訊號中止時的 lkai stderr
+# ---------------------------------------------------------------------------
+
+# run_release_with_failing_git <git 的引數的開頭> [<退出碼>]：執行 release.sh，但 PATH 最前面有一個 git 包裝：
+# 引數以 <git 的引數的開頭>（例如 "tag --list"）開頭時，印一行訊息並以 <退出碼>（預設 1）結束，其他情況
+# exec 真正的 git。真正的 git 的路徑在改 PATH 之前記下；包裝只在 release.sh 執行期間生效，
+# fixture 與之後的檢查都用真正的 git
+run_release_with_failing_git() {
+  local real_git wrapper_dir="$TEST_TMP/git-wrapper"
+  real_git="$(command -v git)" || fail "找不到 git"
+  mkdir -p "$wrapper_dir"
+  cat >"$wrapper_dir/git" <<WRAPPER_EOF
+#!/bin/sh
+case "\$*" in
+  "$1"*)
+    echo "測試用的 git 包裝：git \$* 故意失敗" >&2
+    exit ${2:-1}
+    ;;
+esac
+exec "$real_git" "\$@"
+WRAPPER_EOF
+  chmod +x "$wrapper_dir/git"
+  PATH="$wrapper_dir:$PATH" run_release
+}
+
+# git tag --list 失敗：版本 tag 列不出來時不能當成「沒有 tag」繼續。repo 有比目前版號（0.1.0）大的 tag 0.2.0，
+# 列得出來時會被「有更大的 tag」擋下；列不出來時也要在「讀取版號」失敗（失敗的原因是列不出 tag，不是偵測到更大的 tag）
+test_release_fails_when_listing_the_tags_fails() {
+  new_release_repo 0.1.0
+  make_version_tag 0.2.0
+  finish_fixture
+
+  run_release_with_failing_git "tag --list"
+
+  assert_failed_with_step "讀取版號"
+  assert_file_contains "$TEST_STDERR" "測試用的 git 包裝：git tag --list 故意失敗" "包裝要真的被呼叫到"
+  assert_file_not_contains "$TEST_STDERR" "更大的版本 tag" "失敗的原因是列不出 tag"
+  assert_no_lkai_request
+}
+
+# 照原樣發佈（目前版號 0.1.0 沒有 tag）時，版本 tag 0.0.9 指向 tree：找上一版時解析不了它，不能當成「不是祖先」
+# 而略過；在「讀取版號」失敗，訊息寫出那個 tag，沒有 AI 請求，沒有任何改變
+test_release_as_is_fails_when_a_version_tag_points_to_a_tree() {
+  new_release_repo 0.1.0
+  repo_git tag 0.0.9 "$(repo_git rev-parse 'HEAD^{tree}')" || fail "無法建立指向 tree 的 tag"
+  finish_fixture
+
+  run_release
+
+  assert_failed_with_step "讀取版號"
+  assert_file_contains "$TEST_STDERR" "0.0.9" "訊息要寫出那個 tag"
+  assert_no_lkai_request
+}
+
+# 找上一版時，git merge-base --is-ancestor 出錯（退出碼 2，不是 0 或 1；退出碼 1 才是「不是祖先」）：
+# 不能當成「不是祖先」而略過，要在「讀取版號」失敗。tag 0.0.9 在 HEAD，是 HEAD 的祖先，沒有出錯時上一版就是它
+test_release_as_is_fails_when_the_ancestor_check_errors() {
+  new_release_repo 0.1.0
+  make_version_tag 0.0.9
+  finish_fixture
+
+  run_release_with_failing_git "merge-base --is-ancestor " 2
+
+  assert_failed_with_step "讀取版號"
+  assert_file_contains "$TEST_STDERR" "測試用的 git 包裝：git merge-base --is-ancestor" "包裝要真的被呼叫到"
+  assert_no_lkai_request
+}
+
+# 補建 Release 時（tag 0.1.1 沒有 Release，就在 HEAD），另一個版本 tag 0.1.0 指向 tree：找補建的上一版時解析不了它，
+# 失敗的步驟是「補建 Release」；沒有 AI 請求，沒有建立 Release，沒有任何改變
+test_release_repair_fails_when_a_version_tag_points_to_a_tree() {
+  new_release_repo 0.1.1
+  make_version_tag 0.1.1 no-release
+  repo_git tag 0.1.0 "$(repo_git rev-parse 'HEAD^{tree}')" || fail "無法建立指向 tree 的 tag"
+  finish_fixture
+  release_mode
+
+  run_release
+
+  assert_failed_with_step "補建 Release"
+  assert_file_contains "$TEST_STDERR" "0.1.0" "訊息要寫出那個 tag"
+  assert_no_lkai_request
+}
+
+# 升級等級的請求進行中收到 TERM，lkai 已經把 stderr 寫進收 stderr 的檔案（假的 lkai 先送訊號、再寫 stderr，
+# release.sh 的 trap 要等 lkai 結束才執行，所以檔案已經寫完）：那段 AI 的文字不能遺失，要在 GitHub Actions 中
+# 以 ::stop-commands::<token> 與 ::<token>:: 包起來印出；報告仍有失敗的步驟
+test_release_signal_during_a_request_keeps_the_stderr_of_lkai() {
+  fixture_version_bump
+  export GITHUB_ACTIONS=true
+  export FAKE_LKAI_SIGNAL_PARENT=TERM
+  export FAKE_LKAI_BUMP_STDERR=$'Error: cancelled\n::add-mask::x'
+
+  run_release
+
+  assert_exit_code 1 "release.sh 的退出碼"
+  assert_has_line "$TEST_STDOUT" "失敗的步驟：判斷升級等級"
+  assert_wrapped_in_stop_commands "$TEST_STDERR" "Error: cancelled"
+  assert_wrapped_in_stop_commands "$TEST_STDERR" "::add-mask::x"
+  assert_line_count "$TEST_STDERR" "::add-mask::x" 1
+  assert_equals "1" "$(grep -c '^::stop-commands::' "$TEST_STDERR")" "lkai 的 stderr 只包一次"
+  assert_repo_untouched
+  assert_no_release_created
 }

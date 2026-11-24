@@ -76,16 +76,14 @@ answer_preview_bytes=200
 mode=""
 provider=""
 model=""
-# 報告與訊息中顯示的供應商與模型：LF 與 CR 換成可見的 <LF>、<CR>（值本身原樣交給 lkai，spec 規定這裡不檢查）。
-# 解析供應商與模型之後只算一次
-shown_provider=""
-shown_model=""
 plan=""
 bump_level=""
 previous_version=""
 next_version=""
 current_step=""
 failed_step=""
+# 第 2 步取得的所有 tag 名稱（每行一個）。git tag --list 只在那裡執行一次，之後都讀這個值
+version_tags=""
 
 # 報告：選定模式之後才印（report_enabled）。nothing_to_release 時，報告之後接一行說明。
 # 補建的 Release（repaired_tag，dry run 時是「將會補建」的）與這次的 Release 都只在退出碼是 0 時
@@ -95,6 +93,10 @@ nothing_to_release="false"
 repaired_tag=""
 repair_notes_for_report=""
 release_notes_for_report=""
+
+# 正在收 lkai 的 stderr 的檔案：ask_lkai 在 lkai 執行前記下，印出之後清空。lkai 執行途中收到訊號時，
+# trap 要等 lkai 結束才執行，檔案已經寫完但還沒印出，由 finish 補印，免得 AI 的文字遺失
+pending_lkai_stderr=""
 
 # 保護 AI 文字用的 token：GITHUB_ACTIONS 是 true 時，第一次需要時產生，之後重複使用
 ai_text_token=""
@@ -114,9 +116,16 @@ cleanup() {
 finish() {
   local exit_code=$?
   trap - EXIT
+  # 報告與清理一定要做完，所以之後收到的 HUP、INT、TERM 都忽略：否則 trap 的 exit 1 會在 finish 的途中結束它
+  # （例如 ::<token>:: 沒有印出來、暫存資料夾沒有清掉）。runner 真的要停止這個 script 時，還有 SIGKILL
+  trap '' HUP INT TERM
   # 不經 fail 的非 0 結束（例如被訊號中止，trap 把它轉成 exit 1）沒有記下失敗的步驟：補上目前的步驟
   if [ "$exit_code" -ne 0 ] && [ -z "$failed_step" ]; then
     failed_step="$current_step"
+  fi
+  # 被訊號中止時，lkai 的 stderr 可能已經寫進檔案、還沒印出來：補印
+  if [ -n "$pending_lkai_stderr" ] && [ -s "$pending_lkai_stderr" ]; then
+    print_ai_text "$(cat "$pending_lkai_stderr")" >&2 || true
   fi
   if [ "$report_enabled" = "true" ]; then
     report_enabled="false"
@@ -196,10 +205,10 @@ print_ai_text() {
 write_report() {
   printf '模式：%s\n' "$mode"
   if [ -n "$provider" ]; then
-    printf '供應商：%s\n' "$shown_provider"
+    printf '供應商：%s\n' "$(printable "$provider")"
   fi
   if [ -n "$model" ]; then
-    printf '模型：%s\n' "$shown_model"
+    printf '模型：%s\n' "$(printable "$model")"
   fi
   if [ -n "$plan" ]; then
     printf '計畫：%s\n' "$plan"
@@ -321,18 +330,32 @@ version_greater() {
 }
 
 # highest_ancestor_tag <commit> [<版號>]：印出最高的版本 tag，它要是 <commit> 的祖先；有給 <版號> 時，
-# 還要比 <版號> 小。沒有這樣的 tag 時什麼都不印
+# 還要比 <版號> 小。沒有這樣的 tag 時什麼都不印。讀第 2 步取得的 version_tags。
+# 出錯時在 stderr 寫一行說明並回傳非 0：版本 tag 解析不成 commit（例如指向 tree），或 git merge-base 出錯
+# （退出碼 1 才是「不是祖先」，其他非 0 都是出錯）。這個函式在 $(…) 中呼叫，裡面不能用 fail
+# （fail 的 exit 只會結束 subshell），所以由呼叫端接 || fail
 highest_ancestor_tag() {
-  local commit="$1" below="${2:-}" candidate highest=""
-  for candidate in $(git tag --list); do
+  local commit="$1" below="${2:-}" candidate candidate_commit merge_status highest=""
+  for candidate in $version_tags; do
     if ! [[ "$candidate" =~ $version_pattern ]]; then
       continue
     fi
     if [ -n "$below" ] && ! version_greater "$below" "$candidate"; then
       continue
     fi
-    if ! git merge-base --is-ancestor "refs/tags/$candidate" "$commit"; then
+    candidate_commit="$(git rev-parse --verify --quiet "refs/tags/$candidate^{commit}")" || {
+      printf '版本 tag %s 沒有指向 commit\n' "$(printable "$candidate")" >&2
+      return 1
+    }
+    merge_status=0
+    git merge-base --is-ancestor "$candidate_commit" "$commit" || merge_status=$?
+    if [ "$merge_status" -eq 1 ]; then
       continue
+    fi
+    if [ "$merge_status" -ne 0 ]; then
+      printf '無法判斷版本 tag %s 是不是祖先（git merge-base --is-ancestor 以 %s 結束）\n' \
+        "$(printable "$candidate")" "$merge_status" >&2
+      return "$merge_status"
     fi
     if [ -z "$highest" ] || version_greater "$candidate" "$highest"; then
       highest="$candidate"
@@ -356,8 +379,10 @@ ask_lkai() {
   local prompt_file="$1" output_file="$2" stderr_file status=0
   stderr_file="${output_file}.err"
   shift 2
+  pending_lkai_stderr="$stderr_file"
   lkai --provider "$provider" --model "$model" --prompt-file "$prompt_file" --timeout 180 "$@" \
     >"$output_file" 2>"$stderr_file" || status=$?
+  pending_lkai_stderr=""
   if [ -s "$stderr_file" ]; then
     # 印不出來（產生不了 token）時，print_ai_text 已經寫了錯誤訊息；原本的結果照常回傳
     print_ai_text "$(cat "$stderr_file")" >&2 || true
@@ -398,7 +423,6 @@ fi
 if [ -z "$provider" ]; then
   provider="anthropic"
 fi
-shown_provider="$(printable "$provider")"
 
 # 模型：本次指定了供應商時，只看本次的模型；否則本次的模型 → repository 的預設模型 →
 # 兩個預設值都沒有設定時用 claude-opus-5-5。供應商與模型的值都原樣交給 lkai，這裡不檢查。
@@ -413,7 +437,6 @@ else
     model="claude-opus-5-5"
   fi
 fi
-shown_model="$(printable "$model")"
 if [ -z "$model" ]; then
   fail "沒有可用的模型：請設定 LKAI_RELEASE_MODEL 或 LKAI_RELEASE_DEFAULT_MODEL"
 fi
@@ -433,9 +456,11 @@ git show "HEAD:$version_file" >"$work_dir/LKAIKitInfo.swift" ||
 current_version="$("$BASH" "$script_dir/package-version.sh" get "$work_dir/LKAIKitInfo.swift")" ||
   fail "讀不到 HEAD 的版號（${version_file}）"
 
-# 版本 tag：名稱符合版號格式的 tag。有比目前版號更大的就失敗，訊息寫出最高的那一個
+# 版本 tag：名稱符合版號格式的 tag。git tag --list 只在這裡執行一次（列不出來時不能當成沒有 tag）；
+# 有比目前版號更大的就失敗，訊息寫出最高的那一個
+version_tags="$(git tag --list)" || fail "無法列出 git 的 tag（git tag --list 失敗）"
 highest_tag=""
-for tag in $(git tag --list); do
+for tag in $version_tags; do
   if ! [[ "$tag" =~ $version_pattern ]]; then
     continue
   fi
@@ -451,7 +476,13 @@ fi
 # 第 3 步：選擇計畫
 # ---------------------------------------------------------------------------
 
-current_tag_commit="$(git rev-parse --verify --quiet "refs/tags/$current_version^{commit}")" || current_tag_commit=""
+# 目前版號的 tag 存在（在第 2 步列出的 tag 中）時，它要指向 commit：解析不成 commit（例如指向 tree）時失敗，
+# 不能當成沒有 tag 而照原樣發佈
+current_tag_commit=""
+if printf '%s\n' "$version_tags" | grep -q -x -F -- "$current_version"; then
+  current_tag_commit="$(git rev-parse --verify --quiet "refs/tags/$current_version^{commit}")" ||
+    fail "目前版號的 tag ${current_version} 沒有指向 commit"
+fi
 if [ -n "$current_tag_commit" ]; then
   # 目前版號的 tag 已存在：先檢查它有沒有 Release（只看最近 100 個，目前版號是最高的 tag，它的 Release
   # 存在時一定是最近建立的那幾個之一），沒有就補建，再照常判斷之後的變更
@@ -462,12 +493,13 @@ if [ -n "$current_tag_commit" ]; then
     # 補建：撰寫這個 tag 的 Release Notes，範圍是比它小、而且是它祖先的最高版本 tag 到這個 tag。
     # release 模式以 --verify-tag 建立 Release；dry run 只保留文字給報告，不建立
     current_step="補建 Release"
-    repair_previous="$(highest_ancestor_tag "$current_tag_commit" "$current_version")"
+    repair_previous="$(highest_ancestor_tag "$current_tag_commit" "$current_version")" ||
+      fail "無法找出補建的 Release 的上一版（原因見上一行）"
     "$BASH" "$script_dir/make-prompt.sh" release-notes "$repair_previous" "refs/tags/$current_version" "$current_version" \
       >"$work_dir/repair-notes.md" ||
       fail "無法產生補建用的 Release Notes 的 prompt"
     ask_lkai "$work_dir/repair-notes.md" "$work_dir/repair-notes.out" --max-output-tokens 8192 ||
-      fail "lkai 的補建用的 Release Notes 請求失敗（供應商 ${shown_provider}，模型 ${shown_model}）"
+      fail "lkai 的補建用的 Release Notes 請求失敗（供應商 $(printable "$provider")，模型 $(printable "$model")）"
     repair_notes="$(cat "$work_dir/repair-notes.out")"
     case "$repair_notes" in
       *[![:space:]]*) ;;
@@ -496,7 +528,7 @@ else
   # 目前版號還沒有 tag：照原樣發佈。上一版是 HEAD 的祖先中最高的版本 tag，沒有就是沒有上一版
   plan="release-as-is"
   next_version="$current_version"
-  previous_version="$(highest_ancestor_tag HEAD)"
+  previous_version="$(highest_ancestor_tag HEAD)" || fail "無法找出上一版（原因見上一行）"
 fi
 
 # ---------------------------------------------------------------------------
@@ -509,7 +541,7 @@ if [ "$plan" = "version-bump" ]; then
   "$BASH" "$script_dir/make-prompt.sh" bump-level "$previous_version" HEAD >"$work_dir/bump-level.md" ||
     fail "無法產生升級等級的 prompt"
   ask_lkai "$work_dir/bump-level.md" "$work_dir/bump-level.out" ||
-    fail "lkai 的升級等級請求失敗（供應商 ${shown_provider}，模型 ${shown_model}）"
+    fail "lkai 的升級等級請求失敗（供應商 $(printable "$provider")，模型 $(printable "$model")）"
 
   # 回答是 lkai 的 stdout 去掉前後的空格、Tab、CR、LF，剛好是 major、minor、patch 才接受
   answer="$(cat "$work_dir/bump-level.out")"
@@ -540,7 +572,7 @@ current_step="撰寫 Release Notes"
 "$BASH" "$script_dir/make-prompt.sh" release-notes "$previous_version" HEAD "$next_version" >"$work_dir/release-notes.md" ||
   fail "無法產生 Release Notes 的 prompt"
 ask_lkai "$work_dir/release-notes.md" "$work_dir/release-notes.out" --max-output-tokens 8192 ||
-  fail "lkai 的 Release Notes 請求失敗（供應商 ${shown_provider}，模型 ${shown_model}）"
+  fail "lkai 的 Release Notes 請求失敗（供應商 $(printable "$provider")，模型 $(printable "$model")）"
 
 release_notes="$(cat "$work_dir/release-notes.out")"
 case "$release_notes" in
@@ -572,8 +604,10 @@ restore_version_file() {
     warning_line "無法把 ${version_file} 還原成 HEAD 的內容，請檢查工作目錄"
 }
 
-# 要建立的 tag 就是版號，沒有 v 前綴。先確認本機沒有同名的 tag：第 2 步已經擋下（照原樣發佈時 tag 不存在，
-# 升版時比目前版號大的 tag 都被擋下了），所以理論上不會發生；發生時在建立 commit 之前就失敗
+# 要建立的 tag 就是版號，沒有 v 前綴。先確認本機沒有同名的 tag，有就在建立 commit 之前失敗。
+# 這是測試走不到的防線：第 2、3 步已經擋下所有能造成它的情況（照原樣發佈時，這個版號的 tag 不存在，
+# 否則它在第 3 步被當成目前版號的 tag 處理，指向 tree 的 tag 在那裡就失敗；升版時比目前版號大的 tag
+# 在第 2 步就被擋下）。留著是因為建立 tag 之前先檢查，比 commit 之後才發現便宜
 current_step="建立 commit 與 tag"
 if git show-ref --verify --quiet "refs/tags/$next_version"; then
   fail "本機已經有 tag ${next_version}，不能再建立"
