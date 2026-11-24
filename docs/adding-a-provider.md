@@ -11,7 +11,7 @@
 - **什麼時候更新**：以下的 change 封存前，都要檢查並更新這份清單：
   - 新增供應商的 change。
   - 修改 chat-client spec、任一供應商 spec，或 `LKAICore` 共同流程的 change。
-  - 修改 `LKAIKitCLI`（`lkai`）的 change。
+  - 修改 `LKAIKitCLI`（`lkai`）的 change。修改 `lkai` 的選項或退出碼時，也要檢查 `.github/scripts/release/release.sh` 的 `ask_lkai`（見 `docs/releasing.md` 的 5.2）：發版流程依賴那些選項與退出碼，而 bash 測試用的是假的 `lkai`，抓不到這種改變。
 - **來源**：本清單由 `03-revise-chat-client-contract` 建立，取代 `docs/spectra/config.yaml` 原本一層層指向封存 design 的指標。
 
 ## 2. 開始前要做的事

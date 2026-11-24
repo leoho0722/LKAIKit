@@ -256,6 +256,8 @@ gh workflow enable release.yml
 - 只改 `docs/spectra/` 以外的文件（包含這份手冊）也會觸發發版。之後要排除其他路徑時，要同時修改 `release.yml` 的 `paths-ignore`、`release.sh` 的「只有 `docs/spectra/` 的變更」規則與 spec 的範例表。
 - 「檢查 Release」只看目前版號的 tag，而且只看最近 100 個 Release。建立 Release 失敗後，下一次合併剛好是人工指定版號的 PR（照原樣發佈）時，舊 tag 的 Release 不會再被補建，由 owner 手動建立（4.2）。
 - 同一次執行最多建立兩個 Release：補建的那一個，以及這次發佈的版號。
+- `release.sh` 依賴 `lkai` 的介面：它以 `lkai --provider <供應商> --model <模型> --prompt-file <檔案> --timeout 180` 送出請求（Release Notes 另加 `--max-output-tokens 8192`），並只看退出碼判斷成敗：0 是成功，其他都是失敗。`lkai` 改了這些選項或退出碼時，要一起檢查 `release.sh` 的 `ask_lkai` 與它的三個呼叫處（補建 Release、判斷升級等級、撰寫 Release Notes）。bash 測試用的是假的 `lkai`，抓不到這種改變，要到下一次發版才會失敗；失敗時還沒有改任何東西（4.1 的第一列）。
+- `--timeout 180`、`--max-output-tokens 8192` 與 diff 的上限 200,000 bytes 都是估計值，輸入比 `lkai` 的實際 API 測試大很多。逾時（`lkai` 以 1 結束）或輸出被截斷（以 2 結束）時，這次執行失敗，不會發出不完整的 Release Notes；調整的地方：`--timeout` 在 `release.sh` 的 `ask_lkai`，`--max-output-tokens` 在撰寫 Release Notes 與補建 Release 的兩個呼叫處，diff 的上限是 `make-prompt.sh` 的預設值（讀 `LKAI_RELEASE_DIFF_LIMIT`，預設 200000；測試以它改小）。
 
 ## 6. 第一次發版後的確認
 
