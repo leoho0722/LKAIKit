@@ -180,7 +180,7 @@
     - 只能以內容審查確認的情境，在 2.1 的審查結果中都有逐項結果。
     - `command -v`：`actionlint` 1.7.12、`shellcheck` 0.11.0 都在 `/opt/homebrew/bin`；`actionlint`（兩個 workflow，不加 `-ignore`）以 0 結束、沒有輸出；`shellcheck -x -s bash` 對 `.github/scripts/release/` 的所有 script 以 0 結束、沒有輸出。
     - `swift test`：退出碼 0，7 個測試 target 共 270 個測試通過，5 個需要真實金鑰的實際 API 測試照設計略過，`LKAITestSupportTests` 的 4 個 known issue 是刻意記錄的。
-- [ ] 4.2 [after: 4.1] 主對話以 Keychain 的 `lkai-anthropic-api-key` 在本機以 dry run 做實際的驗收，不 push、不建立 tag 或 release：
+- [x] 4.2 [after: 4.1] 主對話以 Keychain 的 `lkai-anthropic-api-key` 在本機以 dry run 做實際的驗收，不 push、不建立 tag 或 release：
   - 在 scratch 的 clone 中執行，clone 的 `origin` 改成本機的 bare repo；`gh` 的讀取以 `GH_REPO=leoho0722/LKAIKit` 指向正式的 repo（只有 `gh release list`）；不設定 `GITHUB_ACTIONS`。
   - 照原樣發佈的計畫：沒有任何 tag，以 dry run 執行，確認計畫是 release as-is `0.1.0`，Release Notes 是正體中文且依分類撰寫。
   - 補建加升版的計畫：
@@ -189,6 +189,11 @@
     - 再確認升級等級是三個字之一、新版號依規則計算、Release Notes 合理。
   - 確認 `LKAI_RELEASE_DRY_RUN=false` 在本機被拒絕。
   - 驗證：輸出與 `lkai` 的退出碼記在任務回報中；本 repo 與 GitHub 上都沒有新的 commit、tag 或 release。
+  - 執行紀錄（2026-11-24，功能分支 `03ce59f`）：owner 同意後由主對話執行。scratch 的 clone 以本機的 bare repo 作為 `origin`，`lkai` 以 `swift build -c release --product lkai` 從同一個 commit 建置（`lkai -v` 印出 `0.1.0`），`LKAI_ANTHROPIC_API_KEY` 只在執行的那個 shell 中從 Keychain 取得，執行後以 `grep -F` 確認 stdout 與 stderr 都沒有金鑰再 `unset`；`GH_REPO=leoho0722/LKAIKit`，不設定 `GITHUB_ACTIONS`。供應商與模型都是預設的 `anthropic`、`claude-opus-5-5`。
+    - 照原樣發佈：沒有任何 tag，`release.sh` 以 0 結束（20 秒，一次 Release Notes 請求，`lkai` 以 0 結束）。報告是 `release-as-is`、上一版（無）、新版號 `0.1.0`；Release Notes 是正體中文的 Markdown，只有「新功能」與「其他」兩類，依全部 commit 的標題撰寫（diff 293,150 bytes 超過上限而省略）。
+    - 補建加升版：在 clone 中把暫時的 tag `0.1.0` 打在 PR #6 的 merge commit `1eb98a3`。GitHub 上沒有任何 Release，所以先撰寫補建 `0.1.0` 的 Release Notes（範圍到 PR #6 為止），再判斷升級等級。AI 回答 `minor`，依 1.0.0 之前的規則新版號是 `0.1.1`；這次的 Release Notes 涵蓋 PR #6 之後的 `lkai` 對話功能、setup action、CI 與發版流程。`release.sh` 以 0 結束（47 秒，三次請求，`lkai` 都以 0 結束），報告有「補建的 Release：0.1.0」，補建的段落在這次的 Release Notes 之前。
+    - 本機的 `LKAI_RELEASE_DRY_RUN=false`：以 1 結束，stderr 是「Error: LKAI_RELEASE_DRY_RUN 是 false 時要正式發版，但正式發版只能在 GitHub Actions 中執行」，stdout 沒有任何輸出（模式還沒選定，沒有報告），沒有送出請求。
+    - 執行後：clone 的工作目錄沒有改變，暫時的 tag 已刪除；GitHub 上的 tag 與 Release 都是 0 個，`main` 仍是 `33210e7`；本 repo 沒有 tag，工作目錄沒有改變；bare origin 沒有被推入任何 ref。
 - [x] 4.3 owner 在 GitHub 的 repository secrets 設定 `LKAI_ANTHROPIC_API_KEY`（或 owner 同意後由主對話以 `gh secret set` 從 Keychain 設定）：
   - 驗證：`gh secret list` 列出 `LKAI_ANTHROPIC_API_KEY`。
   - 執行紀錄（2026-11-24）：owner 同意後由主對話執行。先以 `security find-generic-password -s lkai-anthropic-api-key` 確認項目存在（不加 `-w`），再以 `security find-generic-password -s lkai-anthropic-api-key -w | tr -d '\n' | gh secret set LKAI_ANTHROPIC_API_KEY --repo leoho0722/LKAIKit` 從標準輸入設定，金鑰沒有出現在命令列引數或輸出中；`gh secret list` 列出 `LKAI_ANTHROPIC_API_KEY`（更新時間 2026-11-24T04:20:01Z）。金鑰的內容由合併後第一次發版的 AI 請求實際確認。
