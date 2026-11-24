@@ -28,3 +28,11 @@ discuss? → propose → apply ⇄ ingest → verify / review → archive
 Changes can be parked（暫存）— temporarily moved out of `docs/spectra/changes/`. Parked changes won't appear in `spectra list` but can be found with `spectra list --parked`. To restore: `spectra unpark <name>`. The `/spectra-apply` and `/spectra-ingest` skills disclose parking and restore when the named operation is already explicitly requested; respect a known refusal, otherwise ask for missing authorization.
 
 <!-- SPECTRA:END -->
+
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+專案說明寫在 `AGENTS.md`，由下一行匯入；要修改專案說明時改 `AGENTS.md`。
+
+@AGENTS.md
