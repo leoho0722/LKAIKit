@@ -32,6 +32,7 @@
     - 主對話觀察到 `test-next-version.sh` 在實作前失敗；`run-tests.sh` 以 `/bin/bash` 通過。
     - 故意讓一個斷言失敗時，`run-tests.sh` 以 1 結束（確認後還原），涵蓋 continuous-integration「A release script test fails」中 script 的部分；job 失敗的部分只以內容審查確認，由任務 2.2 的檢查項負責（step 的非 0 退出碼會讓 job 失敗），不為了觀察它而推一個會失敗的 commit。
     - 情境「Run the tests inside GitHub Actions」：以 `GITHUB_ACTIONS=true` 與一個暫存檔作為 `GITHUB_STEP_SUMMARY` 執行 `run-tests.sh`，每個測試的結果相同，暫存檔沒有改變，輸出沒有以 `::` 開頭的行。
+  - spectra-exclude: release-automation / Run the tests inside GitHub Actions | 這是 run-tests.sh 本身的行為，它的測試不能在自己裡面再執行一次 run-tests.sh；由 1.1 與 4.1 以 GITHUB_ACTIONS=true 與暫存的 GITHUB_STEP_SUMMARY 實際執行確認（每個測試的結果相同、暫存檔沒有改變、輸出沒有以 :: 開頭的行），4.4 在 CI 上再確認
 - [x] 1.2 [after: 1.1] 依 design「版號從 LKAIKitInfo.swift 讀取，與寫入共用同一個規則」，新增 `.github/scripts/release/package-version.sh` 的 `get` 與 `set`，交付 release-automation「Release plan」讀版號的規則，以及「Version commit and tag push」修改版號的部分（sonnet）：
   - `tests/test-package-version.sh` 以本 repo 真正的 `LKAIKitInfo.swift` 的複本測試：
     - `get` 印出 `0.1.0`。
@@ -114,6 +115,12 @@
     - checkout 沒有 `persist-credentials`，有註解寫明不可設定 `persist-credentials: false` 的原因；`inputs`、`vars`、`secrets` 與 `github.token` 都在 `env`，`run` 中沒有 `${{ }}`。
     - 審查時修正一處：`provider` 輸入的 description 原本舉例 `gemini`，`lkai` 接受的是 `anthropic`、`openai`、`google`，改成不列舉名稱（「`lkai --provider` 的值」）。
     - `actionlint`（兩個 workflow）以 0 結束、沒有輸出；`tests/test-script-style.sh` 掃描到 `release.yml`，沒有違規。
+  - spectra-exclude: release-automation / Decide whether a push to main runs the workflow | 觸發條件只由 GitHub Actions 評估，run-tests.sh 與 swift test 觀察不到；由 2.1 逐列對照 paths-ignore 審查（見上面的審查結果），合併後依 docs/releasing.md 第 6 章確認
+  - spectra-exclude: release-automation / Decide whether a push to main runs the workflow / changed files and whether the workflow runs | 同上：範例表的 5 列由 2.1 逐列對照 paths-ignore 審查
+  - spectra-exclude: release-automation / A push by the release workflow itself | GITHUB_TOKEN 推送的事件不開新的 run 是 GitHub 的行為，測試環境觀察不到；由 2.1 審查 GH_TOKEN 與 checkout 的憑證都是 GITHUB_TOKEN
+  - spectra-exclude: release-automation / Two pushes in quick succession | 排隊由 GitHub Actions 的 concurrency 執行，測試環境觀察不到；由 2.1 審查 cancel-in-progress: false 與 checkout 的 ref: main
+  - spectra-exclude: release-automation / A dry run while a release run waits | concurrency group 由 GitHub Actions 求值，測試環境觀察不到；由 2.1 審查 group 的運算式
+  - spectra-exclude: release-automation / Map the workflow inputs and repository variables | workflow 的運算式只在 GitHub Actions 中求值，測試環境觀察不到；由 2.1 審查四個變數原樣傳入、沒有運算式組合或預設值（解析的規則由 release.sh 的測試涵蓋）
 - [x] 2.2 [after: 1.1] 依 design「CI 的 script 測試規則放在 continuous-integration，測試的隔離留在 release-automation」，在 `.github/workflows/ci.yml` 的 `swift test` 之後，加上 `bash .github/scripts/release/tests/run-tests.sh` 的 step，交付 continuous-integration「Release script tests in CI」（sonnet）：
   - 新的 step 比照既有的寫法：正體中文的 `name`、`shell: bash`，並附一行註解指向 continuous-integration「Release script tests in CI」。
   - 檔案開頭的說明補上發版 script 的測試。
@@ -123,6 +130,8 @@
     - 新 step 沒有 `continue-on-error`，也沒有吞掉 `run-tests.sh` 的退出碼（例如 `|| true`），所以非 0 會讓 job 失敗；這一項就是 continuous-integration「A release script test fails」中 job 失敗部分的內容審查。
     - `actionlint .github/workflows/ci.yml` 沒有錯誤。
   - 審查結果（2026-11-24）：`git diff` 只刪掉檔案開頭的舊說明一行，其他 step、trigger、permissions、concurrency 不變；`runs-on: xcode-27` 與 design 規定的 `release.yml` 相同；新 step 沒有 `continue-on-error`、`|| true`、`env`、`secrets` 或 `vars`；`actionlint .github/workflows/ci.yml` 以 0 結束、沒有輸出。
+  - spectra-exclude: continuous-integration / Run the release script tests | CI 的 job 只能在 GitHub Actions 中執行，測試環境觀察不到；run-tests.sh 的結果由 1.1 與 4.1 在本機以 /bin/bash 3.2 執行確認，CI 上的結果由 4.4 確認
+  - spectra-exclude: continuous-integration / A release script test fails | job 是否失敗由 GitHub Actions 決定，而且不為了觀察它推一個會失敗的 commit；script 以非 0 結束由 1.1 故意讓一個斷言失敗確認，job 失敗由 2.2 審查新 step 沒有 continue-on-error、也沒有吞掉退出碼
 
 ## 3. 文件
 
@@ -155,7 +164,7 @@
 
 ## 4. 驗收
 
-- [ ] 4.1 [after: 1.6, 2.1, 2.2, 3.2] 主對話在功能分支上做靜態檢查與測試：
+- [x] 4.1 [after: 1.6, 2.1, 2.2, 3.2] 主對話在功能分支上做靜態檢查與測試：
   - 以 `/bin/bash` 執行 `bash .github/scripts/release/tests/run-tests.sh`，全部通過；以 `GITHUB_ACTIONS=true` 再執行一次，結果相同。
   - 依 Implementation Contract 的「驗收」，確認以下幾點：
     - `spectra-scenario` 標記涵蓋所有應由 `run-tests.sh` 涵蓋的情境，範例表的每一列都有斷言。
@@ -165,6 +174,12 @@
     - `shellcheck` 對 `.github/scripts/release/` 的所有 script 沒有錯誤。
   - `swift test` 通過。
   - 驗證：以上指令的結果記在任務回報中。
+  - 執行結果（2026-11-24，功能分支 `a7629b0`）：
+    - `/bin/bash`（GNU bash 3.2.57）執行 `run-tests.sh`：105 個測試全部通過，退出碼 0；以 `GITHUB_ACTIONS=true` 與暫存的 `GITHUB_STEP_SUMMARY` 再執行一次，每個測試的結果相同，暫存檔沒有改變，輸出沒有以 `::` 開頭的行。
+    - `spectra coverage 02-add-release-automation`：37 個情境與範例有測試、9 個以 `spectra-exclude:` 記錄理由（寫在 1.1、2.1、2.2 底下，都是 design「驗收」列為內容審查或實際執行確認的項目）、0 個缺漏；範例表 modes 7 列、provider and model resolution 8 列、plans 8 列、answers 6 列、next versions 11 列，每一列各有一個測試；changed files and whether the workflow runs 的 5 列由 2.1 逐列審查。
+    - 只能以內容審查確認的情境，在 2.1 的審查結果中都有逐項結果。
+    - `command -v`：`actionlint` 1.7.12、`shellcheck` 0.11.0 都在 `/opt/homebrew/bin`；`actionlint`（兩個 workflow，不加 `-ignore`）以 0 結束、沒有輸出；`shellcheck -x -s bash` 對 `.github/scripts/release/` 的所有 script 以 0 結束、沒有輸出。
+    - `swift test`：退出碼 0，7 個測試 target 共 270 個測試通過，5 個需要真實金鑰的實際 API 測試照設計略過，`LKAITestSupportTests` 的 4 個 known issue 是刻意記錄的。
 - [ ] 4.2 [after: 4.1] 主對話以 Keychain 的 `lkai-anthropic-api-key` 在本機以 dry run 做實際的驗收，不 push、不建立 tag 或 release：
   - 在 scratch 的 clone 中執行，clone 的 `origin` 改成本機的 bare repo；`gh` 的讀取以 `GH_REPO=leoho0722/LKAIKit` 指向正式的 repo（只有 `gh release list`）；不設定 `GITHUB_ACTIONS`。
   - 照原樣發佈的計畫：沒有任何 tag，以 dry run 執行，確認計畫是 release as-is `0.1.0`，Release Notes 是正體中文且依分類撰寫。
