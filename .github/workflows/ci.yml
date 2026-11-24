@@ -1,10 +1,12 @@
-# CI：每個 pull request 都跑同一個 job，先試跑 Setup lkai action，再跑單元測試。
+# CI：每個 pull request 都跑同一個 job，先試跑 Setup lkai action，再跑單元測試與發版 script 的測試。
 #
 # - 不依檔案路徑篩選：只改 Spectra 文件的 PR 也要跑。要是之後把這個 check 設為
 #   required，被略過的 check 會停在 Pending，擋住合併。
 # - 不定義任何真實 API 金鑰的環境變數，也不引用 repository 的機密：需要真實金鑰的測試，
 #   由它們自己的 .enabled(if:) 條件顯示為略過。
 # - 第三方 action 以完整的 commit SHA 固定，tag 可以被改指向其他 commit，SHA 不行。
+# - 發版 script 的測試（.github/scripts/release/tests/run-tests.sh）接在單元測試之後，同一個 job 內：
+#   job 的 runner 標籤要和 release workflow 相同，才會用發版實際使用的 shell 與工具測 script。
 name: CI
 
 on:
@@ -107,3 +109,12 @@ jobs:
       - name: 執行單元測試
         shell: bash
         run: swift test
+
+      # continuous-integration「Release script tests in CI」：在和 release workflow 相同的 runner 標籤上，
+      # 以 runner 預設的 bash 測發版 script，測的就是 release workflow 用的 shell 與工具。
+      # run-tests.sh 自己清掉 GitHub Actions、GH_*、LKAI_RELEASE_*、LKAI_*_API_KEY 等變數並收住輸出；
+      # 測試在自己的行程內設定的值（例如 sk-test-secret）不是這個 job 定義的金鑰，所以這個 step 不設 env。
+      # 不設定讓失敗被忽略的選項，也不吞掉退出碼：run-tests.sh 以非 0 結束時，這個 step 與 job 都會失敗。
+      - name: 執行發版 script 的測試
+        shell: bash
+        run: bash .github/scripts/release/tests/run-tests.sh
