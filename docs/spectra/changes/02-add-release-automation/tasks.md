@@ -203,5 +203,11 @@
   - 加強測試（行為已經符合，以故意改壞的方式確認測試會失敗）：「Choose a version by hand」改以正式發版測試；斷言重新建置用 `-c release --product lkai`；在 `release.sh` 這一層斷言第一次發版的 prompt；範本的分類與等級；四個 script 的 `version_pattern` 相同；dry run 的退出碼；更新過時的測試說明，`cut -c` 換掉。
   - 文件：design 的檔案表與寫法限制（commit `846a3f6`）、`release.sh` 開頭的錯誤處理慣例、`docs/releasing.md` 5.2 與 `docs/adding-a-provider.md` 第 1 章（commit `6b079f0`）。不採用：四個 script 重複的 `fail`、`printable` 不抽成共用檔（fable 建議等出現第五個 script 再說）。
   - 修正後：`run-tests.sh` 117 個測試通過，`GITHUB_ACTIONS=true` 時結果相同；`shellcheck`、`actionlint` 沒有訊息。之後依使用者的要求再審查一次。
+- 第二輪實作審查（2026-11-24，四方同時進行；對象是 `37d9946`）與修正：第一輪的項目都已解決，另外修正：
+  - git 的錯誤處理（/spectra-verify 的 Warning）：`git tag --list` 失敗、版本 tag 解析不成 commit、`git merge-base` 出錯、目前版號的 tag 沒有指向 commit，都改成在「讀取版號」（補建時是「補建 Release」）失敗；先寫測試並觀察到失敗（commit `6cdef75`）。原本以指向 tree 的 tag 測「本機已有同名 tag」的測試，改成測「目前版號的 tag 沒有指向 commit」，第 7 步的預先檢查變成測試走不到的防線，註解寫明。
+  - 訊號（opus 第二輪 S1、S2）：被訊號中止時補印已經收進檔案的 `lkai` stderr（先寫測試）；`finish` 一開始忽略 HUP、INT、TERM，以 scratchpad 的小實驗確認寫報告途中收到 TERM 時報告與清理都做完（沒有結果固定的自動測試）。
+  - 拿掉 `shown_provider`、`shown_model`，改在使用的地方呼叫 `printable`（fable 第二輪 H1）；modes 被拒絕的三列改成比對完整的片段。
+  - 文件：design 的決策「AI 的文字以 stop-commands 包起來」補上 `lkai` 的 stderr（commit `ebda335`）；`docs/releasing.md` 3.6 與 4.1（commit `ae55fe2`）。
+  - 修正後：`run-tests.sh` 122 個測試通過，`GITHUB_ACTIONS=true` 時結果相同；`shellcheck`、`actionlint` 沒有訊息。之後依使用者的要求做第三輪審查。
 - [ ] 4.4 [after: 4.2, 4.3] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 通過：
   - 驗證：PR 的 CI check 成功；任務回報記錄 script 測試在 runner 上的結果與時間，並確認 job log 沒有出現測試造成的 annotation、job summary 沒有測試寫入的內容。
