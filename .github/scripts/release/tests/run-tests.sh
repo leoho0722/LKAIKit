@@ -84,10 +84,12 @@ run_one_test() {
   ) >"$output_file" 2>&1
 }
 
-# 印出檔案內容，每一行前面加兩個空格；沒有內容時什麼都不印
+# 印出檔案內容，每一行前面加兩個空格；沒有內容時什麼都不印。
+# 以 LC_ALL=C 執行 sed，任何 byte 都原樣輸出：測試的輸出可能有被截斷的多位元組字元（例如 show_file 只取前
+# 2000 bytes），UTF-8 語系下的 sed 會把它當成錯誤（illegal byte sequence）並丟掉那一行
 print_indented() {
   [ -s "$1" ] || return 0
-  sed 's/^/  /' "$1"
+  LC_ALL=C sed 's/^/  /' "$1"
 }
 
 total=0

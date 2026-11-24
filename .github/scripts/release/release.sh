@@ -2,21 +2,34 @@
 # release.sh：合併到 main 之後的自動發版流程。不收引數，在 git repo 的根目錄執行。
 # 退出碼 0 表示已發佈、沒有可發佈的變更或 dry run 完成，1 表示失敗。
 #
-# 目前實作的流程（任務 1.4、1.5）：
+# 流程：
 #   1. 選擇模式，解析供應商與模型。
 #   2. 讀取 HEAD 的版號，列出版本 tag，版號不合格式或有更大的 tag 時失敗。
-#   3. 目前版號的 tag 存在時：沒有新的 commit，或 tag 之後只有 docs/spectra/ 的變更，就沒有可發佈的變更；
-#      否則是升版。tag 不存在時照原樣發佈。（「檢查 Release」之後的任務才加。）
+#   3. 目前版號的 tag 存在時：
+#      - 以 gh release list 檢查它有沒有 Release，沒有就補建：請 AI 撰寫那個 tag 的 Release Notes
+#        （範圍是比它小、而且是它祖先的最高版本 tag 到它），release 模式以 --verify-tag 建立 Release，
+#        dry run 只保留文字給報告。
+#      - 沒有新的 commit，或 tag 之後只有 docs/spectra/ 的變更，就沒有可發佈的變更，以 0 結束；
+#        否則是升版。
+#      tag 不存在時照原樣發佈。
 #   4. 升版時請 AI 判斷升級等級，由 next-version.sh 算出新版號。
-#   5. 請 AI 撰寫 Release Notes。
+#   5. 請 AI 撰寫這次的 Release Notes。
 #   6. dry run 在這裡結束：印出計畫與 Release Notes，以 0 結束，不改任何東西。
-# 正式發版（第 6 步之後的 commit、tag、push 與 Release，任務 1.6）還沒有實作：暫時印出報告與
-# Release Notes，以 1 結束；之後的任務取代這一段。
+#   7. 正式發版：
+#      - 升版：修改版號、重新建置並以 --show-bin-path 資料夾中的 lkai -v 確認，以 github-actions[bot]
+#        的身分 commit 版號檔，在這個 commit 建立 tag，以一次 atomic push 推上 remote 的 branch 與 tag。
+#      - 照原樣發佈：在 HEAD 建立 tag，只推 tag。
+#   8. 以 --verify-tag 建立這個版號的 Release。
+#   9. 以 0 結束。
+# 所有會失敗的檢查（AI 的回答、修改版號、重新建置）都在寫入 remote 之前；失敗時 repo 的狀態見 design
+# 的「失敗時的狀態」：補建的 Release 保留，其餘沒有改變；push 之後建立 Release 失敗時，remote 已有 commit
+# 與 tag，下一次執行會補建 Release。
 #
-# 報告：模式選定之後的每一個結束點（沒有可發佈的變更、dry run、失敗）都由 EXIT trap（finish）印一次，
-# 而且只印一次；模式還沒選定就失敗時不印。fail、fail_with_ai_text 與 nothing-to-release 的分支只設定狀態
-# 與退出碼。報告只產生一份資料：stdout 是每行「名稱：值」；GITHUB_STEP_SUMMARY 指定檔案時，
-# 同一份附加進去，每行前面加「- 」成為 Markdown 的清單，Release Notes 原樣接在後面。
+# 報告：模式選定之後的每一個結束點（沒有可發佈的變更、dry run、發佈成功、失敗）都由 EXIT trap（finish）
+# 印一次，而且只印一次；模式還沒選定就失敗時不印。fail、fail_with_ai_text 與 nothing-to-release 的分支只設定
+# 狀態與退出碼。報告只產生一份資料：stdout 是每行「名稱：值」；GITHUB_STEP_SUMMARY 指定檔案時，
+# 同一份附加進去，每行前面加「- 」成為 Markdown 的清單，Release Notes 原樣接在後面。退出碼是 0 時，
+# 報告在各行之後依序接補建的 Release Notes（有補建時）與這次的 Release Notes（有的話）。
 #
 # AI 的文字（被拒絕的回答、Release Notes）：GITHUB_ACTIONS 是 true 時，print_ai_text 在文字前後各寫一行
 # ::stop-commands::<token> 與 ::<token>::（和文字在同一個流），GitHub 就不會執行文字裡的 workflow command。
@@ -26,11 +39,13 @@
 #   LKAI_RELEASE_DRY_RUN                 沒有設定、空字串或 true：dry run；false：正式發版，只在 GitHub Actions 中允許
 #   LKAI_RELEASE_PROVIDER、LKAI_RELEASE_MODEL                本次的供應商與模型
 #   LKAI_RELEASE_DEFAULT_PROVIDER、LKAI_RELEASE_DEFAULT_MODEL  repository 的預設值
+#   LKAI_RELEASE_REMOTE、LKAI_RELEASE_BRANCH                 推送的 remote 與 branch，預設 origin 與 main（測試以暫存的 remote 取代）
 #   GITHUB_ACTIONS                       true 時訊息以 ::error:: 開頭
+#   GH_TOKEN                             gh 讀取；這個 script 不讀、不印
 #   API 金鑰（LKAI_*_API_KEY）由 lkai 自己讀取，這個 script 不讀、不印、不放進引數。
 #
 # 報告（write_report）的各行，每行「名稱：值」，不知道的行不印：
-#   模式、供應商、模型、計畫、升級等級、上一版、新版號、失敗的步驟
+#   模式、供應商、模型、計畫、升級等級、上一版、新版號、補建的 Release、失敗的步驟
 #
 # 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
 
@@ -39,6 +54,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 version_file="Sources/LKAICore/LKAIKitInfo.swift"
+# 推送的 remote 與 branch；測試以暫存的 bare repo 取代
+remote_name="${LKAI_RELEASE_REMOTE:-origin}"
+branch_name="${LKAI_RELEASE_BRANCH:-main}"
+# 版號 commit 的 author 與 committer。只以環境變數套用在 commit 那一個指令上，不修改 git 設定
+bot_name="github-actions[bot]"
+bot_email="41898282+github-actions[bot]@users.noreply.github.com"
 # 去掉 AI 回答前後的字元：空格、Tab、CR、LF
 answer_whitespace=$' \t\r\n'
 # 被拒絕的回答最多印出幾個 bytes
@@ -58,10 +79,13 @@ next_version=""
 current_step=""
 failed_step=""
 
-# 報告：選定模式之後才印（report_enabled）。nothing_to_release 時，報告之後接一行說明；
-# release_notes_for_report 有值時（dry run、暫時的結尾），報告之後接 Release Notes
+# 報告：選定模式之後才印（report_enabled）。nothing_to_release 時，報告之後接一行說明。
+# 補建的 Release（repaired_tag，dry run 時是「將會補建」的）與這次的 Release 都只在退出碼是 0 時
+# 附上 Release Notes：先補建的（repair_notes_for_report），再這次的（release_notes_for_report）
 report_enabled="false"
 nothing_to_release="false"
+repaired_tag=""
+repair_notes_for_report=""
 release_notes_for_report=""
 
 # 保護 AI 文字用的 token：GITHUB_ACTIONS 是 true 時，第一次需要時產生，之後重複使用
@@ -84,7 +108,7 @@ finish() {
   trap - EXIT
   if [ "$report_enabled" = "true" ]; then
     report_enabled="false"
-    if ! emit_report && [ "$exit_code" -eq 0 ]; then
+    if ! emit_report "$exit_code" && [ "$exit_code" -eq 0 ]; then
       exit_code=1
     fi
   fi
@@ -182,17 +206,21 @@ write_report() {
   if [ -n "$next_version" ]; then
     printf '新版號：%s\n' "$next_version"
   fi
+  if [ -n "$repaired_tag" ]; then
+    printf '補建的 Release：%s\n' "$repaired_tag"
+  fi
   if [ -n "$failed_step" ]; then
     printf '失敗的步驟：%s\n' "$failed_step"
   fi
   return 0
 }
 
-# write_summary <報告>：GITHUB_STEP_SUMMARY 指定檔案時，把同一份報告以 Markdown 附加進去：
-# 每行前面加「- 」成為清單，沒有可發佈的變更時接一行說明，Release Notes 原樣接在後面（不加 stop-commands 的標記）。
+# write_summary <報告> <退出碼>：GITHUB_STEP_SUMMARY 指定檔案時，把同一份報告以 Markdown 附加進去：
+# 每行前面加「- 」成為清單，沒有可發佈的變更時接一行說明；退出碼是 0 時，補建的 Release Notes 與這次的
+# Release Notes 依序原樣接在後面（不加 stop-commands 的標記）。
 # 寫入失敗（例如資料夾不存在）時只在 stderr 印一行警告，不改變退出碼
 write_summary() {
-  local report_text="$1" summary_text
+  local report_text="$1" exit_code="$2" summary_text
   if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
     return 0
   fi
@@ -200,32 +228,41 @@ write_summary() {
   if [ "$nothing_to_release" = "true" ]; then
     summary_text="${summary_text}"$'\n\n沒有可發佈的變更。'
   fi
-  if [ -n "$release_notes_for_report" ]; then
+  if [ "$exit_code" -eq 0 ] && [ -n "$repair_notes_for_report" ]; then
+    summary_text="${summary_text}"$'\n\n補建的 Release Notes（'"${repaired_tag}"$'）：\n\n'"${repair_notes_for_report}"
+  fi
+  if [ "$exit_code" -eq 0 ] && [ -n "$release_notes_for_report" ]; then
     summary_text="${summary_text}"$'\n\nRelease Notes：\n\n'"${release_notes_for_report}"
   fi
   # 一個簡單指令一次寫完。2>/dev/null 放在 >> 之前，開檔失敗時 bash 自己的訊息才不會印出來；
-  # 不用 { …; } 群組來導向：群組的重新導向失敗時，bash 3.2 不會還原 stderr，後面的警告就印不出來
+  # 不用 { …; } 群組來導向：實測（macOS 的 bash 3.2.57）群組的重新導向失敗時，後面的警告印不出來，
+  # 一個簡單指令的警告印得出來
   if ! printf '%s\n' "$summary_text" 2>/dev/null >>"$GITHUB_STEP_SUMMARY"; then
     warning_line "無法寫入 GITHUB_STEP_SUMMARY（$(printable "$GITHUB_STEP_SUMMARY")），job summary 沒有這次的報告"
   fi
   return 0
 }
 
-# emit_report：印出報告：stdout 是每行「名稱：值」，沒有可發佈的變更時接一行說明，有 Release Notes 時接
-# 「Release Notes：」與 Release Notes（經過 print_ai_text）；再寫入 job summary。stdout 與 summary 用同一份
-# 報告資料。Release Notes 因為沒有 token 而印不出來時回傳 1。
+# emit_report <退出碼>：印出報告：stdout 是每行「名稱：值」，沒有可發佈的變更時接一行說明；退出碼是 0 時，
+# 依序接「補建的 Release Notes（<tag>）：」與補建的文字（有補建時）、「Release Notes：」與這次的
+# Release Notes（有的話），兩段 AI 的文字都經過 print_ai_text；再寫入 job summary。stdout 與 summary
+# 用同一份報告資料。AI 的文字因為沒有 token 而印不出來時回傳 1。
 emit_report() {
-  local report_text status=0
+  local exit_code="$1" report_text status=0
   report_text="$(write_report)"
   printf '%s\n' "$report_text"
   if [ "$nothing_to_release" = "true" ]; then
     printf '沒有可發佈的變更。\n'
   fi
-  if [ -n "$release_notes_for_report" ]; then
+  if [ "$exit_code" -eq 0 ] && [ -n "$repair_notes_for_report" ]; then
+    printf '補建的 Release Notes（%s）：\n' "$repaired_tag"
+    print_ai_text "$repair_notes_for_report" || status=1
+  fi
+  if [ "$exit_code" -eq 0 ] && [ -n "$release_notes_for_report" ]; then
     printf 'Release Notes：\n'
     print_ai_text "$release_notes_for_report" || status=1
   fi
-  write_summary "$report_text"
+  write_summary "$report_text" "$exit_code"
   return "$status"
 }
 
@@ -269,6 +306,27 @@ version_greater() {
     return
   fi
   [ "$((10#$a_patch))" -gt "$((10#$b_patch))" ]
+}
+
+# highest_ancestor_tag <commit> [<版號>]：印出最高的版本 tag，它要是 <commit> 的祖先；有給 <版號> 時，
+# 還要比 <版號> 小。沒有這樣的 tag 時什麼都不印
+highest_ancestor_tag() {
+  local commit="$1" below="${2:-}" candidate highest=""
+  for candidate in $(git tag --list); do
+    if ! [[ "$candidate" =~ $version_pattern ]]; then
+      continue
+    fi
+    if [ -n "$below" ] && ! version_greater "$below" "$candidate"; then
+      continue
+    fi
+    if ! git merge-base --is-ancestor "refs/tags/$candidate" "$commit"; then
+      continue
+    fi
+    if [ -z "$highest" ] || version_greater "$candidate" "$highest"; then
+      highest="$candidate"
+    fi
+  done
+  printf '%s' "$highest"
 }
 
 # ---------------------------------------------------------------------------
@@ -370,7 +428,34 @@ fi
 
 current_tag_commit="$(git rev-parse --verify --quiet "refs/tags/$current_version^{commit}")" || current_tag_commit=""
 if [ -n "$current_tag_commit" ]; then
-  # 目前版號的 tag 已存在：沒有新的 commit，或 tag 之後只有 docs/spectra/ 的變更時，沒有可發佈的變更
+  # 目前版號的 tag 已存在：先檢查它有沒有 Release（只看最近 100 個，目前版號是最高的 tag，它的 Release
+  # 存在時一定是最近建立的那幾個之一），沒有就補建，再照常判斷之後的變更
+  current_step="檢查 Release"
+  release_tags="$(gh release list --limit 100 --json tagName --jq '.[].tagName')" ||
+    fail "無法列出最近的 Release（gh release list 失敗）"
+  if ! printf '%s\n' "$release_tags" | grep -q -x -F -- "$current_version"; then
+    # 補建：撰寫這個 tag 的 Release Notes，範圍是比它小、而且是它祖先的最高版本 tag 到這個 tag。
+    # release 模式以 --verify-tag 建立 Release；dry run 只保留文字給報告，不建立
+    current_step="補建 Release"
+    repair_previous="$(highest_ancestor_tag "$current_tag_commit" "$current_version")"
+    "$BASH" "$script_dir/make-prompt.sh" release-notes "$repair_previous" "refs/tags/$current_version" "$current_version" \
+      >"$work_dir/repair-notes.md" ||
+      fail "無法產生補建用的 Release Notes 的 prompt"
+    ask_lkai "$work_dir/repair-notes.md" "$work_dir/repair-notes.out" --max-output-tokens 8192 ||
+      fail "lkai 的補建用的 Release Notes 請求失敗（供應商 ${provider}，模型 ${model}）"
+    repair_notes="$(cat "$work_dir/repair-notes.out")"
+    case "$repair_notes" in
+      *[![:space:]]*) ;;
+      *) fail "補建用的 Release Notes 是空的：lkai 的回答只有空白" ;;
+    esac
+    if [ "$mode" = "release" ]; then
+      gh release create "$current_version" --verify-tag --title "$current_version" --notes-file "$work_dir/repair-notes.out" ||
+        fail "無法補建 Release ${current_version}（gh release create 失敗）"
+    fi
+    repaired_tag="$current_version"
+    repair_notes_for_report="$repair_notes"
+  fi
+  # 沒有新的 commit，或 tag 之後只有 docs/spectra/ 的變更時，沒有可發佈的變更
   commits_after_tag="$(git rev-list --count "$current_tag_commit..HEAD")" ||
     fail "無法比較 tag $current_version 與 HEAD"
   changed_files="$(git diff --name-only "$current_tag_commit" HEAD -- . ':(exclude)docs/spectra')" ||
@@ -386,17 +471,7 @@ else
   # 目前版號還沒有 tag：照原樣發佈。上一版是 HEAD 的祖先中最高的版本 tag，沒有就是沒有上一版
   plan="release-as-is"
   next_version="$current_version"
-  for tag in $(git tag --list); do
-    if ! [[ "$tag" =~ $version_pattern ]]; then
-      continue
-    fi
-    if ! git merge-base --is-ancestor "refs/tags/$tag" HEAD; then
-      continue
-    fi
-    if [ -z "$previous_version" ] || version_greater "$tag" "$previous_version"; then
-      previous_version="$tag"
-    fi
-  done
+  previous_version="$(highest_ancestor_tag HEAD)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -452,7 +527,7 @@ esac
 # 第 6 步：dry run 在這裡結束
 # ---------------------------------------------------------------------------
 
-# 報告之後接 Release Notes（dry run 是「將會建立」的那一份）
+# 退出碼是 0 時，報告在各行之後接這次的 Release Notes（dry run 是「將會建立」的那一份）
 release_notes_for_report="$release_notes"
 
 # dry run：印出計畫與 Release Notes（由 EXIT trap 的報告），以 0 結束。
@@ -462,8 +537,83 @@ if [ "$mode" = "dry-run" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 暫時的結尾（任務 1.6 取代）：正式發版第 7 步之後的流程還沒有實作
+# 第 7 步：升版時修改版號、重新建置、commit 與 tag；然後推送
 # ---------------------------------------------------------------------------
 
-error_line "正式發版（第 7 步之後的 commit、tag、push 與 Release）還沒有實作，暫時印出報告與 Release Notes 就結束"
-exit 1
+# restore_version_file：把版號檔還原成 HEAD 的內容。修改版號或重新建置失敗時，在失敗之前呼叫，
+# 讓工作目錄回到原來的樣子。還原失敗時只警告，原本的失敗照常結束
+restore_version_file() {
+  git checkout -q HEAD -- "$version_file" ||
+    warning_line "無法把 ${version_file} 還原成 HEAD 的內容，請檢查工作目錄"
+}
+
+# 要建立的 tag 就是版號，沒有 v 前綴。先確認本機沒有同名的 tag：第 2 步已經擋下（照原樣發佈時 tag 不存在，
+# 升版時比目前版號大的 tag 都被擋下了），所以理論上不會發生；發生時在建立 commit 之前就失敗
+current_step="建立 commit 與 tag"
+if git show-ref --verify --quiet "refs/tags/$next_version"; then
+  fail "本機已經有 tag ${next_version}，不能再建立"
+fi
+
+if [ "$plan" = "version-bump" ]; then
+  # 先通過所有會失敗的檢查（修改版號、重新建置）再寫入 remote
+  current_step="修改版號"
+  "$BASH" "$script_dir/package-version.sh" set "$version_file" "$next_version" || {
+    restore_version_file
+    fail "無法把 ${version_file} 的版號改成 ${next_version}"
+  }
+
+  # 以重新建置的 lkai 確認版號：用 --show-bin-path 資料夾中的 lkai，不用 PATH 上的 lkai
+  # （之後 workflow 改用某個 tag 的 action 時，PATH 上的 lkai 是那個 tag 的版本）
+  current_step="重新建置"
+  swift build -c release --product lkai >&2 || {
+    restore_version_file
+    fail "重新建置 lkai 失敗（swift build）"
+  }
+  bin_path="$(swift build -c release --product lkai --show-bin-path)" || {
+    restore_version_file
+    fail "無法取得 lkai 的建置資料夾（swift build --show-bin-path）"
+  }
+  built_version="$("$bin_path/lkai" -v)" || built_version=""
+  if [ "$built_version" != "$next_version" ]; then
+    restore_version_file
+    fail "重新建置的 lkai -v 印出 $(printable "$built_version")，不是新版號 ${next_version}"
+  fi
+
+  # 只 commit 版號檔（commit 指令限定這個檔案，工作目錄中其他的修改不會進去）；身分只以環境變數套用在
+  # commit 這一個指令上，不修改 git 設定。tag 是 lightweight tag，建立在這個 commit 上
+  current_step="建立 commit 與 tag"
+  GIT_AUTHOR_NAME="$bot_name" GIT_AUTHOR_EMAIL="$bot_email" \
+    GIT_COMMITTER_NAME="$bot_name" GIT_COMMITTER_EMAIL="$bot_email" \
+    git commit -q -m "chore: 版本號更新為 ${next_version}" -- "$version_file" ||
+    fail "無法建立版號 commit"
+  git tag "$next_version" || fail "無法建立 tag ${next_version}"
+
+  # commit 與 tag 以一次 atomic push 推上去，一起成功或一起失敗；不 force，
+  # remote 的 branch 在執行期間前進時 push 被拒絕，remote 沒有任何改變
+  current_step="推送"
+  git push --atomic -- "$remote_name" "HEAD:refs/heads/$branch_name" "refs/tags/$next_version" ||
+    fail "無法推送版號 commit 與 tag ${next_version}（remote ${remote_name} 的 ${branch_name} 可能在執行期間有新的 commit）"
+else
+  # 照原樣發佈：在 HEAD 建立 tag，只推 tag
+  current_step="建立 commit 與 tag"
+  git tag "$next_version" || fail "無法建立 tag ${next_version}"
+
+  current_step="推送"
+  git push -- "$remote_name" "refs/tags/$next_version" || fail "無法推送 tag ${next_version}"
+fi
+
+# ---------------------------------------------------------------------------
+# 第 8 步：建立 Release
+# ---------------------------------------------------------------------------
+
+# --verify-tag：tag 已經在 remote，gh 不會自己建立 tag。失敗時 tag 留在 remote，下一次執行會補建 Release
+current_step="建立 Release"
+gh release create "$next_version" --verify-tag --title "$next_version" --notes-file "$work_dir/release-notes.out" ||
+  fail "無法建立 Release ${next_version}（tag 已經在 remote，下一次執行會補建）"
+
+# ---------------------------------------------------------------------------
+# 第 9 步：結束
+# ---------------------------------------------------------------------------
+
+# 報告由 EXIT trap 印出
+exit 0
