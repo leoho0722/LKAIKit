@@ -76,7 +76,7 @@
     - 情境「Release notes contain a workflow command」「A rejected answer contains a workflow command」（回答是 `upgrade` LF `::add-mask::x`）：`GITHUB_ACTIONS=true` 時，標記與文字在同一個流，token 至少 32 個十六進位字元，`::error::` 那一行不含 AI 的文字；`GITHUB_ACTIONS` 沒有設定時不加標記。
     - 情境「Inspect the lkai invocation」：假的 `lkai` 記錄的引數、stdout、stderr、job summary 與 prompt 檔都不含 `sk-test-secret`。
   - 驗證：主對話觀察到新測試在實作前失敗；`run-tests.sh` 通過。
-- [ ] 1.6 [after: 1.5] 依 design「升版 commit 與 tag 以一次 atomic push 推上 main，再以 --verify-tag 建立 Release」、「tag 沒有 Release 時先補建」與「tag 與版號相同，沒有 v 前綴」，交付 release-automation「Version commit and tag push」、「Release creation」與「Release repair」，以及 package-distribution「Release tag matches the package version」（sonnet）：
+- [x] 1.6 [after: 1.5] 依 design「升版 commit 與 tag 以一次 atomic push 推上 main，再以 --verify-tag 建立 Release」、「tag 沒有 Release 時先補建」與「tag 與版號相同，沒有 v 前綴」，交付 release-automation「Version commit and tag push」、「Release creation」與「Release repair」，以及 package-distribution「Release tag matches the package version」（sonnet）：
   - `release.sh` 第 3 步的「檢查 Release」與第 7、8 步照 Implementation Contract。
     - commit 的 author、committer 與訊息照 spec，以環境變數設定身分，不修改 git 設定。
     - 重新建置後以 `--show-bin-path` 資料夾中的 `lkai -v` 確認版號。
