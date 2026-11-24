@@ -59,7 +59,8 @@
 
 ## 3. 驗收
 
-- [ ] 3.1 [after: 1.3, 2.1] 主對話在功能分支上做整體檢查：`run-tests.sh` 以 `/bin/bash` 全部通過；`actionlint` 以 0 結束；`spectra validate skip-release-for-root-docs` 通過；`grep -n 'AGENTS.md' .github/workflows/release.yml .github/scripts/release/release.sh docs/releasing.md` 只出現在 `paths-ignore`、`release_neutral_patterns` 與手冊 3.1 的清單；`git diff --stat main...HEAD`（只比對分支上的 commit，不含工作目錄中還沒 commit 的 `/init` 文件）只有 Implementation Contract 範圍內的四個檔案與本 change 的文件。
+- [x] 3.1 [after: 1.3, 2.1] 主對話在功能分支上做整體檢查：`run-tests.sh` 以 `/bin/bash` 全部通過；`actionlint` 以 0 結束；`spectra validate skip-release-for-root-docs` 通過；`grep -n 'AGENTS.md' .github/workflows/release.yml .github/scripts/release/release.sh docs/releasing.md` 只出現在 `paths-ignore`、`release_neutral_patterns` 與手冊 3.1 的清單；`git diff --stat main...HEAD`（只比對分支上的 commit，不含工作目錄中還沒 commit 的 `/init` 文件）只有 Implementation Contract 範圍內的四個檔案與本 change 的文件。
+  - 執行紀錄（2026-11-24，主對話，commit `a1a2d03`、`d8f352a`）：`run-tests.sh`（`/bin/bash` 3.2.57）共 139 個全部通過；`actionlint`（全部 workflow）以 0 結束、沒有輸出；`spectra validate skip-release-for-root-docs` 通過；`grep -n 'AGENTS.md' …` 只有 `release.yml` 的 `paths-ignore`、`release.sh` 的 `release_neutral_patterns` 與手冊 3.1 的清單三處；`git diff --stat main...HEAD` 是 `release.sh`、`test-release.sh`、`release.yml`、`docs/releasing.md` 與本 change 的 5 個文件，工作目錄中 `/init` 產生的 `AGENTS.md`、`CLAUDE.md`、`README.md` 沒有 commit。
 - [ ] 3.2 [after: 3.1] owner 同意後，主對話 push 功能分支並開 PR；驗證：PR 的 CI 通過（`gh pr checks`），並記錄 run 的連結。
 - [ ] 3.3 [after: 3.2] owner 合併 PR 之後，依 design 的 Migration Plan 第 1 步確認本 change 的合併開了一次 Release run（預期，因為改到 `.github/`），並等它成功結束（`gh run watch <run>`）；驗證：`gh release list` 列出新的 tag 與 Release。run 失敗時先依 `docs/releasing.md` 4.1 處理完，才進行 3.4。記錄 run 的連結與新版號。
 - [ ] 3.4 [after: 3.3] owner 合併只改 `README.md`、`CLAUDE.md`、`AGENTS.md` 的 PR（`/init` 產生的文件）之後，依 Migration Plan 第 2 步確認；驗證：`gh run list --workflow release.yml --commit <合併的 commit>` 沒有結果。記錄合併的 commit 與查詢結果。
