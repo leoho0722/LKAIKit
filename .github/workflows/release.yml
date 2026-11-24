@@ -2,8 +2,12 @@
 # 發版的邏輯都在 .github/scripts/release/release.sh，這個 workflow 只負責觸發、權限、排隊與傳入設定。
 #
 # - 觸發：
-#   - push 到 main：這次 push 改動的檔案全部在 docs/spectra/ 底下時不執行（paths-ignore，不必開 runner）；
-#     只要有一個檔案在外面，例如同時改了程式碼與 Spectra 文件的 PR，就照常執行。
+#   - push 到 main：這次 push 改動的檔案全部是不發版的檔案時不執行（paths-ignore，不必開 runner）；
+#     只要有一個檔案不是，例如同時改了程式碼與 Spectra 文件的 PR，就照常執行。
+#   - 不發版的檔案就是下面 paths-ignore 的清單。它和 release.sh 的 release_neutral_patterns 寫成同樣的字串
+#     （順序也保持相同，方便對照）；.github/scripts/release/tests/test-release.sh 檢查這裡的每一條都讓 release.sh
+#     判斷為沒有可發佈的變更，不檢查順序與 release.sh 多出來的 pattern。清單中不放註解與空行，每一條寫成
+#     - '<pattern>'，資料夾寫成 '<資料夾>/**'。哪些檔案不發版、要再加路徑時改哪些地方，見 docs/releasing.md 3.1 與 5.2。
 #   - workflow_dispatch：在失敗之後重跑，或以 dry_run 試跑。GitHub 只在這個檔案已經在預設分支上時才會收到
 #     這個事件，所以合併之後才能使用。
 # - 模式：dry_run 輸入是 true 時，LKAI_RELEASE_DRY_RUN 是 true，release.sh 只印出計畫與 Release Notes，
@@ -19,6 +23,9 @@ on:
     branches: [main]
     paths-ignore:
       - 'docs/spectra/**'
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'AGENTS.md'
   workflow_dispatch:
     inputs:
       provider:

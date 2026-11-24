@@ -18,8 +18,8 @@
   - 正式發版（release）：會建立 commit、tag 與 Release。push 觸發時一律是這個模式。
   - 試跑（dry run）：只印出計畫與 Release Notes，不修改檔案、不建立 commit 與 tag、不推送、不建立 Release。只有手動觸發並把 `dry_run` 設成 `true`，或在本機執行 script 時才是這個模式。
 - **計畫**：`release.sh` 讀 `HEAD` 的 `LKAIKitInfo.version`（`Sources/LKAICore/LKAIKitInfo.swift`），再依 tag 決定下列三種之一：
-  - 沒有可發佈的變更（`nothing-to-release`）：這個版號的 tag 已經存在，而且 tag 之後沒有新的 commit，或只有 `docs/spectra/` 的變更。以 0 結束，不發版。
-  - 升版（`version-bump`）：這個版號的 tag 已經存在，tag 之後有 `docs/spectra/` 以外的變更。AI 回答升級等級，script 算出新版號，修改 `LKAIKitInfo.version`，commit、打 tag、推送，再建立 Release。
+  - 沒有可發佈的變更（`nothing-to-release`）：這個版號的 tag 已經存在，而且 tag 之後沒有新的 commit，或只有不發版的檔案（見 3.1）的變更。以 0 結束，不發版；手動觸發時也一樣。
+  - 升版（`version-bump`）：這個版號的 tag 已經存在，tag 之後有不發版的檔案（見 3.1）以外的變更。AI 回答升級等級，script 算出新版號，修改 `LKAIKitInfo.version`，commit、打 tag、推送，再建立 Release。
   - 照原樣發佈（`release-as-is`）：這個版號還沒有 tag。不問 AI 升級等級，不建立 commit，直接在 `HEAD` 打這個版號的 tag、只推 tag，再建立 Release。第一次發版與人工指定版號都是這一種。
 - **步驟**：報告的「失敗的步驟」就是下列名稱之一：
 
@@ -45,7 +45,11 @@
 
 ### 3.1 觸發
 
-- **push 到 `main`**：自動執行。這次 push 改動的檔案全部在 `docs/spectra/` 底下時不執行；只要有一個檔案在外面就會執行，所以只改 `docs/` 的其他文件、`.github/` 或 `CLAUDE.md` 的合併也會發版（通常得到 `patch`）。
+- **push 到 `main`**：自動執行。這次 push 改動的檔案全部是不發版的檔案時不執行；只要有一個檔案不是就會執行，所以只改 `docs/` 的其他文件（包含這份手冊）或 `.github/` 的合併也會發版（通常得到 `patch`）。
+  - 不發版的檔案（這份手冊只在這裡列出清單，其他章節引用這裡）：
+    - `docs/spectra/` 底下的檔案。
+    - repo 根目錄的 `README.md`、`CLAUDE.md`、`AGENTS.md`。`docs/spectra/` 以外的子資料夾中同名的檔案（例如 `docs/README.md`）照常發版。
+  - 這份清單寫在 `release.yml` 的 `paths-ignore`（決定要不要開 runner）與 `release.sh` 的 `release_neutral_patterns`（決定要不要發版）。手動觸發不經過 `paths-ignore`，但 `release.sh` 排除同樣的檔案，所以目前版號的 tag 之後只有不發版的檔案的變更時，手動觸發也以「沒有可發佈的變更」結束。要再加路徑時見 5.2。
 - **手動（`workflow_dispatch`）**：用來在失敗之後重跑，或試跑。這個 workflow 合併進預設分支之後才能使用（GitHub 只在 workflow 檔案已經在預設分支上時才會收到這個事件）。不論從哪個分支觸發，job 取的都是 `main` 最新的 commit。
   - GitHub 網頁：Actions → Release → Run workflow，填 `provider`、`model` 與 `dry_run`。
   - 命令列：
@@ -80,7 +84,7 @@
 
 - 開一個 PR，把 `LKAIKitInfo.version` 改成想要的版號，條件是這個版號還沒有 tag，而且比所有版本 tag 都大。例如要發 `1.0.0`。
 - 合併後，因為這個版號沒有 tag，計畫是照原樣發佈：不問 AI 升級等級、不建立 commit，直接在合併後的 `HEAD` 打這個 tag；AI 只撰寫 Release Notes，範圍是 `HEAD` 的祖先中最高的版本 tag 到 `HEAD`。
-- 版號比現有的某個 tag 小時，這次執行會在「讀取版號」失敗，訊息寫出最高的 tag。版號和現有的 tag 相同時，視為那個版號已經發佈：tag 之後有 `docs/spectra/` 以外的變更就升版，否則沒有可發佈的變更。
+- 版號比現有的某個 tag 小時，這次執行會在「讀取版號」失敗，訊息寫出最高的 tag。版號和現有的 tag 相同時，視為那個版號已經發佈：tag 之後有不發版的檔案（見 3.1）以外的變更就升版，否則沒有可發佈的變更。
 - `LKAIKitInfo.swift` 中宣告版號的那一行必須維持原本的寫法（`public static let version: String = "<版號>"`，整個檔案剛好一行）；寫法改變時 `release.sh` 會在「讀取版號」失敗，PR 的 CI 也會先失敗。
 
 ### 3.4 試跑（dry run）
@@ -170,10 +174,10 @@
 
 | 失敗的步驟 | repo 的狀態 | 接手的方式 |
 | --- | --- | --- |
-| 解析供應商與模型、讀取版號、檢查 Release、判斷升級等級、撰寫 Release Notes、修改版號、重新建置、建立 commit 與 tag（這次沒有補建時） | 沒有任何改變 | 修正原因（例如補上金鑰、改正版號）後以 `workflow_dispatch` 重跑，或等下一次合併 |
+| 解析供應商與模型、讀取版號、檢查 Release、判斷升級等級、撰寫 Release Notes、修改版號、重新建置、建立 commit 與 tag（這次沒有補建時） | 沒有任何改變 | 修正原因（例如補上金鑰、改正版號）後以 `workflow_dispatch` 重跑，或等下一次會觸發的合併（見 3.1） |
 | 補建 Release 成功之後，上一列的任一步失敗 | 多了補建的 Release，其他沒有改變 | 同上；下一次執行不會再補建 |
 | 補建 Release | 沒有任何改變（那個 tag 還是沒有 Release） | 下一次執行會再試一次；一直失敗時見 4.2 |
-| 推送 | remote 沒有任何改變（補建的 Release 除外）：atomic push 讓 commit 與 tag 一起成功或一起失敗，被拒絕通常是 `main` 在執行期間有新的 commit | 下一個等待中的 run 會處理最新的 `main`；中間的 push 只改了 `docs/spectra/`、沒有等待中的 run 時，以 `workflow_dispatch` 重跑 |
+| 推送 | remote 沒有任何改變（補建的 Release 除外）：atomic push 讓 commit 與 tag 一起成功或一起失敗，被拒絕通常是 `main` 在執行期間有新的 commit | 下一個等待中的 run 會處理最新的 `main`；中間的 push 只改了不發版的檔案（見 3.1）、沒有等待中的 run 時，以 `workflow_dispatch` 重跑 |
 | 建立 Release | 升版時 remote 多了版號 commit 與 tag，照原樣發佈時多了 tag；沒有 Release。SwiftPM 只看 tag，App 不受影響 | 下一次執行會先補建這個 Release；一直失敗時見 4.2 |
 
 - 除了最後一列，失敗時 remote 的 `main` 與 tag 都沒有動，重跑是安全的；最後一列重跑時，會先補建那個 Release，再照常判斷之後的計畫。
@@ -234,7 +238,7 @@ gh workflow disable release.yml
 gh workflow enable release.yml
 ```
 
-- 停用之後，push 不會再觸發它，所以停用期間合併的變更不會發版；恢復時不會補跑停用期間錯過的 push。恢復之後，以 `workflow_dispatch` 觸發一次，或等下一次合併，都會處理 `main` 最新的 commit（每個 run 都處理最新的 `main`，停用期間合併的變更也包含在內）。
+- 停用之後，push 不會再觸發它，所以停用期間合併的變更不會發版；恢復時不會補跑停用期間錯過的 push。恢復之後，以 `workflow_dispatch` 觸發一次，或等下一次會觸發的合併（見 3.1），都會處理 `main` 最新的 commit（每個 run 都處理最新的 `main`，停用期間合併的變更也包含在內）。
 - 停用只擋住之後的觸發，不保證已經在排隊或執行中的 run 會被取消。停用之後用 `gh run list --workflow release.yml` 確認；有的話等它結束，或以 `gh run cancel <run id>` 取消。
 - 發錯版要退版時，一定要先停用，見 4.3。
 
@@ -254,8 +258,12 @@ gh workflow enable release.yml
 
 - 以 `GITHUB_TOKEN` 建立的 Release 不會觸發其他 workflow。
 - 第一個 tag 之後，`docs/spectra/config.yaml` 的「API 演進規則」開始生效。例如公開 enum 的 case 增減 associated value，會破壞 App 建立與比對那個 case 的寫法，第一個 release tag 之後要加資料時，改用 struct 帶資料。
-- 只改 `docs/spectra/` 以外的文件（包含這份手冊）也會觸發發版。之後要排除其他路徑時，要同時修改 `release.yml` 的 `paths-ignore`、`release.sh` 的「只有 `docs/spectra/` 的變更」規則與 spec 的範例表。
-- 「檢查 Release」只看目前版號的 tag，而且只看最近 100 個 Release。建立 Release 失敗後，下一次合併剛好是人工指定版號的 PR（照原樣發佈）時，舊 tag 的 Release 不會再被補建，由 owner 手動建立（4.2）。
+- 不發版的檔案（見 3.1）以外的文件，例如這份手冊，改了也會觸發發版。之後要再排除其他路徑時，一起修改：
+  - spec：release-automation「Release-neutral files」的定義，以及它的兩張範例表（「changed files and whether the workflow runs」與「changed file and plan」）。
+  - `release.yml` 的 `paths-ignore` 與 `release.sh` 的 `release_neutral_patterns`：兩處寫成同樣的字串，順序也保持相同（方便對照）。只有兩種形狀可以照抄：檔案的完整路徑（不以 `/` 開頭或結尾，不含 `//` 與 `.`、`..` 的路徑片段，也不含 `*`、`?`、`+`、`[`、`]`、`!`），以及以 `/**` 結尾的資料夾。資料夾一律寫成 `<資料夾>/**`：git 把資料夾名稱（例如 `Tests`）或以 `/` 結尾的路徑當成整個資料夾，GitHub 的 pattern 只比對名稱相同的檔案。其他形狀在 GitHub 與 git 的語意不同或沒有查證（例如 GitHub 的 `?` 是「前一個字元出現零或一次」，git 的 `?` 是任意一個字元），要另外換算 `release.sh` 的寫法，並擴充 `test-release.sh` 讀取 `paths-ignore` 的規則。
+  - 這份手冊 3.1 的清單。
+  - `test-release.sh` 會讀出 `paths-ignore` 的每一條，逐條確認 `release.sh` 判斷為沒有可發佈的變更；只改了 `paths-ignore`、忘了改 `release.sh` 時，這個測試會失敗，並寫出是哪一條與要改的地方。它不檢查順序，也不檢查 `release.sh` 多出來的 pattern：多出來的只會讓那些 push 多開一次 runner，以沒有可發佈的變更結束。`paths-ignore` 的清單中不放註解與空行，寫成同一行的清單（`paths-ignore: [...]`）或測試認不得的寫法時，測試也會失敗。
+- 「檢查 Release」只看目前版號的 tag，而且只看最近 100 個 Release。建立 Release 失敗後，下一次會觸發的合併（見 3.1）剛好是人工指定版號的 PR（照原樣發佈）時，舊 tag 的 Release 不會再被補建，由 owner 手動建立（4.2）。
 - 同一次執行最多建立兩個 Release：補建的那一個，以及這次發佈的版號。
 - `release.sh` 依賴 `lkai` 的介面：它以 `lkai --provider <供應商> --model <模型> --prompt-file <檔案> --timeout 180` 送出請求（Release Notes 另加 `--max-output-tokens 8192`），並只看退出碼判斷成敗：0 是成功，其他都是失敗。`lkai` 改了這些選項或退出碼時，要一起檢查 `release.sh` 的 `ask_lkai` 與它的三個呼叫處（補建 Release、判斷升級等級、撰寫 Release Notes）。bash 測試用的是假的 `lkai`，抓不到這種改變，要到下一次發版才會失敗；失敗時還沒有改任何東西（4.1 的第一列）。
 - `--timeout 180`、`--max-output-tokens 8192` 與 diff 的上限 200,000 bytes 都是估計值，輸入比 `lkai` 的實際 API 測試大很多。逾時（`lkai` 以 1 結束）或輸出被截斷（以 2 結束）時，這次執行失敗，不會發出不完整的 Release Notes；調整的地方：`--timeout` 在 `release.sh` 的 `ask_lkai`，`--max-output-tokens` 在撰寫 Release Notes 與補建 Release 的兩個呼叫處，diff 的上限是 `make-prompt.sh` 的預設值（讀 `LKAI_RELEASE_DIFF_LIMIT`，預設 200000；測試以它改小）。

@@ -9,7 +9,8 @@
 #      - 以 gh release list 檢查它有沒有 Release，沒有就補建：請 AI 撰寫那個 tag 的 Release Notes
 #        （範圍是比它小、而且是它祖先的最高版本 tag 到它），release 模式以 --verify-tag 建立 Release，
 #        dry run 只保留文字給報告。
-#      - 沒有新的 commit，或 tag 之後只有 docs/spectra/ 的變更，就沒有可發佈的變更，以 0 結束；
+#      - 沒有新的 commit，或 tag 之後只有不發版的檔案（release_neutral_patterns）的變更，就沒有可發佈的變更，
+#        以 0 結束；
 #        否則是升版。
 #      tag 不存在時照原樣發佈。
 #   4. 升版時請 AI 判斷升級等級，由 next-version.sh 算出新版號。
@@ -68,6 +69,20 @@ bot_email="41898282+github-actions[bot]@users.noreply.github.com"
 answer_whitespace=$' \t\r\n'
 # 被拒絕的回答最多印出幾個 bytes
 answer_preview_bytes=200
+# 不發版的檔案：目前版號的 tag 之後只改了符合這些 pattern 的檔案時，沒有可發佈的變更。
+# - 和 .github/workflows/release.yml 的 paths-ignore 寫成同樣的字串，順序也保持相同（方便對照）：paths-ignore
+#   決定要不要開 runner，這裡決定要不要發版，手動觸發（workflow_dispatch）不經過 paths-ignore。
+#   tests/test-release.sh 檢查 paths-ignore 的每一條都讓這裡判斷為沒有可發佈的變更，不檢查順序與這裡多出來的 pattern。
+# - 每一條以 :(exclude,glob)<pattern> 交給 git diff。只有兩種形狀可以照抄：檔案的完整路徑（不以 / 開頭或結尾，
+#   不含 // 與 . 或 .. 的路徑片段，也不含 * ? + [ ] !），以及以 /** 結尾的資料夾。資料夾要寫成 <資料夾>/**：
+#   git 把資料夾名稱或以 / 結尾的路徑當成整個資料夾，GitHub 只比對名稱相同的檔案。其他形狀在 GitHub 與 git 的
+#   語意不同或沒有查證，要另外換算並擴充測試（見 docs/releasing.md 5.2）。
+release_neutral_patterns=(
+  'docs/spectra/**'
+  'README.md'
+  'CLAUDE.md'
+  'AGENTS.md'
+)
 
 # 寫法的提醒：變數後面緊接著中文或全形標點時一定要寫成 ${名稱}。macOS 的 bash 3.2 會把非 ASCII 的位元組
 # 當成變數名稱的一部分，$provider，模型 會被當成另一個（沒有設定的）變數，訊息就缺了值而且變成亂碼。
@@ -517,10 +532,14 @@ if [ -n "$current_tag_commit" ]; then
     repaired_tag="$current_version"
     repair_notes_for_report="$repair_notes"
   fi
-  # 沒有新的 commit，或 tag 之後只有 docs/spectra/ 的變更時，沒有可發佈的變更
+  # 沒有新的 commit，或 tag 之後只有不發版的檔案（release_neutral_patterns）的變更時，沒有可發佈的變更
   commits_after_tag="$(git rev-list --count "$current_tag_commit..HEAD")" ||
     fail "無法比較 tag $current_version 與 HEAD"
-  changed_files="$(git diff --name-only "$current_tag_commit" HEAD -- . ':(exclude)docs/spectra')" ||
+  release_neutral_pathspecs=()
+  for release_neutral_pattern in "${release_neutral_patterns[@]}"; do
+    release_neutral_pathspecs+=(":(exclude,glob)$release_neutral_pattern")
+  done
+  changed_files="$(git diff --name-only "$current_tag_commit" HEAD -- . "${release_neutral_pathspecs[@]}")" ||
     fail "無法比較 tag $current_version 與 HEAD 的檔案"
   if [ "$commits_after_tag" = "0" ] || [ -z "$changed_files" ]; then
     plan="nothing-to-release"
