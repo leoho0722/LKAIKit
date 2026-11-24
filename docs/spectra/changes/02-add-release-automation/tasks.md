@@ -161,7 +161,8 @@
     - 再確認升級等級是三個字之一、新版號依規則計算、Release Notes 合理。
   - 確認 `LKAI_RELEASE_DRY_RUN=false` 在本機被拒絕。
   - 驗證：輸出與 `lkai` 的退出碼記在任務回報中；本 repo 與 GitHub 上都沒有新的 commit、tag 或 release。
-- [ ] 4.3 owner 在 GitHub 的 repository secrets 設定 `LKAI_ANTHROPIC_API_KEY`（或 owner 同意後由主對話以 `gh secret set` 從 Keychain 設定）：
+- [x] 4.3 owner 在 GitHub 的 repository secrets 設定 `LKAI_ANTHROPIC_API_KEY`（或 owner 同意後由主對話以 `gh secret set` 從 Keychain 設定）：
   - 驗證：`gh secret list` 列出 `LKAI_ANTHROPIC_API_KEY`。
+  - 執行紀錄（2026-11-24）：owner 同意後由主對話執行。先以 `security find-generic-password -s lkai-anthropic-api-key` 確認項目存在（不加 `-w`），再以 `security find-generic-password -s lkai-anthropic-api-key -w | tr -d '\n' | gh secret set LKAI_ANTHROPIC_API_KEY --repo leoho0722/LKAIKit` 從標準輸入設定，金鑰沒有出現在命令列引數或輸出中；`gh secret list` 列出 `LKAI_ANTHROPIC_API_KEY`（更新時間 2026-11-24T04:20:01Z）。金鑰的內容由合併後第一次發版的 AI 請求實際確認。
 - [ ] 4.4 [after: 4.2, 4.3] owner 同意後，主對話 push 功能分支並開 PR，確認 CI 通過：
   - 驗證：PR 的 CI check 成功；任務回報記錄 script 測試在 runner 上的結果與時間，並確認 job log 沒有出現測試造成的 annotation、job summary 沒有測試寫入的內容。
