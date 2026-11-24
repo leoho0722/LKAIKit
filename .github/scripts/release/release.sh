@@ -2,14 +2,25 @@
 # release.sh：合併到 main 之後的自動發版流程。不收引數，在 git repo 的根目錄執行。
 # 退出碼 0 表示已發佈、沒有可發佈的變更或 dry run 完成，1 表示失敗。
 #
-# 目前實作流程的第 1 到 5 步（任務 1.4）：
+# 目前實作的流程（任務 1.4、1.5）：
 #   1. 選擇模式，解析供應商與模型。
 #   2. 讀取 HEAD 的版號，列出版本 tag，版號不合格式或有更大的 tag 時失敗。
 #   3. 目前版號的 tag 存在時：沒有新的 commit，或 tag 之後只有 docs/spectra/ 的變更，就沒有可發佈的變更；
 #      否則是升版。tag 不存在時照原樣發佈。（「檢查 Release」之後的任務才加。）
 #   4. 升版時請 AI 判斷升級等級，由 next-version.sh 算出新版號。
 #   5. 請 AI 撰寫 Release Notes。
-# 第 5 步之後暫時印出報告與 Release Notes，以 1 結束；之後的任務取代這一段。
+#   6. dry run 在這裡結束：印出計畫與 Release Notes，以 0 結束，不改任何東西。
+# 正式發版（第 6 步之後的 commit、tag、push 與 Release，任務 1.6）還沒有實作：暫時印出報告與
+# Release Notes，以 1 結束；之後的任務取代這一段。
+#
+# 報告：模式選定之後的每一個結束點（沒有可發佈的變更、dry run、失敗）都由 EXIT trap（finish）印一次，
+# 而且只印一次；模式還沒選定就失敗時不印。fail、fail_with_ai_text 與 nothing-to-release 的分支只設定狀態
+# 與退出碼。報告只產生一份資料：stdout 是每行「名稱：值」；GITHUB_STEP_SUMMARY 指定檔案時，
+# 同一份附加進去，每行前面加「- 」成為 Markdown 的清單，Release Notes 原樣接在後面。
+#
+# AI 的文字（被拒絕的回答、Release Notes）：GITHUB_ACTIONS 是 true 時，print_ai_text 在文字前後各寫一行
+# ::stop-commands::<token> 與 ::<token>::（和文字在同一個流），GitHub 就不會執行文字裡的 workflow command。
+# job summary 不是 job log，不加標記。
 #
 # 環境變數：
 #   LKAI_RELEASE_DRY_RUN                 沒有設定、空字串或 true：dry run；false：正式發版，只在 GitHub Actions 中允許
@@ -18,11 +29,12 @@
 #   GITHUB_ACTIONS                       true 時訊息以 ::error:: 開頭
 #   API 金鑰（LKAI_*_API_KEY）由 lkai 自己讀取，這個 script 不讀、不印、不放進引數。
 #
-# 報告（write_report）向 stdout 印出下列各行，每行「名稱：值」，不知道的行不印：
+# 報告（write_report）的各行，每行「名稱：值」，不知道的行不印：
 #   模式、供應商、模型、計畫、升級等級、上一版、新版號、失敗的步驟
 #
 # 寫法的限制：相容 bash 3.2，只用 BSD 與 GNU 都有的寫法。
 
+# shellcheck disable=SC2329  # finish 由 EXIT 的 trap 呼叫，shellcheck 看不出 trap 裡的呼叫，會把 finish 與只被它呼叫的函式都當成沒用到
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
@@ -46,17 +58,40 @@ next_version=""
 current_step=""
 failed_step=""
 
+# 報告：選定模式之後才印（report_enabled）。nothing_to_release 時，報告之後接一行說明；
+# release_notes_for_report 有值時（dry run、暫時的結尾），報告之後接 Release Notes
+report_enabled="false"
+nothing_to_release="false"
+release_notes_for_report=""
+
+# 保護 AI 文字用的 token：GITHUB_ACTIONS 是 true 時，第一次需要時產生，之後重複使用
+ai_text_token=""
+
 # 暫存資料夾：放 prompt、lkai 的 stdout 與讀出的版號檔；結束時刪除
 work_dir=""
 
-# 清掉暫存資料夾。寫成函式，之後的 EXIT trap 可以和別的收尾一起呼叫
-# shellcheck disable=SC2329  # 由下面的 trap 呼叫
+# 清掉暫存資料夾。寫成函式，EXIT trap 在寫完報告之後呼叫它
 cleanup() {
   if [ -n "$work_dir" ]; then
     rm -rf "$work_dir"
   fi
 }
-trap cleanup EXIT
+
+# 每個結束點都在這裡收尾：第一行就存下退出碼；模式選定之後印報告（只印一次）；再清暫存資料夾；
+# 退出碼保持原樣。報告裡的 AI 文字寫不出來（產生不了 token）時，退出碼改成 1。
+finish() {
+  local exit_code=$?
+  trap - EXIT
+  if [ "$report_enabled" = "true" ]; then
+    report_enabled="false"
+    if ! emit_report && [ "$exit_code" -eq 0 ]; then
+      exit_code=1
+    fi
+  fi
+  cleanup
+  exit "$exit_code"
+}
+trap finish EXIT
 trap 'exit 1' HUP INT TERM
 
 # ---------------------------------------------------------------------------
@@ -82,10 +117,43 @@ error_line() {
   printf '%s%s\n' "$prefix" "$1" >&2
 }
 
-# print_ai_text <文字>：印出 AI 的文字（被拒絕的回答、Release Notes）。AI 的文字一律經過這個函式寫出，
-# 之後的任務在這裡加上 GitHub Actions 的保護
+# warning_line <訊息>：把一行警告寫到 stderr，不影響退出碼。GITHUB_ACTIONS 是 true 時以 ::warning:: 開頭，
+# 其他情況以 Warning: （冒號後有一個空格）開頭
+warning_line() {
+  local prefix="Warning: "
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    prefix="::warning::"
+  fi
+  printf '%s%s\n' "$prefix" "$1" >&2
+}
+
+# ensure_ai_text_token：GITHUB_ACTIONS 是 true 時用的 token，一次執行只產生一次：從 /dev/urandom 取 16 個
+# byte，轉成 32 個十六進位字元。產生失敗或長度不是 32 時回傳 1，print_ai_text 就不會印出 AI 的文字
+ensure_ai_text_token() {
+  local token
+  if [ -n "$ai_text_token" ]; then
+    return 0
+  fi
+  token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')" || token=""
+  if ! [[ "$token" =~ ^[0-9a-f]{32}$ ]]; then
+    error_line "無法產生保護 AI 文字用的隨機 token，所以不印出 AI 的文字"
+    return 1
+  fi
+  ai_text_token="$token"
+}
+
+# print_ai_text <文字>：印出 AI 的文字（被拒絕的回答、Release Notes）。AI 的文字一律經過這個函式寫出。
+# GITHUB_ACTIONS 是 true 時，文字前後各寫一行 ::stop-commands::<token> 與 ::<token>::，和文字在同一個流
+# （呼叫端把輸出導到 stdout 或 stderr，標記跟著走）；沒有 token 時什麼都不印，回傳 1
 print_ai_text() {
+  if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+    printf '%s\n' "$1"
+    return 0
+  fi
+  ensure_ai_text_token || return 1
+  printf '::stop-commands::%s\n' "$ai_text_token"
   printf '%s\n' "$1"
+  printf '::%s::\n' "$ai_text_token"
 }
 
 # write_report：向 stdout 印出報告，每行「名稱：值」，不知道的行不印
@@ -120,27 +188,66 @@ write_report() {
   return 0
 }
 
+# write_summary <報告>：GITHUB_STEP_SUMMARY 指定檔案時，把同一份報告以 Markdown 附加進去：
+# 每行前面加「- 」成為清單，沒有可發佈的變更時接一行說明，Release Notes 原樣接在後面（不加 stop-commands 的標記）。
+# 寫入失敗（例如資料夾不存在）時只在 stderr 印一行警告，不改變退出碼
+write_summary() {
+  local report_text="$1" summary_text
+  if [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+    return 0
+  fi
+  summary_text="$(printf '%s\n' "$report_text" | sed 's/^/- /')"
+  if [ "$nothing_to_release" = "true" ]; then
+    summary_text="${summary_text}"$'\n\n沒有可發佈的變更。'
+  fi
+  if [ -n "$release_notes_for_report" ]; then
+    summary_text="${summary_text}"$'\n\nRelease Notes：\n\n'"${release_notes_for_report}"
+  fi
+  # 一個簡單指令一次寫完。2>/dev/null 放在 >> 之前，開檔失敗時 bash 自己的訊息才不會印出來；
+  # 不用 { …; } 群組來導向：群組的重新導向失敗時，bash 3.2 不會還原 stderr，後面的警告就印不出來
+  if ! printf '%s\n' "$summary_text" 2>/dev/null >>"$GITHUB_STEP_SUMMARY"; then
+    warning_line "無法寫入 GITHUB_STEP_SUMMARY（$(printable "$GITHUB_STEP_SUMMARY")），job summary 沒有這次的報告"
+  fi
+  return 0
+}
+
+# emit_report：印出報告：stdout 是每行「名稱：值」，沒有可發佈的變更時接一行說明，有 Release Notes 時接
+# 「Release Notes：」與 Release Notes（經過 print_ai_text）；再寫入 job summary。stdout 與 summary 用同一份
+# 報告資料。Release Notes 因為沒有 token 而印不出來時回傳 1。
+emit_report() {
+  local report_text status=0
+  report_text="$(write_report)"
+  printf '%s\n' "$report_text"
+  if [ "$nothing_to_release" = "true" ]; then
+    printf '沒有可發佈的變更。\n'
+  fi
+  if [ -n "$release_notes_for_report" ]; then
+    printf 'Release Notes：\n'
+    print_ai_text "$release_notes_for_report" || status=1
+  fi
+  write_summary "$report_text"
+  return "$status"
+}
+
 # fail_before_mode <訊息>：模式還沒選定時失敗：只寫錯誤訊息，沒有報告（spec 規定選定模式之後才有報告）
 fail_before_mode() {
   error_line "$1"
   exit 1
 }
 
-# fail <訊息>：失敗：錯誤訊息寫到 stderr，報告（含失敗的步驟）印到 stdout，以 1 結束
+# fail <訊息>：失敗：錯誤訊息寫到 stderr，記下失敗的步驟，以 1 結束；報告（含失敗的步驟）由 EXIT trap 印
 fail() {
   error_line "$1"
   failed_step="$current_step"
-  write_report
   exit 1
 }
 
-# fail_with_ai_text <訊息> <AI 的文字>：同 fail，但先把 AI 的文字寫在錯誤訊息後面。
-# 錯誤訊息那一行不含 AI 的文字
+# fail_with_ai_text <訊息> <AI 的文字>：同 fail，但先把 AI 的文字寫在錯誤訊息後面（同一個流，經過 print_ai_text）。
+# 錯誤訊息那一行不含 AI 的文字；沒有 token 而印不出 AI 的文字時，那個 print_ai_text 已經寫了錯誤訊息
 fail_with_ai_text() {
   error_line "$1"
-  print_ai_text "$2" >&2
+  print_ai_text "$2" >&2 || true
   failed_step="$current_step"
-  write_report
   exit 1
 }
 
@@ -198,6 +305,8 @@ case "$dry_run_value" in
     ;;
 esac
 
+# 模式選定了：之後的每個結束點都印報告
+report_enabled="true"
 current_step="解析供應商與模型"
 
 # 供應商：本次的值 → repository 的預設值 → anthropic
@@ -268,8 +377,7 @@ if [ -n "$current_tag_commit" ]; then
     fail "無法比較 tag $current_version 與 HEAD 的檔案"
   if [ "$commits_after_tag" = "0" ] || [ -z "$changed_files" ]; then
     plan="nothing-to-release"
-    write_report
-    echo "沒有可發佈的變更。"
+    nothing_to_release="true"
     exit 0
   fi
   plan="version-bump"
@@ -341,11 +449,21 @@ case "$release_notes" in
 esac
 
 # ---------------------------------------------------------------------------
-# 暫時的結尾（任務 1.5、1.6 取代）：印出報告與 Release Notes，以 1 結束
+# 第 6 步：dry run 在這裡結束
 # ---------------------------------------------------------------------------
 
-write_report
-echo "Release Notes："
-print_ai_text "$release_notes"
-error_line "發版流程第 6 步之後還沒有實作，暫時印出報告與 Release Notes 就結束"
+# 報告之後接 Release Notes（dry run 是「將會建立」的那一份）
+release_notes_for_report="$release_notes"
+
+# dry run：印出計畫與 Release Notes（由 EXIT trap 的報告），以 0 結束。
+# 到這裡什麼都沒有改：沒有修改檔案、沒有 commit 與 tag、沒有 push、沒有呼叫 gh release create
+if [ "$mode" = "dry-run" ]; then
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# 暫時的結尾（任務 1.6 取代）：正式發版第 7 步之後的流程還沒有實作
+# ---------------------------------------------------------------------------
+
+error_line "正式發版（第 7 步之後的 commit、tag、push 與 Release）還沒有實作，暫時印出報告與 Release Notes 就結束"
 exit 1

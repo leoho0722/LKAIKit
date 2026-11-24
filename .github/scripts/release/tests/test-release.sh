@@ -715,3 +715,305 @@ test_release_invokes_lkai_with_the_documented_arguments() {
   assert_file_contains "$FAKE_LOG_DIR/lkai-release-notes-1.prompt" "上一版：0.1.0"
   assert_file_not_contains "$FAKE_LOG_DIR/lkai-bump-level-1.prompt" "0.1.1" "升級等級的 prompt 不能先帶新版號"
 }
+
+# ---------------------------------------------------------------------------
+# 任務 1.5：報告只印一次、dry run、job summary、AI 文字的保護、API 金鑰
+# ---------------------------------------------------------------------------
+
+# use_step_summary：建立 GITHUB_STEP_SUMMARY 指向的暫存檔（先放一行「已有的內容」，附加時不能蓋掉它）
+use_step_summary() {
+  SUMMARY_FILE="$TEST_TMP/step-summary.md"
+  printf '已有的內容\n' >"$SUMMARY_FILE"
+  export GITHUB_STEP_SUMMARY="$SUMMARY_FILE"
+}
+
+# line_number <檔案> <完整的一行>：這一行第一次出現的行號；沒有這一行時什麼都不印
+line_number() {
+  grep -n -x -F -- "$2" "$1" 2>/dev/null | head -n 1 | cut -d: -f1
+}
+
+# assert_line_before <檔案> <行 a> <行 b>：兩行都在檔案裡，而且 a 在 b 之前
+assert_line_before() {
+  local a_number b_number
+  a_number="$(line_number "$1" "$2")"
+  b_number="$(line_number "$1" "$3")"
+  if [ -z "$a_number" ] || [ -z "$b_number" ] || [ "$a_number" -ge "$b_number" ]; then
+    fail "要先有「$2」，再有「$3」" "「$2」的行號：${a_number:-沒有}" "「$3」的行號：${b_number:-沒有}" \
+      "檔案（cat -v）：$(show_file "$1")"
+  fi
+}
+
+# assert_line_count <檔案> <完整的一行> <預期的次數>：這一行在檔案裡出現幾次
+assert_line_count() {
+  local count
+  count="$(grep -c -x -F -- "$2" "$1" 2>/dev/null)"
+  assert_equals "$3" "$count" "「$2」出現的次數"
+}
+
+# assert_wrapped_in_stop_commands <檔案> <被保護的那一行>：檔案裡有一行 ::stop-commands::<token>，
+# token 是至少 32 個十六進位字元，之後有一行 ::<token>::，而被保護的那一行在這兩行之間（同一個檔案，也就是同一個流）
+assert_wrapped_in_stop_commands() {
+  local file="$1" text="$2" start_number token end_number text_number
+  start_number="$(grep -n '^::stop-commands::' "$file" | head -n 1 | cut -d: -f1)"
+  if [ -z "$start_number" ]; then
+    fail "沒有 ::stop-commands::<token> 那一行" "檔案（cat -v）：$(show_file "$file")"
+  fi
+  token="$(sed -n "${start_number}p" "$file" | sed 's/^::stop-commands:://')"
+  if ! printf '%s\n' "$token" | grep -q -E '^[0-9a-fA-F]{32,}$'; then
+    fail "token 要是至少 32 個十六進位字元" "token（cat -v）：$(printf '%s' "$token" | cat -v)"
+  fi
+  end_number="$(line_number "$file" "::${token}::")"
+  text_number="$(line_number "$file" "$text")"
+  if [ -z "$end_number" ]; then
+    fail "沒有對應的 ::<token>:: 那一行" "token：${token}" "檔案（cat -v）：$(show_file "$file")"
+  fi
+  if [ -z "$text_number" ]; then
+    fail "沒有被保護的那一行：$text" "檔案（cat -v）：$(show_file "$file")"
+  fi
+  if [ "$start_number" -ge "$text_number" ] || [ "$text_number" -ge "$end_number" ]; then
+    fail "「${text}」要在 ::stop-commands::<token> 與 ::<token>:: 之間" \
+      "::stop-commands:: 的行號：${start_number}" "「${text}」的行號：${text_number}" "::<token>:: 的行號：${end_number}" \
+      "檔案（cat -v）：$(show_file "$file")"
+  fi
+}
+
+# assert_has_no_api_key <檔案>：檔案不含測試用的 API 金鑰。失敗訊息不印出金鑰
+assert_has_no_api_key() {
+  if grep -F -q -- "$TEST_API_KEY" "$1" 2>/dev/null; then
+    fail "檔案含有 API 金鑰：$1"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Dry run
+# ---------------------------------------------------------------------------
+
+# tag 0.1.0（有 Release）之後有一個改 Sources/ 的 commit，AI 的回答是 patch，dry run：stdout 有計畫、
+# 上一版、新版號、供應商與模型，接著是「Release Notes：」與 Release Notes；工作目錄、remote 的 main、
+# tag 都沒有改變，沒有建立 Release，退出碼 0；報告只印一次。
+# spectra-scenario: release-automation / Dry run a version bump
+test_release_dry_run_of_a_version_bump_prints_the_plan_and_the_release_notes() {
+  fixture_version_bump
+  export LKAI_RELEASE_DRY_RUN=true
+  export FAKE_LKAI_BUMP_REPLY=$'patch\n'
+  export FAKE_LKAI_NOTES=$'## 新功能\n- 測試用的項目\n'
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_has_line "$TEST_STDOUT" "模式：dry-run"
+  assert_plan "version-bump" "0.1.0" "0.1.1"
+  assert_has_line "$TEST_STDOUT" "供應商：anthropic"
+  assert_has_line "$TEST_STDOUT" "模型：claude-opus-5-5"
+  assert_line_count "$TEST_STDOUT" "模式：dry-run" 1
+  assert_line_count "$TEST_STDOUT" "Release Notes：" 1
+  assert_line_before "$TEST_STDOUT" "新版號：0.1.1" "Release Notes："
+  assert_line_before "$TEST_STDOUT" "Release Notes：" "- 測試用的項目"
+  assert_repo_untouched
+  assert_no_release_created
+}
+
+# ---------------------------------------------------------------------------
+# Run report：job summary
+# ---------------------------------------------------------------------------
+
+# 正式發版的版本（建立 commit、push 與 Release）要等任務 1.6；這裡先以 dry run 代替：
+# GITHUB_ACTIONS=true、LKAI_RELEASE_DRY_RUN=true，job summary 要有模式、計畫、上一版、新版號、供應商、模型與
+# Release Notes。summary 是 Markdown，各行寫成清單（前面加「- 」）；Release Notes 原樣接在後面；
+# job summary 不是 job log，不加 stop-commands 的標記。1.6 會把這個測試改成正式發版的版本。
+# spectra-scenario: release-automation / Report a release in the job summary
+test_release_job_summary_reports_a_dry_run_release() {
+  fixture_version_bump
+  use_step_summary
+  export GITHUB_ACTIONS=true
+  export LKAI_RELEASE_DRY_RUN=true
+  export FAKE_LKAI_NOTES=$'## 新功能\n- 測試用的項目\n'
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_has_line "$SUMMARY_FILE" "已有的內容" "附加到 summary，不能蓋掉原有的內容"
+  assert_has_line "$SUMMARY_FILE" "- 模式：dry-run"
+  assert_has_line "$SUMMARY_FILE" "- 計畫：version-bump"
+  assert_has_line "$SUMMARY_FILE" "- 上一版：0.1.0"
+  assert_has_line "$SUMMARY_FILE" "- 新版號：0.1.1"
+  assert_has_line "$SUMMARY_FILE" "- 供應商：anthropic"
+  assert_has_line "$SUMMARY_FILE" "- 模型：claude-opus-5-5"
+  assert_file_contains "$SUMMARY_FILE" "Release Notes" "summary 要有 Release Notes 的標示"
+  assert_has_line "$SUMMARY_FILE" "## 新功能" "Release Notes 原樣接在後面"
+  assert_has_line "$SUMMARY_FILE" "- 測試用的項目" "Release Notes 原樣接在後面"
+  assert_line_count "$SUMMARY_FILE" "- 模式：dry-run" 1
+  assert_file_not_contains "$SUMMARY_FILE" "::stop-commands::" "job summary 不加 stop-commands 的標記"
+}
+
+# spectra-scenario: release-automation / Report nothing to release
+test_release_job_summary_says_there_is_nothing_to_release() {
+  fixture_nothing_to_release
+  use_step_summary
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_has_line "$SUMMARY_FILE" "已有的內容"
+  assert_has_line "$SUMMARY_FILE" "- 模式：dry-run"
+  assert_has_line "$SUMMARY_FILE" "- 計畫：nothing-to-release"
+  assert_file_contains "$SUMMARY_FILE" "沒有可發佈的變更。"
+  assert_line_count "$SUMMARY_FILE" "- 模式：dry-run" 1
+}
+
+# spectra-scenario: release-automation / Report a failed run
+test_release_job_summary_names_the_failed_bump_level_request() {
+  fixture_version_bump
+  use_step_summary
+  export FAKE_LKAI_BUMP_EXIT=1
+
+  run_release
+
+  assert_exit_code 1 "release.sh 的退出碼"
+  assert_has_line "$SUMMARY_FILE" "已有的內容"
+  assert_has_line "$SUMMARY_FILE" "- 模式：dry-run"
+  assert_has_line "$SUMMARY_FILE" "- 計畫：version-bump"
+  assert_has_line "$SUMMARY_FILE" "- 失敗的步驟：判斷升級等級"
+  assert_line_count "$SUMMARY_FILE" "- 模式：dry-run" 1
+}
+
+# spectra-scenario: release-automation / Report a failure before the version is read
+test_release_job_summary_names_the_failed_provider_resolution() {
+  fixture_first_release
+  use_step_summary
+  export LKAI_RELEASE_PROVIDER=google
+  export LKAI_RELEASE_MODEL=""
+
+  run_release
+
+  assert_exit_code 1 "release.sh 的退出碼"
+  assert_has_line "$SUMMARY_FILE" "已有的內容"
+  assert_has_line "$SUMMARY_FILE" "- 模式：dry-run"
+  assert_has_line "$SUMMARY_FILE" "- 失敗的步驟：解析供應商與模型"
+  assert_line_count "$SUMMARY_FILE" "- 模式：dry-run" 1
+}
+
+# 模式還沒選定就失敗（DRY_RUN 的值不認得）：沒有報告，也不寫 job summary
+test_release_rejected_mode_prints_no_report_and_leaves_the_summary_alone() {
+  fixture_first_release
+  use_step_summary
+  export LKAI_RELEASE_DRY_RUN=1
+
+  run_release
+
+  assert_exit_code 1 "release.sh 的退出碼"
+  assert_equals "0" "$(grep -c '^模式：' "$TEST_STDOUT")" "模式還沒選定時 stdout 不該有報告"
+  assert_file_equals "$SUMMARY_FILE" '已有的內容\n'
+}
+
+# 每個結束點的報告只印一次：失敗的路徑（Release Notes 只有空白）與沒有可發佈的變更各一個
+test_release_prints_the_report_once_when_the_run_fails() {
+  fixture_first_release
+  export FAKE_LKAI_NOTES=$'  \n'
+
+  run_release
+
+  assert_exit_code 1 "release.sh 的退出碼"
+  assert_equals "1" "$(grep -c '^模式：' "$TEST_STDOUT")" "報告的「模式：」行出現的次數"
+  assert_equals "1" "$(grep -c '^失敗的步驟：' "$TEST_STDOUT")" "報告的「失敗的步驟：」行出現的次數"
+}
+
+test_release_prints_the_report_once_when_there_is_nothing_to_release() {
+  fixture_nothing_to_release
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_equals "1" "$(grep -c '^模式：' "$TEST_STDOUT")" "報告的「模式：」行出現的次數"
+  assert_line_count "$TEST_STDOUT" "沒有可發佈的變更。" 1
+}
+
+# ---------------------------------------------------------------------------
+# AI text in the job log
+# ---------------------------------------------------------------------------
+
+# GITHUB_ACTIONS 是 true，Release Notes 含一行 ::error::injected：那一行在 stdout 的
+# ::stop-commands::<token> 與 ::<token>:: 之間，token 至少 32 個十六進位字元
+# spectra-scenario: release-automation / Release notes contain a workflow command
+test_release_notes_with_a_workflow_command_are_wrapped_in_stop_commands() {
+  fixture_first_release
+  export GITHUB_ACTIONS=true
+  export LKAI_RELEASE_DRY_RUN=true
+  export FAKE_LKAI_NOTES=$'前言\n::error::injected\n結尾\n'
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_wrapped_in_stop_commands "$TEST_STDOUT" "::error::injected"
+  assert_wrapped_in_stop_commands "$TEST_STDOUT" "前言"
+  assert_wrapped_in_stop_commands "$TEST_STDOUT" "結尾"
+  assert_equals "1" "$(grep -c '^::stop-commands::' "$TEST_STDOUT")" "token 一次執行只選一次，Release Notes 只包一次"
+}
+
+# GITHUB_ACTIONS 沒有設定（例如本機執行）時不加標記，輸出才不會多出看不懂的行
+test_release_notes_are_not_wrapped_outside_github_actions() {
+  fixture_first_release
+  export LKAI_RELEASE_DRY_RUN=true
+  export FAKE_LKAI_NOTES=$'前言\n::error::injected\n結尾\n'
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_has_line "$TEST_STDOUT" "::error::injected" "Release Notes 照常印出"
+  assert_equals "0" "$(grep -c '^::stop-commands::' "$TEST_STDOUT")" "不該有 ::stop-commands:: 那一行"
+  assert_equals "0" "$(grep -c -E '^::[0-9a-fA-F]{32,}::$' "$TEST_STDOUT")" "不該有 ::<token>:: 那一行"
+}
+
+# 被拒絕的回答是 upgrade LF ::add-mask::x，GITHUB_ACTIONS 是 true：stderr 的 ::error:: 行不含回答的任何文字，
+# 回答放在後面，在 ::stop-commands::<token> 與 ::<token>:: 之間（同一個流）
+# spectra-scenario: release-automation / A rejected answer contains a workflow command
+test_release_rejected_answer_with_a_workflow_command_is_wrapped_in_stop_commands() {
+  fixture_version_bump
+  export GITHUB_ACTIONS=true
+  export FAKE_LKAI_BUMP_REPLY=$'upgrade\n::add-mask::x\n'
+
+  run_release
+
+  assert_exit_code 1 "release.sh 的退出碼"
+  local error_lines
+  error_lines="$(grep '^::error::' "$TEST_STDERR")"
+  if [ -z "$error_lines" ]; then
+    fail "stderr 要有 ::error:: 開頭的一行" "stderr（cat -v）：$(show_file "$TEST_STDERR")"
+  fi
+  assert_not_contains "$error_lines" "upgrade" "::error:: 那一行不能含 AI 的文字"
+  assert_not_contains "$error_lines" "::add-mask::x" "::error:: 那一行不能含 AI 的文字"
+  assert_wrapped_in_stop_commands "$TEST_STDERR" "::add-mask::x"
+  assert_wrapped_in_stop_commands "$TEST_STDERR" "upgrade"
+}
+
+# ---------------------------------------------------------------------------
+# API keys stay in the environment
+# ---------------------------------------------------------------------------
+
+# LKAI_ANTHROPIC_API_KEY 是 sk-test-secret，升版的 dry run：lkai 收到的引數、prompt 檔，以及 stdout、stderr、
+# job summary 與假指令留下的所有記錄，都不含這個金鑰（金鑰只從環境變數交給 lkai）
+# spectra-scenario: release-automation / Inspect the lkai invocation
+test_release_never_writes_the_api_key_anywhere() {
+  TEST_API_KEY="sk-test-secret"
+  fixture_version_bump
+  use_step_summary
+  export LKAI_ANTHROPIC_API_KEY="$TEST_API_KEY"
+  export LKAI_RELEASE_PROVIDER=anthropic
+  export LKAI_RELEASE_MODEL=claude-opus-5-5
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_has_line "$SUMMARY_FILE" "- 新版號：0.1.1" "確認有跑到最後，summary 才有內容可以檢查"
+  assert_has_no_api_key "$TEST_STDOUT"
+  assert_has_no_api_key "$TEST_STDERR"
+  assert_has_no_api_key "$SUMMARY_FILE"
+  local record
+  for record in "$FAKE_LOG_DIR"/* "$FAKE_LOG_DIR"/releases/*/*; do
+    if [ -f "$record" ]; then
+      assert_has_no_api_key "$record"
+    fi
+  done
+  assert_file_not_empty "$FAKE_LOG_DIR/lkai-bump-level-1.args" "lkai 的引數檔要在，才有東西可檢查"
+  assert_file_not_empty "$FAKE_LOG_DIR/lkai-release-notes-1.prompt" "prompt 檔要在，才有東西可檢查"
+}
