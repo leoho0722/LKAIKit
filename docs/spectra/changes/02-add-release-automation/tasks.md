@@ -55,7 +55,7 @@
     - `<target-ref>` 是 tag 時，範圍到那個 tag 為止。
     - 範本的第一行標記保留在輸出的第一行。
   - 驗證：主對話觀察到新測試在實作前失敗；`run-tests.sh` 通過；主對話審查兩個範本的文字。
-- [ ] 1.4 [after: 1.2, 1.3] 依 design「只有 GitHub Actions 中明確設成 false 才正式發版」、「供應商與模型：優先順序由 script 決定，只留一組預設值，驗證交給 lkai」、「計畫先擋下比現在版號更大的 tag」、「tag 之後只有 docs/spectra 的變更時不發版」與「版號還沒有 tag 時照原樣發佈」，新增 `.github/scripts/release/release.sh` 的前半段，交付 release-automation「Release mode」、「Release provider and model selection」、「Release plan」、「AI bump level answer」、「Release notes generation」與「Failed AI request」（sonnet）：
+- [x] 1.4 [after: 1.2, 1.3] 依 design「只有 GitHub Actions 中明確設成 false 才正式發版」、「供應商與模型：優先順序由 script 決定，只留一組預設值，驗證交給 lkai」、「計畫先擋下比現在版號更大的 tag」、「tag 之後只有 docs/spectra 的變更時不發版」與「版號還沒有 tag 時照原樣發佈」，新增 `.github/scripts/release/release.sh` 的前半段，交付 release-automation「Release mode」、「Release provider and model selection」、「Release plan」、「AI bump level answer」、「Release notes generation」與「Failed AI request」（sonnet）：
   - 流程照 Implementation Contract 的第 1 到 5 步；這個任務先不處理第 3 步的「檢查 Release」，由 1.6 加上。
   - 呼叫 `lkai` 的方式照「呼叫 `lkai` 的方式」；截斷被拒絕的回答照 design「發版邏輯寫成 bash script，只用 BSD 與 GNU 都有的寫法」的 `iconv` 寫法。
   - 這個任務先以「印出計畫與 Release Notes 後以 1 結束」作為第 5 步之後的暫時行為，由 1.5 取代。
