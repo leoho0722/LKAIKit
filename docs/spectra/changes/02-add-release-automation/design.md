@@ -300,7 +300,11 @@
   - 前：`::stop-commands::<token>`。
   - 後：`::<token>::`。
   - token 每次執行以 `/dev/urandom` 產生 32 個十六進位字元。
-  - AI 的文字包括 Release Notes 與錯誤訊息中被拒絕的回答。
+  - AI 的文字包括 Release Notes、錯誤訊息中被拒絕的回答，以及 `lkai` 的 stderr。
+- `lkai` 的 stderr 也算 AI 的文字（實作審查，opus F1）：模型拒答時，`lkai` 把拒答的說明印在 `Details:` 那一行，OpenAI 的說明就是模型寫的文字（`.refused(detail:)`），可能跨好幾行。所以 `release.sh` 把 `lkai` 的 stderr 收進檔案，`lkai` 結束後整段經過同一個函式寫出。代價：
+  - 在 GitHub Actions 中，缺少金鑰、逾時這類與模型無關的錯誤，也夾在兩行標記之間，不會成為 annotation；失敗的原因看 `release.sh` 自己寫的 `::error::` 那一行與報告的「失敗的步驟」。
+  - `lkai` 的 stderr 要等它結束才印出，不再即時顯示。
+  - 收 stderr 用重新導向到檔案，不用 pipe 或 process substitution，讓 `lkai` 仍是 `release.sh` 的直接子行程：被訊號中止時，trap 等它結束才執行（實作審查，fable 第二輪）。
 - `release.sh` 自己寫的 `::error::` 那一行不放 AI 的文字。被拒絕的回答放在它後面幾行，以上面的兩行包起來，所以回答中的 LF 不會讓後面的行落在保護之外。
 - 理由（opus 審查 S6）：回答與 Release Notes 可能受 diff 內容誘導而含有 `::error::`、`::add-mask::` 等行，GitHub 會把它們當成指令（Context 第 2 點）。stdout 與 stderr 是兩條管線，先後順序不保證，所以兩行標記要和文字在同一條。
 - 本機執行時不加，避免輸出多出看不懂的行。
