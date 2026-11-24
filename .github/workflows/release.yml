@@ -1,0 +1,91 @@
+# Release：合併到 main 之後，由 AI 判斷升級等級並撰寫 Release Notes，建立版號 commit、tag 與 GitHub Release。
+# 發版的邏輯都在 .github/scripts/release/release.sh，這個 workflow 只負責觸發、權限、排隊與傳入設定。
+#
+# - 觸發：
+#   - push 到 main：這次 push 改動的檔案全部在 docs/spectra/ 底下時不執行（paths-ignore，不必開 runner）；
+#     只要有一個檔案在外面，例如同時改了程式碼與 Spectra 文件的 PR，就照常執行。
+#   - workflow_dispatch：在失敗之後重跑，或以 dry_run 試跑。GitHub 只在這個檔案已經在預設分支上時才會收到
+#     這個事件，所以合併之後才能使用。
+# - 模式：dry_run 輸入是 true 時，LKAI_RELEASE_DRY_RUN 是 true，release.sh 只印出計畫與 Release Notes，
+#   不改任何東西；其他情況（包含 push）是 false，正式發版。
+# - 不會循環：release.sh 以 GITHUB_TOKEN 推送版號 commit 與 tag，而 GITHUB_TOKEN 觸發的事件不會再開新的
+#   workflow run（workflow_dispatch 與 repository_dispatch 除外），所以那次 push 不會再觸發這個 workflow。
+# - 第三方 action 以完整的 commit SHA 固定，tag 可以被改指向其他 commit，SHA 不行。
+# - 操作說明（觸發方式、repository 變數與機密的設定、失敗時怎麼接手）寫在 docs/releasing.md。
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/spectra/**'
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: '本次使用的供應商（lkai --provider 的值）；留空時用 repository 變數 LKAI_RELEASE_DEFAULT_PROVIDER，也沒有時是 anthropic'
+        type: string
+        default: ''
+      model:
+        description: '本次使用的模型；留空時用 repository 變數 LKAI_RELEASE_DEFAULT_MODEL。指定了供應商時，這裡一定要指定模型'
+        type: string
+        default: ''
+      dry_run:
+        description: '只試跑：印出計畫與 Release Notes，不修改檔案、不建立 commit 與 tag、不推送、不建立 Release'
+        type: boolean
+        default: false
+
+# 推送版號 commit 與 tag、建立 Release 需要寫入 contents。
+permissions:
+  contents: write
+
+# 能發版的 run（push，以及不是 dry run 的手動觸發）共用 release 這個 group：一次只執行一個，
+# 新的 run 不取消執行中的 run。同一個 group 中等待的 run 會被更新的 run 取代（GitHub 的預設行為），
+# 沒有關係：每個 run 都處理 job 開始時 main 最新的 commit，被取代的 run 的變更不會漏掉。
+# push 觸發時 inputs.dry_run 沒有值（空的，視為 false），所以是 release。
+# dry run 用另一個 group：它不寫入任何東西，可以和正式的 run 並行；要是共用同一個 group，
+# 等待中的正式 run 會被之後的 dry run 取代而取消，而 dry run 不發版，那次合併的變更就要等下一次觸發。
+concurrency:
+  group: ${{ inputs.dry_run && 'release-dry-run' || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      # ref: main 取的是 job 開始時 main 最新的 commit，不是觸發這次 run 的那個 commit：
+      # 排隊等待的 run 輪到時，觸發它的 commit 可能已經發佈過，取它會拿到過期的程式碼。
+      # fetch-depth: 0 取得完整的歷史與所有 tag，release.sh 要用它們判斷版號與變更的範圍。
+      # 不可以設定 persist-credentials: false：release.sh 的 git push 依靠 checkout 保存的憑證，
+      # 和 ci.yml 相反是刻意的。為了和 ci.yml 一致而加上它的話，升版的 push 會失敗，
+      # 而且只有實際發版時才會發現。
+      - name: 取得原始碼
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # 建置並安裝這個 commit 的 lkai：release.sh 請它判斷升級等級與撰寫 Release Notes。
+      - name: Setup lkai
+        uses: ./
+
+      # inputs、vars 與 secrets 一律以 env 傳入，run 裡不直接展開 ${{ }}。
+      # - LKAI_RELEASE_DRY_RUN：true 或 false。不寫成 github.event.inputs.dry_run == true：
+      #   那個比較兩邊都會轉成數字，永遠是 false。
+      # - 四個供應商與模型的變數原樣傳入，不在這裡組合或給預設值，預設值由 release.sh 決定；
+      #   push 觸發時 provider 與 model 兩個輸入是空的。
+      # - 三個 LKAI_*_API_KEY 由 lkai 自己讀取；release.sh 不讀、不印。
+      # - GH_TOKEN 給 gh（列出與建立 Release）使用。
+      - name: 發版
+        shell: bash
+        env:
+          LKAI_RELEASE_DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          LKAI_RELEASE_PROVIDER: ${{ inputs.provider }}
+          LKAI_RELEASE_MODEL: ${{ inputs.model }}
+          LKAI_RELEASE_DEFAULT_PROVIDER: ${{ vars.LKAI_RELEASE_DEFAULT_PROVIDER }}
+          LKAI_RELEASE_DEFAULT_MODEL: ${{ vars.LKAI_RELEASE_DEFAULT_MODEL }}
+          LKAI_ANTHROPIC_API_KEY: ${{ secrets.LKAI_ANTHROPIC_API_KEY }}
+          LKAI_OPENAI_API_KEY: ${{ secrets.LKAI_OPENAI_API_KEY }}
+          LKAI_GEMINI_API_KEY: ${{ secrets.LKAI_GEMINI_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/release/release.sh
