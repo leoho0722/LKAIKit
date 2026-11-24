@@ -149,7 +149,7 @@ fi
 # 變更資料：先全部算好寫進暫存檔，確認每個 git 指令都成功，才開始印
 # ---------------------------------------------------------------------------
 
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/lkai-make-prompt.XXXXXX")" || fail "無法建立暫存資料夾"
+work_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/lkai-make-prompt.XXXXXX")" || fail "無法建立暫存資料夾"
 
 git log --no-merges --format=%s "$log_range" -- >"$work_dir/commits.txt" ||
   fail "無法取得 commit 的標題（範圍 $(printable "$log_range")）"

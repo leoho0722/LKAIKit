@@ -79,10 +79,14 @@ model=""
 plan=""
 bump_level=""
 previous_version=""
+# 上一版是否已知：升版設定上一版時、照原樣發佈找上一版成功後才是 true。找上一版失敗時，上一版是未知的
+# （不是「沒有上一版」），報告不印「上一版：」那一行
+previous_version_known="false"
 next_version=""
 current_step=""
 failed_step=""
-# 第 2 步取得的所有 tag 名稱（每行一個）。git tag --list 只在那裡執行一次，之後都讀這個值
+# 第 2 步取得的版本 tag（名稱符合 version_pattern 的 tag，每行一個）。git tag --list 只在那裡執行一次，
+# 篩選也在那裡做；之後的迴圈與第 3 步的判斷都讀這個值，不再篩選
 version_tags=""
 
 # 報告：選定模式之後才印（report_enabled）。nothing_to_release 時，報告之後接一行說明。
@@ -216,8 +220,8 @@ write_report() {
   if [ -n "$bump_level" ]; then
     printf '升級等級：%s\n' "$bump_level"
   fi
-  # 沒有可發佈的變更時，上一版與新版號都沒有值，不印
-  if [ "$plan" = "release-as-is" ] || [ "$plan" = "version-bump" ]; then
+  # 沒有可發佈的變更時，上一版與新版號都沒有值，不印；上一版未知時（找上一版失敗）也不印
+  if [ "$previous_version_known" = "true" ]; then
     if [ -n "$previous_version" ]; then
       printf '上一版：%s\n' "$previous_version"
     else
@@ -331,20 +335,18 @@ version_greater() {
 
 # highest_ancestor_tag <commit> [<版號>]：印出最高的版本 tag，它要是 <commit> 的祖先；有給 <版號> 時，
 # 還要比 <版號> 小。沒有這樣的 tag 時什麼都不印。讀第 2 步取得的 version_tags。
-# 出錯時在 stderr 寫一行說明並回傳非 0：版本 tag 解析不成 commit（例如指向 tree），或 git merge-base 出錯
-# （退出碼 1 才是「不是祖先」，其他非 0 都是出錯）。這個函式在 $(…) 中呼叫，裡面不能用 fail
-# （fail 的 exit 只會結束 subshell），所以由呼叫端接 || fail
+# 出錯時以 error_line 寫一行原因（原因本身成為 annotation）並回傳非 0：版本 tag 解析不成 commit
+# （例如指向 tree），或 git merge-base 出錯（退出碼 1 才是「不是祖先」，其他非 0 都是出錯）。
+# 這個函式在 $(…) 中呼叫，裡面不能用 fail（fail 的 exit 只會結束 subshell）；error_line 只印訊息、不 exit，
+# 在 $(…) 中也安全。呼叫端接 || fail，寫簡短的結論
 highest_ancestor_tag() {
   local commit="$1" below="${2:-}" candidate candidate_commit merge_status highest=""
   for candidate in $version_tags; do
-    if ! [[ "$candidate" =~ $version_pattern ]]; then
-      continue
-    fi
     if [ -n "$below" ] && ! version_greater "$below" "$candidate"; then
       continue
     fi
     candidate_commit="$(git rev-parse --verify --quiet "refs/tags/$candidate^{commit}")" || {
-      printf '版本 tag %s 沒有指向 commit\n' "$(printable "$candidate")" >&2
+      error_line "版本 tag $(printable "$candidate") 沒有指向 commit"
       return 1
     }
     merge_status=0
@@ -353,8 +355,7 @@ highest_ancestor_tag() {
       continue
     fi
     if [ "$merge_status" -ne 0 ]; then
-      printf '無法判斷版本 tag %s 是不是祖先（git merge-base --is-ancestor 以 %s 結束）\n' \
-        "$(printable "$candidate")" "$merge_status" >&2
+      error_line "無法判斷版本 tag $(printable "$candidate") 是不是祖先（git merge-base --is-ancestor 以 ${merge_status} 結束）"
       return "$merge_status"
     fi
     if [ -z "$highest" ] || version_greater "$candidate" "$highest"; then
@@ -456,14 +457,18 @@ git show "HEAD:$version_file" >"$work_dir/LKAIKitInfo.swift" ||
 current_version="$("$BASH" "$script_dir/package-version.sh" get "$work_dir/LKAIKitInfo.swift")" ||
   fail "讀不到 HEAD 的版號（${version_file}）"
 
-# 版本 tag：名稱符合版號格式的 tag。git tag --list 只在這裡執行一次（列不出來時不能當成沒有 tag）；
-# 有比目前版號更大的就失敗，訊息寫出最高的那一個
-version_tags="$(git tag --list)" || fail "無法列出 git 的 tag（git tag --list 失敗）"
+# 版本 tag：名稱符合版號格式的 tag。git tag --list 只在這裡執行一次（列不出來時不能當成沒有 tag），
+# 只留下符合版號格式的名稱（篩選後是空的不算失敗，只是沒有版本 tag）；有比目前版號更大的就失敗，
+# 訊息寫出最高的那一個
+all_tags="$(git tag --list)" || fail "無法列出 git 的 tag（git tag --list 失敗）"
+version_tags=""
+while IFS= read -r tag; do
+  if [[ "$tag" =~ $version_pattern ]]; then
+    version_tags="${version_tags}${tag}"$'\n'
+  fi
+done <<<"$all_tags"
 highest_tag=""
 for tag in $version_tags; do
-  if ! [[ "$tag" =~ $version_pattern ]]; then
-    continue
-  fi
   if [ -z "$highest_tag" ] || version_greater "$tag" "$highest_tag"; then
     highest_tag="$tag"
   fi
@@ -494,7 +499,7 @@ if [ -n "$current_tag_commit" ]; then
     # release 模式以 --verify-tag 建立 Release；dry run 只保留文字給報告，不建立
     current_step="補建 Release"
     repair_previous="$(highest_ancestor_tag "$current_tag_commit" "$current_version")" ||
-      fail "無法找出補建的 Release 的上一版（原因見上一行）"
+      fail "無法找出補建的 Release 的上一版"
     "$BASH" "$script_dir/make-prompt.sh" release-notes "$repair_previous" "refs/tags/$current_version" "$current_version" \
       >"$work_dir/repair-notes.md" ||
       fail "無法產生補建用的 Release Notes 的 prompt"
@@ -524,11 +529,13 @@ if [ -n "$current_tag_commit" ]; then
   fi
   plan="version-bump"
   previous_version="$current_version"
+  previous_version_known="true"
 else
   # 目前版號還沒有 tag：照原樣發佈。上一版是 HEAD 的祖先中最高的版本 tag，沒有就是沒有上一版
   plan="release-as-is"
   next_version="$current_version"
-  previous_version="$(highest_ancestor_tag HEAD)" || fail "無法找出上一版（原因見上一行）"
+  previous_version="$(highest_ancestor_tag HEAD)" || fail "無法找出上一版"
+  previous_version_known="true"
 fi
 
 # ---------------------------------------------------------------------------

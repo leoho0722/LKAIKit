@@ -14,7 +14,8 @@
 #   模型：<模型>
 #   計畫：release-as-is、version-bump 或 nothing-to-release
 #   升級等級：major、minor 或 patch（只有升版、回答被接受之後）
-#   上一版：<版號>，照原樣發佈而沒有上一版時是「上一版：（無）」；沒有可發佈的變更時不印
+#   上一版：<版號>，照原樣發佈而沒有上一版時是「上一版：（無）」；沒有可發佈的變更時不印；
+#           找上一版失敗時（上一版是未知的，不是沒有）也不印
 #   新版號：<版號>；沒有可發佈的變更時不印
 #   補建的 Release：<tag>（補建了，或 dry run 時將會補建 Release 的 tag）
 #   失敗的步驟：<design 固定清單中的名稱>（只有失敗時）
@@ -579,11 +580,12 @@ assert_answer_accepted() {
   assert_equals "1" "$(call_count "lkai release-notes")" "回答被接受之後要送出 Release Notes 的請求"
 }
 
-# assert_answer_rejected <lkai 的 stdout> [<stderr 要含有的回答文字>]：回答被拒絕：以 1 結束，
+# assert_answer_rejected <lkai 的 stdout> [<stderr 要含有的回答文字>]：正式發版時回答被拒絕：以 1 結束，
 # stderr 有錯誤訊息（有回答文字時，含它的前 200 bytes），沒有送出 Release Notes 的請求，
 # 報告的失敗步驟是「判斷升級等級」，沒有任何改變
 assert_answer_rejected() {
   fixture_version_bump
+  release_mode
   export FAKE_LKAI_BUMP_REPLY="$1"
 
   run_release
@@ -642,6 +644,7 @@ test_release_long_rejected_answer_is_cut_at_a_whole_character() {
     count=$((count + 1))
   done
   fixture_version_bump
+  release_mode
   export FAKE_LKAI_BUMP_REPLY="${first_66}乙"
 
   run_release
@@ -659,10 +662,11 @@ test_release_long_rejected_answer_is_cut_at_a_whole_character() {
 # Release notes generation 與 Failed AI request
 # ---------------------------------------------------------------------------
 
-# 還沒有 tag，lkai 以 0 結束、Release Notes 只有空格與 LF：失敗，沒有任何改變，沒有 tag 或 Release
+# 正式發版，還沒有 tag，lkai 以 0 結束、Release Notes 只有空格與 LF：失敗，沒有任何改變，沒有 tag 或 Release
 # spectra-scenario: release-automation / The release notes are blank
 test_release_blank_release_notes_fail_the_run() {
   fixture_first_release
+  release_mode
   export FAKE_LKAI_NOTES=$'   \n'
 
   run_release
@@ -670,11 +674,12 @@ test_release_blank_release_notes_fail_the_run() {
   assert_failed_with_step "撰寫 Release Notes"
 }
 
-# 升版，升級等級的請求以 1 結束並在 stderr 寫「Error: test failure」：失敗，stderr 保留 lkai 的訊息，
+# 正式發版，升版，升級等級的請求以 1 結束並在 stderr 寫「Error: test failure」：失敗，stderr 保留 lkai 的訊息，
 # 沒有送出 Release Notes 的請求，沒有任何改變
 # spectra-scenario: release-automation / The AI service rejects the request
 test_release_failed_bump_level_request_fails_the_run_and_keeps_the_error() {
   fixture_version_bump
+  release_mode
   export FAKE_LKAI_BUMP_EXIT=1
   export FAKE_LKAI_BUMP_STDERR="Error: test failure"
 
@@ -685,10 +690,11 @@ test_release_failed_bump_level_request_fails_the_run_and_keeps_the_error() {
   assert_equals "0" "$(call_count "lkai release-notes")" "升級等級失敗時不該送出 Release Notes 的請求"
 }
 
-# 升版，Release Notes 的請求以 2 結束（回答被截斷）：release.sh 以 1 結束（不沿用 2），沒有 tag 或 Release
+# 正式發版，升版，Release Notes 的請求以 2 結束（回答被截斷）：release.sh 以 1 結束（不沿用 2），沒有 tag 或 Release
 # spectra-scenario: release-automation / The release notes are cut off
 test_release_cut_off_release_notes_fail_the_run() {
   fixture_version_bump
+  release_mode
   export FAKE_LKAI_NOTES_EXIT=2
 
   run_release
@@ -1794,6 +1800,8 @@ test_release_as_is_fails_when_a_version_tag_points_to_a_tree() {
   assert_failed_with_step "讀取版號"
   assert_file_contains "$TEST_STDERR" "0.0.9" "訊息要寫出那個 tag"
   assert_no_lkai_request
+  assert_has_line "$TEST_STDOUT" "計畫：release-as-is"
+  assert_equals "0" "$(grep -c '^上一版：' "$TEST_STDOUT")" "找上一版失敗時上一版是未知的，報告不印「上一版：」那一行（不是「（無）」）"
 }
 
 # 找上一版時，git merge-base --is-ancestor 出錯（退出碼 2，不是 0 或 1；退出碼 1 才是「不是祖先」）：
@@ -1808,6 +1816,8 @@ test_release_as_is_fails_when_the_ancestor_check_errors() {
   assert_failed_with_step "讀取版號"
   assert_file_contains "$TEST_STDERR" "測試用的 git 包裝：git merge-base --is-ancestor" "包裝要真的被呼叫到"
   assert_no_lkai_request
+  assert_has_line "$TEST_STDOUT" "計畫：release-as-is"
+  assert_equals "0" "$(grep -c '^上一版：' "$TEST_STDOUT")" "找上一版失敗時上一版是未知的，報告不印「上一版：」那一行（不是「（無）」）"
 }
 
 # 補建 Release 時（tag 0.1.1 沒有 Release，就在 HEAD），另一個版本 tag 0.1.0 指向 tree：找補建的上一版時解析不了它，
