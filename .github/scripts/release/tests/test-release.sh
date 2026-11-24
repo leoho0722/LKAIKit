@@ -455,6 +455,24 @@ test_release_plan_with_only_spectra_changes_after_the_tag_has_nothing_to_release
   assert_repo_untouched
 }
 
+# tag 之後只有改根目錄 README.md 與 AGENTS.md 的兩個 commit：沒有可發佈的變更
+# spectra-scenario: release-automation / Choose the plan
+# spectra-scenario: release-automation / Choose the plan / plans
+test_release_plan_with_only_root_doc_changes_after_the_tag_has_nothing_to_release() {
+  new_release_repo 0.1.0
+  make_version_tag 0.1.0
+  commit_change "docs: 更新 README" "README.md"
+  commit_change "docs: 更新 AGENTS" "AGENTS.md"
+  finish_fixture
+
+  run_release
+
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_nothing_to_release_report
+  assert_no_lkai_request
+  assert_repo_untouched
+}
+
 # 版號 1.0.0，tag 0.1.0 與 0.2.0（都在 HEAD 的祖先）：照原樣發佈，上一版是最高的 0.2.0
 # spectra-scenario: release-automation / Choose the plan
 # spectra-scenario: release-automation / Choose the plan / plans
@@ -560,6 +578,340 @@ test_release_plan_reads_the_version_at_head_not_the_working_tree() {
   assert_equals "0.9.0" "$("$BASH" "$RELEASE_DIR/package-version.sh" get "$TEST_REPO/$VERSION_FILE_PATH")" "工作目錄的修改要原封不動"
   repo_git rev-parse HEAD >"$TEST_TMP/after-head.txt"
   assert_files_equal "$TEST_TMP/state-head.txt" "$TEST_TMP/after-head.txt" "HEAD 被改變了"
+}
+
+# ---------------------------------------------------------------------------
+# Release-neutral files
+# ---------------------------------------------------------------------------
+
+# pattern 是 <資料夾>/** 時，測試在那個資料夾建立的檔案的名稱
+RELEASE_NEUTRAL_SAMPLE_NAME="release-neutral-sample.md"
+
+# has_glob_character <文字>：文字含有 * ? + [ ] ! 其中一個字元時回傳 0。
+# 這些字元在 GitHub 的 paths-ignore 與 git 的 :(glob) pathspec 中語意不同或沒有查證（見 skip-release-for-root-docs
+# 的 design），含有它們的 pattern 不能照抄到 release.sh，測試也不知道要建立什麼檔案。
+has_glob_character() {
+  case "$1" in
+    *'*'* | *'?'* | *'+'* | *'['* | *']'* | *'!'*) return 0 ;;
+  esac
+  return 1
+}
+
+# read_release_neutral_patterns <workflow 檔案> <輸出檔>：讀出 workflow 的 paths-ignore，每一條 pattern 在輸出檔
+# 寫一行「<pattern><Tab><要建立的檔案>」，順序和 workflow 相同。
+# - 起點：整行只有 paths-ignore:（前面只有空白）的那一行，必須剛好一行；寫成同一行的清單（paths-ignore: [...]）
+#   找不到這一行，讀取失敗。
+# - 區塊：起點之後，到第一個縮排不比起點深、而且不是註解的非空白行為止。YAML 的註解可以是任何縮排，不會結束
+#   清單，所以找結尾時略過註解行；區塊結尾的空白行與註解行（例如下一個 key 上方的說明）略過。
+# - 區塊內其餘每一行都必須是 - '<pattern>'：任何縮排的註解、空行、雙引號或沒有引號的寫法都讓讀取失敗，
+#   不會只讀到前面幾條而默默少檢查。
+# - pattern 的形狀：不含 * ? + [ ] ! 的完整路徑（不以 / 開頭）就是要建立的檔案；以 /** 結尾、前段是這樣的路徑時，
+#   建立 <前段>/<RELEASE_NEUTRAL_SAMPLE_NAME>；其他形狀讓讀取失敗。
+# - 一條都讀不到時失敗。
+# 失敗時以 fail 結束，所以要直接在測試函式中呼叫，不放在 $(...) 或管線中（見 helpers.sh 開頭）；
+# 迴圈只用 bash 的內建指令，以 < 重導檔案餵入。
+read_release_neutral_patterns() {
+  local workflow="$1" output="$2"
+  local header_re='^[[:space:]]*paths-ignore:[[:space:]]*$'
+  local item_re="^[[:space:]]*- '([^']+)'[[:space:]]*$"
+  local header_count line leading indent header_indent=-1 pattern prefix sample
+  local pending_line="" pending_number=0 line_number=0 count=0
+
+  header_count="$(grep -c -E "$header_re" "$workflow" 2>/dev/null)"
+  if [ "$header_count" != "1" ]; then
+    fail "找不到剛好一行整行只有 paths-ignore: 的行：$workflow" \
+      "符合的行數：${header_count:-0}" \
+      "paths-ignore 要寫成區塊形式的清單，每一條一行 - '<pattern>'，測試才讀得到每一條"
+  fi
+
+  : >"$output" || fail "無法寫入：$output"
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_number=$((line_number + 1))
+    leading="${line%%[![:space:]]*}"
+    if [ "$header_indent" -lt 0 ]; then
+      if [[ $line =~ $header_re ]]; then
+        header_indent=${#leading}
+      fi
+      continue
+    fi
+    # 空白行與註解行先記下來：之後還有清單的項目時，它們在清單中間，讀取失敗；之後是區塊的結尾時略過
+    case "$line" in
+      "$leading" | "$leading#"*)
+        if [ "$pending_number" -eq 0 ]; then
+          pending_line="$line"
+          pending_number=$line_number
+        fi
+        continue
+        ;;
+    esac
+    indent=${#leading}
+    if [ "$indent" -le "$header_indent" ]; then
+      break
+    fi
+    if [ "$pending_number" -ne 0 ]; then
+      fail "paths-ignore 的清單中間有空行或註解（第 ${pending_number} 行），清單中不放註解與空行，說明寫在檔案開頭" \
+        "那一行：$pending_line"
+    fi
+    if [[ ! $line =~ $item_re ]]; then
+      fail "paths-ignore 的清單中有認不得的行（第 ${line_number} 行），每一條都要寫成 - '<pattern>'" \
+        "那一行：$line"
+    fi
+    pattern="${BASH_REMATCH[1]}"
+    case "$pattern" in
+      *'/**')
+        prefix="${pattern%'/**'}"
+        sample="$prefix/$RELEASE_NEUTRAL_SAMPLE_NAME"
+        ;;
+      *)
+        prefix="$pattern"
+        sample="$pattern"
+        ;;
+    esac
+    if [ -z "$prefix" ] || has_glob_character "$prefix" || [ "${prefix#/}" != "$prefix" ]; then
+      fail "paths-ignore 有這個測試認不得形狀的 pattern：$pattern" \
+        "只有不含 * ? + [ ] ! 的完整路徑，以及 <資料夾>/** 兩種形狀可以照抄到 release.sh 的 release_neutral_patterns" \
+        "其他形狀要先確認 GitHub 與 git 的語意、換算 release.sh 的寫法，再擴充這個測試（見 docs/releasing.md 5.2）"
+    fi
+    printf '%s\t%s\n' "$pattern" "$sample" >>"$output" || fail "無法寫入：$output"
+    count=$((count + 1))
+  done <"$workflow"
+
+  if [ "$count" -eq 0 ]; then
+    fail "paths-ignore 底下讀不到任何一條 pattern：$workflow"
+  fi
+}
+
+# assert_release_neutral_reading_fails <workflow 檔案> <訊息要含有的片段>：在 subshell 中讀取，
+# 讀取要以非 0 結束，stderr 要含有片段
+assert_release_neutral_reading_fails() {
+  local rc=0
+  (read_release_neutral_patterns "$1" "$TEST_TMP/patterns.txt") >"$TEST_TMP/read-stdout" 2>"$TEST_TMP/read-stderr" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    fail "讀取應該失敗" "workflow（cat -v）：$(show_file "$1")" "讀到的 pattern（cat -v）：$(show_file "$TEST_TMP/patterns.txt")"
+  fi
+  assert_file_contains "$TEST_TMP/read-stderr" "$2" "失敗的訊息要寫出原因"
+}
+
+# fixture_one_change_after_the_tag <路徑>：版號 0.1.0，tag 0.1.0（有 Release）之後只有一個改動 <路徑> 的 commit
+fixture_one_change_after_the_tag() {
+  new_release_repo 0.1.0
+  make_version_tag 0.1.0
+  commit_change "docs: 修改 $1" "$1"
+  finish_fixture
+}
+
+# assert_classified_as_nothing_to_release：以 0 結束、沒有可發佈的變更、沒有 AI 請求、沒有任何改變
+assert_classified_as_nothing_to_release() {
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_nothing_to_release_report
+  assert_no_lkai_request
+  assert_repo_untouched
+}
+
+# assert_classified_as_version_bump：以 0 結束、升版，上一版 0.1.0，新版號由假的 lkai 的預設回答 patch 算出 0.1.1
+assert_classified_as_version_bump() {
+  assert_exit_code 0 "release.sh 的退出碼"
+  assert_plan "version-bump" "0.1.0" "0.1.1"
+}
+
+# tag 之後只改 docs/spectra/ 底下的 tasks：沒有可發佈的變更
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_spectra_tasks_change_has_nothing_to_release() {
+  fixture_one_change_after_the_tag "docs/spectra/changes/x/tasks.md"
+  run_release
+  assert_classified_as_nothing_to_release
+}
+
+# tag 之後只改 docs/spectra/README.md：在 docs/spectra/ 底下，沒有可發佈的變更
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_spectra_readme_change_has_nothing_to_release() {
+  fixture_one_change_after_the_tag "docs/spectra/README.md"
+  run_release
+  assert_classified_as_nothing_to_release
+}
+
+# tag 之後只改根目錄的 README.md：沒有可發佈的變更
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_root_readme_change_has_nothing_to_release() {
+  fixture_one_change_after_the_tag "README.md"
+  run_release
+  assert_classified_as_nothing_to_release
+}
+
+# tag 之後只改根目錄的 CLAUDE.md：沒有可發佈的變更
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_root_claude_md_change_has_nothing_to_release() {
+  fixture_one_change_after_the_tag "CLAUDE.md"
+  run_release
+  assert_classified_as_nothing_to_release
+}
+
+# tag 之後只改根目錄的 AGENTS.md：沒有可發佈的變更
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_root_agents_md_change_has_nothing_to_release() {
+  fixture_one_change_after_the_tag "AGENTS.md"
+  run_release
+  assert_classified_as_nothing_to_release
+}
+
+# tag 之後只改 docs/README.md：子資料夾的同名檔案不是不發版的檔案，升版
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_docs_readme_change_is_a_version_bump() {
+  fixture_one_change_after_the_tag "docs/README.md"
+  run_release
+  assert_classified_as_version_bump
+}
+
+# tag 之後只改 Sources/README.md：子資料夾的同名檔案不是不發版的檔案，升版
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_sources_readme_change_is_a_version_bump() {
+  fixture_one_change_after_the_tag "Sources/README.md"
+  run_release
+  assert_classified_as_version_bump
+}
+
+# tag 之後只改 docs/adding-a-provider.md：docs/spectra/ 以外的文件照常發版，升版
+# spectra-scenario: release-automation / Classify the file changed after the tag
+# spectra-scenario: release-automation / Classify the file changed after the tag / changed file and plan
+test_release_neutral_files_provider_guide_change_is_a_version_bump() {
+  fixture_one_change_after_the_tag "docs/adding-a-provider.md"
+  run_release
+  assert_classified_as_version_bump
+}
+
+# 讀出真正的 release.yml 的 paths-ignore，依序每一條：commit 一個符合它的檔案、推上 origin、記下狀態、
+# 執行一次 release.sh 並確認沒有可發佈的變更，再處理下一條。第一條不符合時寫出 pattern、檔案與要改的地方。
+# pattern 先讀進陣列再跑迴圈：迴圈內的指令要是讀了 stdin，以清單餵入的 while 會被吃掉剩下的行而提早結束。
+# spectra-scenario: release-automation / Every pattern the workflow ignores is release-neutral to the script
+test_release_neutral_files_every_ignored_pattern_has_nothing_to_release() {
+  local tab=$'\t' line i runs=0
+  local patterns=() files=()
+  read_release_neutral_patterns "$REPO_ROOT/.github/workflows/release.yml" "$TEST_TMP/patterns.txt"
+  while IFS= read -r line; do
+    patterns+=("${line%%"$tab"*}")
+    files+=("${line#*"$tab"}")
+  done <"$TEST_TMP/patterns.txt"
+  new_release_repo 0.1.0
+  make_version_tag 0.1.0
+  finish_fixture
+
+  for ((i = 0; i < ${#patterns[@]}; i++)); do
+    commit_change "docs: 只改符合 ${patterns[$i]} 的檔案" "${files[$i]}"
+    finish_fixture
+    run_release
+    runs=$((runs + 1))
+    if [ "$RC" -ne 0 ] || ! grep -x -F -q -- "計畫：nothing-to-release" "$TEST_STDOUT"; then
+      fail "release.yml 的 paths-ignore 有 ${patterns[$i]}，但 release.sh 把 ${files[$i]} 當成可發佈的變更" \
+        "要在 release.sh 的 release_neutral_patterns 加上同一條，或從 paths-ignore 拿掉；見 docs/releasing.md 5.2" \
+        "release.sh 的退出碼：$RC" \
+        "stdout（cat -v）：$(show_file "$TEST_STDOUT")"
+    fi
+    assert_nothing_to_release_report
+    assert_no_lkai_request
+    assert_repo_untouched
+  done
+
+  assert_equals "${#patterns[@]}" "$runs" "執行 release.sh 的次數要等於讀到的 pattern 數"
+}
+
+# 讀取規則：清單結尾、下一個 key 上方的註解與空行略過，讀到清單的每一條，順序和 workflow 相同
+test_release_neutral_reading_skips_comments_and_blank_lines_after_the_list() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/spectra/**'
+      - 'README.md'
+
+    # 手動觸發
+  workflow_dispatch:
+WORKFLOW_EOF
+  read_release_neutral_patterns "$TEST_TMP/workflow.yml" "$TEST_TMP/patterns.txt"
+  assert_file_equals "$TEST_TMP/patterns.txt" "docs/spectra/**\tdocs/spectra/release-neutral-sample.md\nREADME.md\tREADME.md\n"
+}
+
+# 讀取規則：清單中間有一行和清單相同縮排的註解，讀取失敗
+test_release_neutral_reading_rejects_an_indented_comment_inside_the_list() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+      - 'docs/spectra/**'
+      # 根目錄的說明文件
+      - 'README.md'
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "# 根目錄的說明文件"
+}
+
+# 讀取規則：清單中間有一行從行首開始的註解（縮排比 paths-ignore: 淺），讀取失敗，不會在那一行結束清單
+test_release_neutral_reading_rejects_a_comment_at_the_start_of_a_line_inside_the_list() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+      - 'docs/spectra/**'
+#      - 'CLAUDE.md'
+      - 'README.md'
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "#      - 'CLAUDE.md'"
+}
+
+# 讀取規則：某一條用雙引號，讀取失敗
+test_release_neutral_reading_rejects_a_double_quoted_pattern() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+      - 'docs/spectra/**'
+      - "README.md"
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "- \"README.md\""
+}
+
+# 讀取規則：有一條認不得形狀的 pattern（? 在 GitHub 與 git 的語意不同），讀取失敗
+test_release_neutral_reading_rejects_a_pattern_of_an_unknown_shape() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+      - 'docs/spectra/**'
+      - 'docs/note?.md'
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "docs/note?.md"
+}
+
+# 讀取規則：paths-ignore: 底下一條都沒有，讀取失敗
+test_release_neutral_reading_rejects_an_empty_list() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore:
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "讀不到任何一條 pattern"
+}
+
+# 讀取規則：paths-ignore 寫成同一行的清單，找不到整行只有 paths-ignore: 的行，讀取失敗
+test_release_neutral_reading_rejects_a_flow_style_list() {
+  cat >"$TEST_TMP/workflow.yml" <<'WORKFLOW_EOF'
+on:
+  push:
+    paths-ignore: ['docs/spectra/**', 'README.md']
+  workflow_dispatch:
+WORKFLOW_EOF
+  assert_release_neutral_reading_fails "$TEST_TMP/workflow.yml" "整行只有 paths-ignore: 的行"
 }
 
 # ---------------------------------------------------------------------------
